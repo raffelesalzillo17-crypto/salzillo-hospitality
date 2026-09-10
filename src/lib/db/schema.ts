@@ -355,6 +355,12 @@ export const preventivi = pgTable('preventivi', {
   creato_da: uuid('creato_da').references(() => utenti.id),
 });
 
+// Un invio al giorno del report notturno (dedup fra cron 5:30 e backup 5:20).
+export const inviiReport = pgTable('invii_report', {
+  giorno: date('giorno').primaryKey(),
+  inviato_il: timestamp('inviato_il', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sistema (accessi, bot, notifiche)
 // ─────────────────────────────────────────────────────────────────────────────

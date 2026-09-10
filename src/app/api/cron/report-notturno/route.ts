@@ -3,6 +3,8 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
+import { getDb } from '@/lib/db/index';
+import { sql } from 'drizzle-orm';
 
 // Invia a Raffaele su Telegram, una volta, il report del lavoro notturno sul nuovo sistema.
 // Il testo sta in data/report-notturno.md (versionato). Schedulato alle 5:30 in vercel.json.
@@ -27,6 +29,14 @@ export async function GET(req: NextRequest) {
     } catch { /* usa il fallback */ }
 
     if (dry) return NextResponse.json({ ok: true, dry: true, testo });
+
+    // invia una volta sola al giorno (il cron 5:30 e il backup 5:20 non fanno doppione)
+    const oggi = new Date().toISOString().slice(0, 10);
+    const ins = await getDb().execute(
+      sql`INSERT INTO invii_report (giorno) VALUES (${oggi}) ON CONFLICT (giorno) DO NOTHING RETURNING giorno`,
+    );
+    const rows = Array.isArray(ins) ? ins : ((ins as { rows?: unknown[] }).rows ?? []);
+    if (rows.length === 0) return NextResponse.json({ ok: true, giaInviato: true });
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.ALLOWED_CHAT_ID;

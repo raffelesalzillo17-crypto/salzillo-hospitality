@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { richiediSessione } from '@/lib/db/auth';
-import { pdfConfermaPrenotazione, pdfPreventivo, pdfContrattoGestione } from '@/lib/db/documentiPdf';
+import { pdfConfermaPrenotazione, pdfPreventivo, pdfPreventivoDaId, pdfContrattoGestione } from '@/lib/db/documentiPdf';
 
 // Genera un PDF: ?tipo=conferma&prenotazione=<id>  |  ?tipo=preventivo&...  |  ?tipo=contratto-gestione&contratto=<id>
 
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     let out: { bytes: Uint8Array; nome: string } | null = null;
     if (tipo === 'conferma') {
       out = await pdfConfermaPrenotazione(q.get('prenotazione') || '');
+    } else if (tipo === 'preventivo' && q.get('id')) {
+      out = await pdfPreventivoDaId(q.get('id') || '');
     } else if (tipo === 'preventivo') {
       out = await pdfPreventivo({
         alloggioId: q.get('alloggio') || '', checkin: q.get('checkin') || '', checkout: q.get('checkout') || '',

@@ -39,10 +39,19 @@ type CosaManca = {
   pulizieDaFare: { id: string; data: string; alloggio: string }[];
   pagamentiInSospeso: { id: string; ospite: string; checkin: string; lordo: string; alloggio: string }[];
 };
+type Preventivo = {
+  id: string; codice: string; stato: 'Bozza' | 'Inviato' | 'Accettato' | 'Scaduto' | 'Rifiutato';
+  checkin: string; checkout: string; numeroOspiti: number;
+  prezzoNotte: string | null; totalePieno: string; sconto: string; scontoTipo: string; totale: string;
+  validoOre: number; note: string | null;
+  creatoIl: string; inviatoIl: string | null; accettatoIl: string | null; prenotazioneId: string | null;
+  alloggioId: string; alloggio: string; immobile: string;
+  ospiteId: string | null; ospiteNome: string | null; ospiteCognome: string | null; ospiteTelefono: string | null;
+};
 type Dati = {
   ok: boolean; oggi: string; prenotazioni: Prenotazione[]; ospiti: Ospite[];
   anagrafica: Anagrafica; alloggi: Alloggio[]; spese: Spesa[]; scadenze: Scadenza[];
-  riepilogoMese: RigaMese[]; cosaManca: CosaManca;
+  riepilogoMese: RigaMese[]; cosaManca: CosaManca; preventivi?: Preventivo[];
   categorieSpesa?: { id: string; nome: string }[];
 };
 type SintesiMese = { anno: number; mese: number; prenotazioni: number; lordo: number; nettoProprietario: number };
@@ -121,6 +130,34 @@ function FormModale({ titolo, campi, iniziali = {}, onInvia, onClose }: {
   );
 }
 
+// ── Tema chiaro/scuro ──────────────────────────────────────────────────────
+type Tema = 'auto' | 'light' | 'dark';
+function applicaTema(t: Tema) {
+  const el = document.documentElement;
+  if (t === 'auto') el.removeAttribute('data-theme');
+  else el.setAttribute('data-theme', t);
+}
+function TemaToggle() {
+  const [t, setT] = useState<Tema>('auto');
+  useEffect(() => {
+    let v: Tema = 'auto';
+    try { v = (localStorage.getItem('sh_tema') as Tema) || 'auto'; } catch { /* */ }
+    setT(v); applicaTema(v);
+  }, []);
+  function scegli(v: Tema) {
+    setT(v); applicaTema(v);
+    try { localStorage.setItem('sh_tema', v); } catch { /* */ }
+  }
+  const next: Record<Tema, Tema> = { auto: 'light', light: 'dark', dark: 'auto' };
+  const icona: Record<Tema, string> = { auto: '🌗', light: '☀️', dark: '🌙' };
+  const label: Record<Tema, string> = { auto: 'automatico', light: 'chiaro', dark: 'scuro' };
+  return (
+    <button className="tematoggle" onClick={() => scegli(next[t])} title={`Tema: ${label[t]} — tocca per cambiare`}>
+      {icona[t]} <span>{label[t]}</span>
+    </button>
+  );
+}
+
 async function api(azione: string, payload: Record<string, unknown> = {}) {
   const r = await fetch('/api/nuovo/scrivi', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -137,7 +174,7 @@ export default function Nuovo() {
   const [u, setU] = useState(''); const [p, setP] = useState('');
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti' | 'guida'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti' | 'guida'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [nuovaPren, setNuovaPren] = useState(false);
@@ -146,6 +183,7 @@ export default function Nuovo() {
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
   const [qOspiti, setQOspiti] = useState('');
+  const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', periodo: 'futuro' });
 
   async function inviaModale(vals: Record<string, unknown>) {
     if (!modale) return;
@@ -186,6 +224,7 @@ export default function Nuovo() {
       <div className="wrap gate">
         <style>{CSS}</style>
         <div className="card gatecard">
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><TemaToggle /></div>
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Nuovo sistema</h1>
           <form onSubmit={login}>
@@ -223,12 +262,15 @@ export default function Nuovo() {
         </div>
         <div className="topright">
           <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={logout}>esci</button></span>
-          {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <TemaToggle />
+            {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}
+          </div>
         </div>
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'spese', 'scadenze', 'rendiconti', 'guida'] as const).map((t) => (
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'rendiconti', 'guida'] as const).map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
           </button>
@@ -295,6 +337,8 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
+
       {tab === 'guida' && (
         <div className="grid">
           <div className="card">
@@ -346,32 +390,71 @@ export default function Nuovo() {
 
       {tab === 'calendario' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={setPrenSel} />}
 
-      {tab === 'prenotazioni' && (
-        <div className="card">
-          <div className="cardhead">
-            <h2>Prenotazioni <small>({dati.prenotazioni.length})</small></h2>
-            {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
-              <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
-            </div>}
+      {tab === 'prenotazioni' && (() => {
+        const q = fPren.q.trim().toLowerCase();
+        const lista = dati.prenotazioni.filter((p) => {
+          if (q && !`${p.ospite} ${p.alloggio} ${p.canale} ${p.note ?? ''}`.toLowerCase().includes(q)) return false;
+          if (fPren.stato && p.stato !== fPren.stato) return false;
+          if (fPren.alloggio && p.alloggio !== fPren.alloggio) return false;
+          if (fPren.canale && p.canale !== fPren.canale) return false;
+          if (fPren.periodo === 'futuro' && p.checkout < oggi) return false;
+          if (fPren.periodo === 'passato' && p.checkout >= oggi) return false;
+          return true;
+        }).sort((a, b) => fPren.periodo === 'passato' ? b.checkin.localeCompare(a.checkin) : a.checkin.localeCompare(b.checkin));
+        const somma = lista.reduce((s, p) => ({ lordo: s.lordo + p.lordo, utile: s.utile + p.utile }), { lordo: 0, utile: 0 });
+        const nomiAlloggi = [...new Set(dati.prenotazioni.map((p) => p.alloggio))].sort();
+        return (
+          <div className="card">
+            <div className="cardhead">
+              <h2>Prenotazioni <small>({lista.length}{lista.length !== dati.prenotazioni.length ? ` di ${dati.prenotazioni.length}` : ''})</small></h2>
+              {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
+                <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
+              </div>}
+            </div>
+            <div className="filtri">
+              <input className="cerca" placeholder="Cerca ospite, alloggio, note…" value={fPren.q} onChange={(e) => setFPren({ ...fPren, q: e.target.value })} />
+              <select value={fPren.periodo} onChange={(e) => setFPren({ ...fPren, periodo: e.target.value })}>
+                <option value="futuro">In corso e future</option>
+                <option value="passato">Passate</option>
+                <option value="">Tutte</option>
+              </select>
+              <select value={fPren.stato} onChange={(e) => setFPren({ ...fPren, stato: e.target.value })}>
+                <option value="">Ogni stato</option>
+                {['Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show'].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={fPren.alloggio} onChange={(e) => setFPren({ ...fPren, alloggio: e.target.value })}>
+                <option value="">Ogni alloggio</option>
+                {nomiAlloggi.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <select value={fPren.canale} onChange={(e) => setFPren({ ...fPren, canale: e.target.value })}>
+                <option value="">Ogni canale</option>
+                {['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="tablescroll">
+              <table className="tbl full">
+                <thead><tr><th>Check-in</th><th>Check-out</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Utile</th><th>Stato</th></tr></thead>
+                <tbody>
+                  {lista.map((p) => (
+                    <tr key={p.id} onClick={() => setPrenSel(p)}>
+                      <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}</td><td>{p.alloggio}</td>
+                      <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span></td>
+                      <td className="num">{eur(p.lordo)}</td><td className="num strong">{eur(p.utile)}</td>
+                      <td>{p.stato === 'Attiva' ? '✅' : p.stato === 'In attesa di conferma' ? '⏳' : '❌'} <small>{p.stato}</small></td>
+                    </tr>
+                  ))}
+                  {lista.length === 0 && <tr><td colSpan={8} className="empty">Nessuna prenotazione con questi filtri.</td></tr>}
+                  {lista.length > 0 && (
+                    <tr className="tot"><td colSpan={5}>Totale ({lista.length})</td>
+                      <td className="num">{eur(somma.lordo)}</td><td className="num strong">{eur(somma.utile)}</td><td></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="tablescroll">
-            <table className="tbl full">
-              <thead><tr><th>Check-in</th><th>Check-out</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Utile</th><th>Stato</th></tr></thead>
-              <tbody>
-                {dati.prenotazioni.map((p) => (
-                  <tr key={p.id} onClick={() => setPrenSel(p)}>
-                    <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}</td><td>{p.alloggio}</td>
-                    <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span></td>
-                    <td className="num">{eur(p.lordo)}</td><td className="num strong">{eur(p.utile)}</td>
-                    <td>{p.stato === 'Attiva' ? '✅' : '❌'} <small>{p.stato}</small></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {tab === 'ospiti' && (() => {
         const campiOspite: Campo[] = [
@@ -528,9 +611,109 @@ export default function Nuovo() {
         onClose={() => setNuovaPren(false)} onSalvato={async () => { setNuovaPren(false); await carica(); }} />}
       {modale && <FormModale titolo={modale.titolo} campi={modale.campi} iniziali={modale.iniziali}
         onInvia={inviaModale} onClose={() => setModale(null)} />}
-      {preventivo && <Preventivo alloggi={dati.alloggi} onClose={() => setPreventivo(false)} />}
+      {preventivo && <Preventivo alloggi={dati.alloggi} ospiti={dati.ospiti} onClose={() => setPreventivo(false)} onSalvato={async () => { setPreventivo(false); await carica(); setTab('documenti'); }} />}
       {sinfoniaImm && <SinfoniaBox immobileId={sinfoniaImm} oggi={oggi} onClose={() => setSinfoniaImm(null)} />}
       {calAlloggio && <CalendariBox alloggio={calAlloggio} onClose={() => setCalAlloggio(null)} />}
+    </div>
+  );
+}
+
+// ── Documenti / Preventivi ─────────────────────────────────────────────────
+function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
+  preventivi: Preventivo[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [q, setQ] = useState('');
+  const [statoF, setStatoF] = useState('');
+  const [apri, setApri] = useState<string | null>(null);
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+
+  async function azione(id: string, a: 'stato-preventivo' | 'accetta-preventivo', stato?: string) {
+    setBusy(id); setErr('');
+    try { await api(a, { id, dati: stato ? { stato } : {} }); await onCambiato(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(''); }
+  }
+
+  const ql = q.trim().toLowerCase();
+  const filtr = preventivi.filter((p) => {
+    const nome = `${p.ospiteCognome ?? ''} ${p.ospiteNome ?? ''}`.trim();
+    if (ql && !`${nome} ${p.codice} ${p.alloggio}`.toLowerCase().includes(ql)) return false;
+    if (statoF && p.stato !== statoF) return false;
+    return true;
+  });
+  // raggruppa per ospite ("cartella")
+  const gruppi = new Map<string, { nome: string; tel: string | null; righe: Preventivo[] }>();
+  for (const p of filtr) {
+    const nome = `${p.ospiteCognome ?? ''} ${p.ospiteNome ?? ''}`.trim() || 'Senza nome';
+    const k = (p.ospiteId ?? nome);
+    if (!gruppi.has(k)) gruppi.set(k, { nome, tel: p.ospiteTelefono, righe: [] });
+    gruppi.get(k)!.righe.push(p);
+  }
+  const cartelle = [...gruppi.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+
+  function msgWa(p: Preventivo) {
+    const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
+    const primo = (p.ospiteNome ?? '').trim();
+    return [
+      `${saluto}${primo ? ' ' + primo : ''}, sono Raffaele di Salzillo Hospitality.`,
+      `Ecco il preventivo ${p.codice} per ${p.alloggio}:`,
+      `Check-in ${dataIt(p.checkin)} · Check-out ${dataIt(p.checkout)} (${p.numeroOspiti} ospiti)`,
+      `Totale ${eur(Number(p.totale))}${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
+      `Per bloccare le date puoi confermare entro ${p.validoOre} ore: fino ad allora l'alloggio resta riservato a te.`,
+      `Cancellazione gratuita fino a 48h prima del check-in. Ti allego il PDF.`,
+    ].join('\n');
+  }
+  function waUrl(p: Preventivo) {
+    const t = (p.ospiteTelefono ?? '').replace(/[^\d]/g, '');
+    const num = t.length === 10 ? '39' + t : t;
+    return `https://wa.me/${num}?text=${encodeURIComponent(msgWa(p))}`;
+  }
+
+  return (
+    <div className="card">
+      <div className="cardhead">
+        <h2>Documenti <small>· {preventivi.length} preventivi</small></h2>
+      </div>
+      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Il preventivo si crea dalla scheda Prenotazioni → 📄 Preventivo, poi lo salvi.</p>
+      <div className="filtri">
+        <input className="cerca" placeholder="Cerca ospite, codice, alloggio…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select value={statoF} onChange={(e) => setStatoF(e.target.value)}>
+          <option value="">Ogni stato</option>
+          {['Bozza', 'Inviato', 'Accettato', 'Scaduto', 'Rifiutato'].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      {err && <p className="err">{err}</p>}
+      {cartelle.length === 0 && <p className="empty">Nessun preventivo{q || statoF ? ' con questi filtri' : ' ancora'}.</p>}
+      {cartelle.map((c) => (
+        <div key={c.nome} className="docgroup">
+          <h3><span>📁 {c.nome}</span><span className="empty">{c.righe.length} doc.{c.tel ? ` · ${c.tel}` : ''}</span></h3>
+          {c.righe.map((p) => {
+            const url = `/api/nuovo/documento?tipo=preventivo&id=${p.id}`;
+            const scaduto = p.stato === 'Inviato' && p.inviatoIl && (Date.now() - Date.parse(p.inviatoIl)) > p.validoOre * 3600e3;
+            return (
+              <div key={p.id}>
+                <div className="docrow">
+                  <span className={`pill pill-${p.stato}`}>{p.stato}</span>
+                  <b>{p.codice}</b>
+                  <span>{p.alloggio} · {dataIt(p.checkin)}→{dataIt(p.checkout)} · {eur(Number(p.totale))}</span>
+                  {scaduto && <span className="pill pill-Scaduto">tempo scaduto</span>}
+                  <span className="azioni">
+                    <button className="mini" onClick={() => setApri(apri === p.id ? null : p.id)}>{apri === p.id ? 'chiudi' : '👁 anteprima'}</button>
+                    <a className="mini" href={url} target="_blank" rel="noopener">PDF</a>
+                    {p.ospiteTelefono && <a className="mini coral" href={waUrl(p)} target="_blank" rel="noopener">💬 WhatsApp</a>}
+                    {puoModificare && p.stato === 'Bozza' && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Inviato')}>→ Inviato</button>}
+                    {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini coral" disabled={busy === p.id} onClick={() => { if (confirm(`Accettare ${p.codice}? Creo la prenotazione e blocco le date.`)) azione(p.id, 'accetta-preventivo'); }}>✓ Accettato</button>}
+                    {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Rifiutato')}>✕</button>}
+                  </span>
+                </div>
+                {apri === p.id && <iframe src={url} title={p.codice} style={{ width: '100%', height: 420, border: '1px solid var(--line)', borderRadius: 10, background: '#fff', margin: '6px 0' }} />}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <p className="empty" style={{ marginTop: 10 }}>Quando ci sarà il collegamento a Google Drive, ogni cartella verrà rispecchiata lì (preventivo, conferma, documento, ricevuta). {oggi && ''}</p>
     </div>
   );
 }
@@ -890,9 +1073,16 @@ function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
   );
 }
 
-function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => void }) {
-  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzoNotte: '', prezzo: '', sconto: '', scontoTipo: 'euro', cliente: '', tel: '', ore: '24', note: '' });
+function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio[]; ospiti: Ospite[]; onClose: () => void; onSalvato: () => Promise<void> }) {
+  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', ospiteId: '', checkin: '', checkout: '', ospiti: '2', prezzoNotte: '', prezzo: '', sconto: '', scontoTipo: 'euro', cliente: '', tel: '', ore: '24', note: '' });
   const [vediAnteprima, setVediAnteprima] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  function scegliOspite(id: string) {
+    const o = ospiti.find((x) => x.id === id);
+    setF((s) => ({ ...s, ospiteId: id, cliente: o ? `${o.nome} ${o.cognome}`.trim() : s.cliente, tel: o?.telefono ?? s.tel }));
+  }
 
   const nnotti = f.checkin && f.checkout ? Math.max(0, Math.round((Date.parse(f.checkout) - Date.parse(f.checkin)) / 864e5)) : 0;
   // quando cambia il prezzo/notte o le date, ricalcola il totale; e viceversa
@@ -934,6 +1124,21 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
   ].join('\n');
   const waUrl = `https://wa.me/${telPulito.length >= 9 ? (telPulito.length === 10 ? '39' + telPulito : telPulito) : ''}?text=${encodeURIComponent(msgWa)}`;
 
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      const [nome, ...resto] = f.cliente.trim().split(/\s+/);
+      await api('crea-preventivo', { dati: {
+        alloggioId: f.alloggioId, checkin: f.checkin, checkout: f.checkout, numeroOspiti: Number(f.ospiti) || 1,
+        ...(f.prezzo ? { prezzo: Number(f.prezzo) } : {}), ...(f.prezzoNotte ? { prezzoNotte: Number(f.prezzoNotte) } : {}),
+        ...(scontoNum > 0 ? { sconto: scontoNum, scontoTipo: f.scontoTipo } : {}),
+        validoOre: Number(f.ore) || 24, note: f.note || undefined,
+        ...(f.ospiteId ? { ospiteId: f.ospiteId } : { ospiteNome: nome || undefined, ospiteCognome: resto.join(' ') || undefined, ospiteTelefono: f.tel || undefined }),
+      } });
+      await onSalvato();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
+  }
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="card modal" onClick={(e) => e.stopPropagation()}>
@@ -941,6 +1146,10 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
         <h2>Preventivo</h2>
         <div className="form">
           <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
+          <label>Ospite<select value={f.ospiteId} onChange={(e) => scegliOspite(e.target.value)}>
+            <option value="">— nuovo, scrivo sotto —</option>
+            {ospiti.map((o) => <option key={o.id} value={o.id}>{o.cognome} {o.nome}</option>)}
+          </select></label>
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
           {nnotti > 0 && <p className="sub">= {nnotti} notti</p>}
@@ -968,14 +1177,16 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
             <p className="empty" style={{ marginTop: 4 }}>È quello che vedrà l&apos;ospite. Il PDF resta salvato: puoi ri-aprirlo quando vuoi.</p>
           </div>
         )}
+        {err && <p className="err">{err}</p>}
         <div className="modalactions">
           {pronto
-            ? <button className="add" onClick={() => setVediAnteprima((v) => !v)}>{vediAnteprima ? 'Nascondi anteprima' : '👁 Vedi anteprima'}</button>
+            ? <button className="add" onClick={() => setVediAnteprima((v) => !v)}>{vediAnteprima ? 'Nascondi anteprima' : '👁 Anteprima'}</button>
             : <button className="add" disabled>Compila i campi</button>}
-          {pronto && telPulito.length >= 9 && <a className="sync" href={waUrl} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 Scrivi su WhatsApp</a>}
-          {pronto && <a href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none', alignSelf: 'center', fontSize: 13, color: 'var(--ink-muted)' }}>apri a schermo intero</a>}
+          {pronto && <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : '💾 Salva nei documenti'}</button>}
+          {pronto && telPulito.length >= 9 && <a className="sync" href={waUrl} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 WhatsApp</a>}
           <button onClick={onClose}>Chiudi</button>
         </div>
+        {pronto && <p className="empty" style={{ marginTop: 6 }}>Salvando lo trovi nella scheda <b>Documenti</b>, con anteprima, WhatsApp e &quot;segna accettato&quot;.</p>}
       </div>
     </div>
   );
@@ -1199,4 +1410,34 @@ button{cursor:pointer;font-family:inherit}
 .modalactions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
 .modalactions button{padding:9px 16px;border-radius:100px;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
 .modal{max-height:90vh;overflow-y:auto;}
+.tematoggle{font-size:12px;font-weight:700;padding:6px 12px;border-radius:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink-muted);display:inline-flex;align-items:center;gap:5px;}
+.filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
+.filtri select,.filtri input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
+.filtri .cerca{flex:1;min-width:160px;margin:0;}
+.pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px;white-space:nowrap;}
+.pill-Bozza{background:var(--line);color:var(--ink-muted);}
+.pill-Inviato{background:#1D6DF022;color:#1D6DF0;}
+.pill-Accettato{background:#1FAA6E22;color:#1FAA6E;}
+.pill-Scaduto,.pill-Rifiutato{background:#E5484D22;color:#E5484D;}
+.docgroup{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
+.docgroup>h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.docrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line);font-size:13px;}
+.docrow:first-of-type{border-top:none;}
+.docrow .azioni{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;}
+.mini{font-size:12px;font-weight:700;padding:5px 10px;border-radius:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;}
+.mini.coral{border-color:var(--coral);background:var(--coral-soft);color:var(--coral);}
+@media (max-width:640px){
+  .wrap{padding:12px;}
+  .topbar h1{font-size:20px;}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tabs button{flex:none;}
+  .grid{grid-template-columns:1fr;}
+  .card{padding:14px 15px;border-radius:14px;}
+  .overlay{padding:0;align-items:flex-end;}
+  .modal{max-width:100%;border-radius:16px 16px 0 0;max-height:94vh;}
+  .topbar{align-items:stretch;}
+  .topright{align-items:stretch;}
+  .topright .hint{text-align:right;}
+}
 `;
