@@ -49,48 +49,64 @@ const CANALE_COLOR: Record<string, string> = {
   'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
 };
 
+async function api(azione: string, payload: Record<string, unknown> = {}) {
+  const r = await fetch('/api/nuovo/scrivi', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ azione, ...payload }),
+  });
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error || 'Errore');
+  return d.risultato;
+}
+
 export default function Nuovo() {
-  const [key, setKey] = useState('');
-  const [keyInput, setKeyInput] = useState('');
+  const [sess, setSess] = useState<{ nome: string; ruolo: string; vedeFinanziario: boolean; puoModificare: boolean } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [u, setU] = useState(''); const [p, setP] = useState('');
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
   const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'rendiconti'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [nuovaPren, setNuovaPren] = useState(false);
 
-  async function aggiorna() {
-    setSyncing(true);
-    try {
-      await fetch('/api/nuovo/sync', { method: 'POST', headers: { 'x-plancia-key': key } });
-      const d = await (await fetch('/api/nuovo/dati', { headers: { 'x-plancia-key': key } })).json();
-      if (d.ok) setDati(d);
-    } catch { /* */ } finally { setSyncing(false); }
+  async function carica() {
+    const d = await (await fetch('/api/nuovo/dati')).json();
+    if (d.ok) { setDati(d); setSess(d.sessione); } else setErrore(d.error || 'Errore');
   }
 
   useEffect(() => {
-    let k = '';
-    try { k = localStorage.getItem('plancia_key') || ''; } catch { /* */ }
-    if (k) setKey(k);
+    fetch('/api/nuovo/dati').then((r) => r.json()).then((d) => {
+      if (d.ok) { setDati(d); setSess(d.sessione); }
+    }).finally(() => setAuthChecked(true));
   }, []);
 
-  useEffect(() => {
-    if (!key) return;
-    setErrore('');
-    fetch('/api/nuovo/dati', { headers: { 'x-plancia-key': key } })
-      .then((r) => r.json())
-      .then((d) => { if (d.ok) setDati(d); else { setErrore(d.error || 'Errore'); setKey(''); } })
-      .catch((e) => setErrore(String(e)));
-  }, [key]);
+  async function login(e: React.FormEvent) {
+    e.preventDefault(); setErrore('');
+    const r = await fetch('/api/nuovo/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
+    const d = await r.json();
+    if (d.ok) { setP(''); await carica(); } else setErrore(d.error || 'Errore');
+  }
+  async function logout() { await fetch('/api/nuovo/logout', { method: 'POST' }); setSess(null); setDati(null); }
 
-  if (!key) {
+  async function aggiorna() {
+    setSyncing(true);
+    try { await fetch('/api/nuovo/sync', { method: 'POST' }); await carica(); }
+    catch { /* */ } finally { setSyncing(false); }
+  }
+
+  if (!authChecked) return <div className="wrap"><style>{CSS}</style><div className="card"><p>…</p></div></div>;
+
+  if (!sess) {
     return (
       <div className="wrap gate">
         <style>{CSS}</style>
         <div className="card gatecard">
-          <h1>Nuovo sistema · anteprima</h1>
-          <p>Inserisci la chiave di Motore Rafilu.</p>
-          <form onSubmit={(e) => { e.preventDefault(); const k = keyInput.trim(); if (k) { try { localStorage.setItem('plancia_key', k); } catch { /* */ } setKey(k); } }}>
-            <input type="password" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="chiave" autoFocus />
+          <span className="eyebrow">Salzillo Hospitality</span>
+          <h1>Nuovo sistema</h1>
+          <form onSubmit={login}>
+            <input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" />
+            <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" />
             <button type="submit">Entra</button>
           </form>
           {errore && <p className="err">{errore}</p>}
@@ -100,7 +116,7 @@ export default function Nuovo() {
   }
 
   if (!dati) {
-    return <div className="wrap"><style>{CSS}</style><div className="card"><p>{errore || 'Carico i dati dal database…'}</p></div></div>;
+    return <div className="wrap"><style>{CSS}</style><div className="card"><p>{errore || 'Carico i dati…'}</p></div></div>;
   }
 
   const attive = dati.prenotazioni.filter((p) => p.stato === 'Attiva');
@@ -122,8 +138,8 @@ export default function Nuovo() {
           <h1>Nuovo sistema <span className="beta">anteprima</span></h1>
         </div>
         <div className="topright">
-          <span className="hint">dati dal database · il foglio Google resta la fonte viva</span>
-          <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>
+          <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={logout}>esci</button></span>
+          {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}
         </div>
       </header>
 
@@ -193,13 +209,16 @@ export default function Nuovo() {
         </div>
       )}
 
-      {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} keyStr={key} />}
+      {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
       {tab === 'calendario' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={setPrenSel} />}
 
       {tab === 'prenotazioni' && (
         <div className="card">
-          <h2>Prenotazioni <small>({dati.prenotazioni.length})</small></h2>
+          <div className="cardhead">
+            <h2>Prenotazioni <small>({dati.prenotazioni.length})</small></h2>
+            {sess.puoModificare && <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>}
+          </div>
           <div className="tablescroll">
             <table className="tbl full">
               <thead><tr><th>Check-in</th><th>Check-out</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Utile</th><th>Stato</th></tr></thead>
@@ -255,13 +274,16 @@ export default function Nuovo() {
         </div>
       )}
 
-      {prenSel && <DettaglioPrenotazione p={prenSel} onClose={() => setPrenSel(null)} />}
+      {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
+        onClose={() => setPrenSel(null)} onSalvato={async () => { setPrenSel(null); await carica(); }} />}
+      {nuovaPren && <FormPrenotazione alloggi={dati.alloggi} ospiti={dati.ospiti}
+        onClose={() => setNuovaPren(false)} onSalvato={async () => { setNuovaPren(false); await carica(); }} />}
     </div>
   );
 }
 
 // ── Rendiconti proprietario ────────────────────────────────────────────────
-function Rendiconti({ anagrafica, oggi, keyStr }: { anagrafica: Anagrafica; oggi: string; keyStr: string }) {
+function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string }) {
   const [propId, setPropId] = useState(anagrafica[0]?.id ?? '');
   const now = new Date(oggi);
   const [anno, setAnno] = useState(now.getFullYear());
@@ -272,9 +294,9 @@ function Rendiconti({ anagrafica, oggi, keyStr }: { anagrafica: Anagrafica; oggi
   useEffect(() => {
     if (!propId) return;
     setCaricando(true);
-    fetch(`/api/nuovo/rendiconto?proprietario=${propId}&anno=${anno}&mese=${mese}`, { headers: { 'x-plancia-key': keyStr } })
+    fetch(`/api/nuovo/rendiconto?proprietario=${propId}&anno=${anno}&mese=${mese}`)
       .then((x) => x.json()).then((d) => setR(d.ok ? d.rendiconto : null)).finally(() => setCaricando(false));
-  }, [propId, anno, mese, keyStr]);
+  }, [propId, anno, mese]);
 
   const meseNome = new Date(anno, mese - 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
 
@@ -331,7 +353,7 @@ function Rendiconti({ anagrafica, oggi, keyStr }: { anagrafica: Anagrafica; oggi
             <b>{eur(r.totali.nettoFinale)}</b>
           </div>
           <p style={{ marginTop: 12 }}>
-            <a className="sync" href={`/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}&k=${encodeURIComponent(keyStr)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
+            <a className="sync" href={`/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
           </p>
           <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
         </>
@@ -420,28 +442,147 @@ function CalRow({ alloggio, giorni, cell, prenotazioni, onSel }: {
   );
 }
 
-function DettaglioPrenotazione({ p, onClose }: { p: Prenotazione; onClose: () => void }) {
+function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }: {
+  p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; onClose: () => void; onSalvato: () => void;
+}) {
+  const [modifica, setModifica] = useState(false);
+  const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      await api('aggiorna-prenotazione', { id: p.id, dati: { checkin: f.checkin, checkout: f.checkout, canale: f.canale, lordo: Number(f.lordo), note: f.note, alloggioId: f.alloggioId } });
+      onSalvato();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+  async function cancella(conPenale: boolean) {
+    if (!confirm(conPenale ? 'Cancellare CON penale?' : 'Cancellare questa prenotazione?')) return;
+    setBusy(true);
+    try {
+      const imp = conPenale ? Number(prompt('Importo penale €:') || '0') : undefined;
+      await api('cancella-prenotazione', { id: p.id, dati: { conPenale, importoPenale: imp } });
+      onSalvato();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="card modal" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose}>✕</button>
         <span className="eyebrow">{p.alloggio} · {p.immobile}</span>
         <h2>{p.ospite}</h2>
-        <p className="sub">{dataIt(p.checkin)} → {dataIt(p.checkout)} · {p.canale} · {p.stato}</p>
-        {p.telefono && <p>📞 {p.telefono}</p>}
-        <table className="tbl">
-          <tbody>
-            <tr><td>Lordo</td><td className="num">{eur(p.lordo)}</td></tr>
-            <tr><td>Commissione</td><td className="num">−{eur(p.commissione)}</td></tr>
-            <tr><td>Cedolare</td><td className="num">−{eur(p.cedolare)}</td></tr>
-            <tr><td>Pulizia</td><td className="num">−{eur(p.costoPulizia)}</td></tr>
-            <tr><td>Fee gestione</td><td className="num">−{eur(p.feeGestione)}</td></tr>
-            <tr className="tot"><td>Utile</td><td className="num strong">{eur(p.utile)}</td></tr>
-            <tr><td>Netto proprietario</td><td className="num">{eur(p.nettoProprietario)}</td></tr>
-          </tbody>
-        </table>
-        {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
-        {p.note && <p className="sub">{p.note}</p>}
+
+        {!modifica ? (
+          <>
+            <p className="sub">{dataIt(p.checkin)} → {dataIt(p.checkout)} · {p.canale} · {p.stato}</p>
+            {p.telefono && <p>📞 {p.telefono}</p>}
+            <table className="tbl"><tbody>
+              <tr><td>Lordo</td><td className="num">{eur(p.lordo)}</td></tr>
+              <tr><td>Commissione</td><td className="num">−{eur(p.commissione)}</td></tr>
+              <tr><td>Cedolare</td><td className="num">−{eur(p.cedolare)}</td></tr>
+              <tr><td>Pulizia</td><td className="num">−{eur(p.costoPulizia)}</td></tr>
+              <tr><td>Fee gestione</td><td className="num">−{eur(p.feeGestione)}</td></tr>
+              <tr className="tot"><td>Utile</td><td className="num strong">{eur(p.utile)}</td></tr>
+              <tr><td>Netto proprietario</td><td className="num">{eur(p.nettoProprietario)}</td></tr>
+            </tbody></table>
+            {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
+            {p.note && <p className="sub">{p.note}</p>}
+            {puoModificare && p.stato === 'Attiva' && (
+              <div className="modalactions">
+                <button className="add" onClick={() => setModifica(true)}>Modifica</button>
+                <button className="danger" onClick={() => cancella(false)} disabled={busy}>Cancella</button>
+                <button className="danger" onClick={() => cancella(true)} disabled={busy}>Cancella con penale</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="form">
+            <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
+            <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
+            <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
+            <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
+            <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+            <div className="modalactions">
+              <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Salva'}</button>
+              <button onClick={() => setModifica(false)}>Annulla</button>
+            </div>
+          </div>
+        )}
+        {err && <p className="err">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
+  alloggi: Alloggio[]; ospiti: Ospite[]; onClose: () => void; onSalvato: () => void;
+}) {
+  const [f, setF] = useState({
+    alloggioId: alloggi[0]?.id ?? '', ospiteId: '', ospiteNome: '', ospiteCognome: '', ospiteTelefono: '',
+    checkin: '', checkout: '', numeroOspiti: '1', canale: 'Diretto', lordo: '', codiceConfermaCanale: '', note: '',
+  });
+  const [anteprima, setAnteprima] = useState<{ utile: number; nettoProprietario: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const nuovoOspite = f.ospiteId === '';
+
+  useEffect(() => {
+    if (!f.alloggioId || !f.lordo) { setAnteprima(null); return; }
+    api('anteprima-importi', { dati: { alloggioId: f.alloggioId, canale: f.canale, lordo: Number(f.lordo) } })
+      .then((r) => setAnteprima(r as { utile: number; nettoProprietario: number })).catch(() => setAnteprima(null));
+  }, [f.alloggioId, f.canale, f.lordo]);
+
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      await api('crea-prenotazione', {
+        dati: {
+          alloggioId: f.alloggioId,
+          ...(nuovoOspite ? { ospiteNome: f.ospiteNome, ospiteCognome: f.ospiteCognome, ospiteTelefono: f.ospiteTelefono } : { ospiteId: f.ospiteId }),
+          checkin: f.checkin, checkout: f.checkout, numeroOspiti: Number(f.numeroOspiti),
+          canale: f.canale, lordo: Number(f.lordo), codiceConfermaCanale: f.codiceConfermaCanale, note: f.note,
+        },
+      });
+      onSalvato();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={onClose}>✕</button>
+        <h2>Nuova prenotazione</h2>
+        <div className="form">
+          <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
+          <label>Ospite
+            <select value={f.ospiteId} onChange={(e) => setF({ ...f, ospiteId: e.target.value })}>
+              <option value="">— nuovo ospite —</option>
+              {ospiti.map((o) => <option key={o.id} value={o.id}>{o.cognome} {o.nome}</option>)}
+            </select>
+          </label>
+          {nuovoOspite && <>
+            <label>Nome<input value={f.ospiteNome} onChange={(e) => setF({ ...f, ospiteNome: e.target.value })} /></label>
+            <label>Cognome<input value={f.ospiteCognome} onChange={(e) => setF({ ...f, ospiteCognome: e.target.value })} /></label>
+            <label>Telefono<input value={f.ospiteTelefono} onChange={(e) => setF({ ...f, ospiteTelefono: e.target.value })} /></label>
+          </>}
+          <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
+          <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
+          <label>Persone<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
+          <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c}>{c}</option>)}</select></label>
+          <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
+          <label>Codice conferma (Airbnb/Booking)<input value={f.codiceConfermaCanale} onChange={(e) => setF({ ...f, codiceConfermaCanale: e.target.value })} /></label>
+          <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+        </div>
+        {anteprima && <p className="sub">Utile stimato: <b>{eur(anteprima.utile)}</b> · netto proprietario: {eur(anteprima.nettoProprietario)}</p>}
+        <div className="modalactions">
+          <button className="add" onClick={salva} disabled={busy || !f.checkin || !f.checkout || !f.lordo || (nuovoOspite && (!f.ospiteNome || !f.ospiteCognome))}>{busy ? 'salvo…' : 'Crea'}</button>
+          <button onClick={onClose}>Annulla</button>
+        </div>
+        {err && <p className="err">{err}</p>}
+        <p className="empty" style={{ marginTop: 8 }}>Non crea l&apos;evento su Google Calendar (lo farà dopo il passaggio). Resta nel database anche dopo il sync col foglio.</p>
       </div>
     </div>
   );
@@ -525,4 +666,15 @@ button{cursor:pointer;font-family:inherit}
 .rendtot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--coral-soft);border-radius:12px;}
 .rendtot span{font-weight:700;}
 .rendtot b{font-size:22px;color:var(--coral);}
+.linklike{border:none;background:none;color:var(--coral);font-weight:600;cursor:pointer;padding:0;font-size:inherit;}
+.cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;}
+.cardhead h2{margin:0;}
+.add{background:var(--coral);color:#fff;border:none;border-radius:100px;padding:8px 14px;font-size:13px;font-weight:700;}
+.danger{background:none;border:1px solid #E5484D;color:#E5484D;border-radius:100px;padding:8px 12px;font-size:12px;font-weight:700;}
+.form{display:flex;flex-direction:column;gap:10px;margin:12px 0;}
+.form label{display:flex;flex-direction:column;font-size:12px;font-weight:600;color:var(--ink-muted);gap:4px;}
+.form input,.form select{padding:9px 11px;font-size:16px;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-family:inherit;}
+.modalactions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.modalactions button{padding:9px 16px;border-radius:100px;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
+.modal{max-height:90vh;overflow-y:auto;}
 `;

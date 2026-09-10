@@ -44,6 +44,11 @@ export const tipoNotifica = pgEnum('tipo_notifica', [
 ]);
 export const sesso = pgEnum('sesso', ['M', 'F']);
 
+// Da dove nasce un record: 'Foglio' = importato/sincronizzato da Google Sheets (verrà
+// riscritto ad ogni sync finché il foglio è la fonte viva); 'Database' = creato direttamente
+// nel nuovo sistema, il sync NON lo tocca. Dopo il "flip" (fase 6) tutto diventa 'Database'.
+export const origineRecord = pgEnum('origine_record', ['Foglio', 'Database']);
+
 // Colonne comuni a (quasi) tutte le tabelle.
 const base = {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -72,6 +77,8 @@ export const contrattiGestione = pgTable('contratti_gestione', {
   dal: date('dal').notNull(),
   al: date('al'), // null = ancora attivo
   percentuale_fee: numeric('percentuale_fee', { precision: 5, scale: 2 }).notNull().default('0'), // % sul lordo
+  // Chi incassa dall'OTA per le prenotazioni di questo immobile (idea dai PMS professionali):
+  direzione_incasso: text('direzione_incasso').notNull().default('Gestore'), // 'Gestore' | 'Proprietario'
   condizioni: text('condizioni'),
   documento_id: uuid('documento_id'), // FK a documenti, aggiunta dopo per evitare ciclo
 });
@@ -103,12 +110,18 @@ export const alloggi = pgTable('alloggi', {
   messaggio_guida: text('messaggio_guida'),
   promemoria_pulizia: text('promemoria_pulizia'), // "cose da ricordare", non una checklist
   trasmette_alloggiati: boolean('trasmette_alloggiati').notNull().default(false),
-  imposta_soggiorno_comune: text('imposta_soggiorno_comune'), // null = non dovuta
+  trasmette_regione: boolean('trasmette_regione').notNull().default(false), // Sinfonia (Campania) / ROSS1000
+  // Imposta di soggiorno: comune che la richiede (null = non dovuta — es. Marcianise oggi),
+  // importo per persona per notte, e tetto di notti tassabili (0/null = nessun tetto).
+  imposta_soggiorno_comune: text('imposta_soggiorno_comune'),
+  imposta_soggiorno_importo: numeric('imposta_soggiorno_importo', { precision: 6, scale: 2 }).notNull().default('0'),
+  imposta_soggiorno_max_notti: integer('imposta_soggiorno_max_notti'),
   calendar_id: text('calendar_id'), // un calendario Google per immobile
 });
 
 export const ospiti = pgTable('ospiti', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   nome: text('nome').notNull(),
   cognome: text('cognome').notNull(),
   telefono: text('telefono'),
@@ -125,6 +138,7 @@ export const ospiti = pgTable('ospiti', {
 
 export const prenotazioni = pgTable('prenotazioni', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
   ospite_id: uuid('ospite_id').notNull().references(() => ospiti.id), // il capofamiglia
   checkin: date('checkin').notNull(),
@@ -168,6 +182,7 @@ export const ospitiPrenotazione = pgTable('ospiti_prenotazione', {
 
 export const schedine = pgTable('schedine', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   prenotazione_id: uuid('prenotazione_id').notNull().references(() => prenotazioni.id),
   ospite_id: uuid('ospite_id').notNull().references(() => ospiti.id),
   // Dati anagrafici come vanno trasmessi (l'interfaccia mostra i nomi, qui ci sono anche i codici)
@@ -198,6 +213,7 @@ export const schedine = pgTable('schedine', {
 
 export const documenti = pgTable('documenti', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   tipo: tipoDocumento('tipo').notNull(),
   nome: text('nome').notNull(),
   ospite_id: uuid('ospite_id').references(() => ospiti.id),
@@ -211,6 +227,7 @@ export const documenti = pgTable('documenti', {
 
 export const pulizie = pgTable('pulizie', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   prenotazione_id: uuid('prenotazione_id').references(() => prenotazioni.id), // creata a ogni check-out
   alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
   data: date('data').notNull(),
@@ -231,6 +248,7 @@ export const categorieSpesa = pgTable('categorie_spesa', {
 
 export const spese = pgTable('spese', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   immobile_id: uuid('immobile_id').references(() => immobili.id), // null = spesa generale
   categoria_id: uuid('categoria_id').notNull().references(() => categorieSpesa.id),
   data: date('data').notNull(),
@@ -244,6 +262,7 @@ export const spese = pgTable('spese', {
 
 export const scadenze = pgTable('scadenze', {
   ...base,
+  origine: origineRecord('origine').notNull().default('Database'),
   immobile_id: uuid('immobile_id').references(() => immobili.id), // null = generale
   titolo: text('titolo').notNull(),
   data_scadenza: date('data_scadenza').notNull(),
@@ -251,6 +270,34 @@ export const scadenze = pgTable('scadenze', {
   note: text('note'),
   ultimo_completamento: date('ultimo_completamento'),
 });
+
+// Versamenti dell'imposta di soggiorno al comune (di solito trimestrali). Il dovuto si
+// calcola dalle prenotazioni; qui si tiene traccia di quanto e quando è stato versato e
+// della dichiarazione. Marcianise oggi non la richiede — la tabella c'è comunque pronta.
+export const versamentiSoggiorno = pgTable('versamenti_soggiorno', {
+  ...base,
+  immobile_id: uuid('immobile_id').notNull().references(() => immobili.id),
+  anno: integer('anno').notNull(),
+  trimestre: integer('trimestre').notNull(), // 1-4
+  importo_dovuto: numeric('importo_dovuto', { precision: 10, scale: 2 }).notNull().default('0'),
+  importo_versato: numeric('importo_versato', { precision: 10, scale: 2 }),
+  versato_il: date('versato_il'),
+  dichiarazione_inviata_il: date('dichiarazione_inviata_il'),
+  note: text('note'),
+}, (t) => ({ unico: unique().on(t.immobile_id, t.anno, t.trimestre) }));
+
+// Invii mensili al portale regionale (Sinfonia per la Campania): un file .txt per mese/
+// immobile con le righe DDMMYYYY;codiceNazione;codiceProvincia;arrivi;partenze.
+export const inviiRegione = pgTable('invii_regione', {
+  ...base,
+  immobile_id: uuid('immobile_id').notNull().references(() => immobili.id),
+  anno: integer('anno').notNull(),
+  mese: integer('mese').notNull(),
+  generato_il: timestamp('generato_il', { withTimezone: true }),
+  inviato_il: timestamp('inviato_il', { withTimezone: true }),
+  contenuto_txt: text('contenuto_txt'), // il file generato, per riferimento
+  note: text('note'),
+}, (t) => ({ unico: unique().on(t.immobile_id, t.anno, t.mese) }));
 
 export const rendiconti = pgTable('rendiconti', {
   ...base,
@@ -261,6 +308,7 @@ export const rendiconti = pgTable('rendiconti', {
   totale_incassato: numeric('totale_incassato', { precision: 12, scale: 2 }).notNull().default('0'),
   totale_spese: numeric('totale_spese', { precision: 12, scale: 2 }).notNull().default('0'),
   netto_proprietario: numeric('netto_proprietario', { precision: 12, scale: 2 }).notNull().default('0'),
+  stato: text('stato').notNull().default('In revisione'), // 'In revisione' | 'Pubblicato' | 'Pagato'
   inviato_il: timestamp('inviato_il', { withTimezone: true }),
 }, (t) => ({
   unico: unique().on(t.proprietario_id, t.mese, t.anno),

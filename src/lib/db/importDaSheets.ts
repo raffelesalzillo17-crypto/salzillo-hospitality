@@ -85,28 +85,49 @@ export type RisultatoImport = {
 export async function importaDaSheets(): Promise<RisultatoImport> {
   const db = getDb();
 
-  await db.execute(sql`TRUNCATE TABLE
-    notifiche, rendiconti, permessi_immobile, ospiti_prenotazione, pagamenti,
-    schedine, pulizie, documenti, contratti_gestione, prenotazioni, ospiti,
-    spese, scadenze, categorie_spesa, alloggi, immobili, proprietari, utenti,
-    bot_state, telegram_log, email_processate CASCADE`);
+  // ── SYNC NON DISTRUTTIVO ──
+  // L'anagrafica (proprietari/immobili/alloggi/categorie/utenti) si crea SOLO la prima volta;
+  // i sync successivi non la toccano — così le modifiche fatte in /nuovo restano.
+  // Le prenotazioni/ospiti/spese/... si riscrivono ma SOLO le righe con origine='Foglio':
+  // quelle create direttamente nel nuovo sistema (origine='Database') sopravvivono.
+  await db.execute(sql`DELETE FROM prenotazioni WHERE origine = 'Foglio'`);
+  await db.execute(sql`DELETE FROM ospiti WHERE origine = 'Foglio' AND id NOT IN (SELECT ospite_id FROM prenotazioni UNION SELECT ospite_id FROM ospiti_prenotazione)`);
+  await db.execute(sql`DELETE FROM spese WHERE origine = 'Foglio'`);
+  await db.execute(sql`DELETE FROM scadenze WHERE origine = 'Foglio'`);
+  await db.execute(sql`DELETE FROM pulizie WHERE origine = 'Foglio'`);
+  await db.execute(sql`DELETE FROM schedine WHERE origine = 'Foglio'`);
+  await db.execute(sql`DELETE FROM documenti WHERE origine = 'Foglio'`);
+  await db.execute(sql`TRUNCATE TABLE bot_state, telegram_log, email_processate`);
 
-  const [pL] = await db.insert(proprietari).values({ nome: 'Salzillo Luigi', tipo: 'Persona fisica', note: 'Padre di Raffaele. Intestatario SCIA e notifica sanitaria Via Clanio 60.' }).returning({ id: proprietari.id });
-  const [pR] = await db.insert(proprietari).values({ nome: 'Raffaela Iodice', tipo: 'Persona fisica', note: 'Madre di Raffaele ("Lella"). Intestataria attuale Via Campania 36. Fa anche le pulizie.' }).returning({ id: proprietari.id });
+  const esistenti = await db.select({ id: proprietari.id }).from(proprietari).limit(1);
+  const primaVolta = esistenti.length === 0;
 
-  const [iC] = await db.insert(immobili).values({ proprietario_id: pL.id, nome: 'Via Clanio 60', indirizzo: 'Via Clanio 60', comune: 'Marcianise', provincia: 'CE' }).returning({ id: immobili.id });
-  const [iV] = await db.insert(immobili).values({ proprietario_id: pR.id, nome: 'Via Campania 36', indirizzo: 'Via Campania 36', comune: 'Marcianise', provincia: 'CE' }).returning({ id: immobili.id });
-  const immId: Record<string, string> = { 'Via Clanio 60': iC.id, 'Via Campania 36': iV.id };
-
+  const immId: Record<string, string> = {};
   const alloggioPerFoglio: Record<string, string> = {};
-  for (const a of ALLOGGI_SEED) {
-    const [row] = await db.insert(alloggi).values({
-      immobile_id: immId[a.immobile], nome: a.nome, regime_fiscale: a.regime, costo_pulizia: '20',
-      ha_self_checkin: a.self, emoji: a.emoji, wifi_ssid: a.wifi?.[0] ?? null, wifi_password: a.wifi?.[1] ?? null,
-      trasmette_alloggiati: a.trasm, imposta_soggiorno_comune: a.sogg,
-      checkin_guide_url: `https://salzillo-hospitality.vercel.app/checkin/${a.foglio.toLowerCase().replace(/\s+/g, '-')}.html`,
-    }).returning({ id: alloggi.id });
-    alloggioPerFoglio[a.foglio] = row.id;
+
+  if (primaVolta) {
+    const [pL] = await db.insert(proprietari).values({ nome: 'Salzillo Luigi', tipo: 'Persona fisica', note: 'Padre di Raffaele. Intestatario SCIA e notifica sanitaria Via Clanio 60.' }).returning({ id: proprietari.id });
+    const [pR] = await db.insert(proprietari).values({ nome: 'Raffaela Iodice', tipo: 'Persona fisica', note: 'Madre di Raffaele ("Lella"). Intestataria attuale Via Campania 36. Fa anche le pulizie.' }).returning({ id: proprietari.id });
+    const [iC] = await db.insert(immobili).values({ proprietario_id: pL.id, nome: 'Via Clanio 60', indirizzo: 'Via Clanio 60', comune: 'Marcianise', provincia: 'CE' }).returning({ id: immobili.id });
+    const [iV] = await db.insert(immobili).values({ proprietario_id: pR.id, nome: 'Via Campania 36', indirizzo: 'Via Campania 36', comune: 'Marcianise', provincia: 'CE' }).returning({ id: immobili.id });
+    immId['Via Clanio 60'] = iC.id; immId['Via Campania 36'] = iV.id;
+    for (const a of ALLOGGI_SEED) {
+      const [row] = await db.insert(alloggi).values({
+        immobile_id: immId[a.immobile], nome: a.nome, regime_fiscale: a.regime, costo_pulizia: '20',
+        ha_self_checkin: a.self, emoji: a.emoji, wifi_ssid: a.wifi?.[0] ?? null, wifi_password: a.wifi?.[1] ?? null,
+        trasmette_alloggiati: a.trasm, imposta_soggiorno_comune: a.sogg,
+        checkin_guide_url: `https://salzillo-hospitality.vercel.app/checkin/${a.foglio.toLowerCase().replace(/\s+/g, '-')}.html`,
+      }).returning({ id: alloggi.id });
+      alloggioPerFoglio[a.foglio] = row.id;
+    }
+    const salt0 = randomBytes(16).toString('hex');
+    await db.insert(utenti).values({ username: 'raffaele', password_hash: `${salt0}:${scryptSync('strada-lupo-89', salt0, 64).toString('hex')}`, nome: 'Raffaele Salzillo', ruolo: 'Titolare' });
+  } else {
+    for (const im of await db.select().from(immobili)) immId[im.nome] = im.id;
+    for (const al of await db.select().from(alloggi)) {
+      const seed = ALLOGGI_SEED.find((s) => s.nome === al.nome);
+      if (seed) alloggioPerFoglio[seed.foglio] = al.id;
+    }
   }
 
   // Ospiti
@@ -118,6 +139,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     if (!nomeIntero) continue;
     const { nome, cognome } = splitNome(nomeIntero);
     const [row] = await db.insert(ospiti).values({
+      origine: 'Foglio',
       nome, cognome, telefono: telefono ? String(telefono) : null, codice_fiscale: cf ? String(cf) : null,
       note: note ? String(note) : null,
       note_import: `Nome originale dal foglio: "${nomeIntero}"${ospiteIdFoglio ? ` (OspiteId ${ospiteIdFoglio})` : ''}`,
@@ -130,6 +152,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     if (ospitePerChiave[chiave]) return ospitePerChiave[chiave];
     const { nome, cognome } = splitNome(nomeIntero);
     const [row] = await db.insert(ospiti).values({
+      origine: 'Foglio',
       nome, cognome, telefono: telefono ? String(telefono) : null,
       note_import: `Creato dall'import da una prenotazione. Nome originale: "${nomeIntero}"`,
     }).returning({ id: ospiti.id });
@@ -152,6 +175,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const ospite_id = await trovaOCreaOspite(ospite, telefono);
     const c = componenti(lordo, canale);
     await db.insert(prenotazioni).values({
+      origine: 'Foglio',
       alloggio_id, ospite_id, checkin: ci, checkout: itToIso(checkout) ?? ci, numero_ospiti: 1,
       canale: canale as 'Airbnb', lordo: String(lordo), commissione: String(c.commissione),
       cedolare: String(c.cedolare), costo_pulizia: String(c.costo_pulizia), fee_gestione: String(c.fee_gestione),
@@ -165,7 +189,10 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
 
   // Categorie + spese
   const catId: Record<string, string> = {};
+  const catEsistenti = await db.select().from(categorieSpesa);
   for (const c of CATEGORIE) {
+    const trovata = catEsistenti.find((x) => x.nome === c);
+    if (trovata) { catId[c] = trovata.id; continue; }
     const [row] = await db.insert(categorieSpesa).values({ nome: c }).returning({ id: categorieSpesa.id });
     catId[c] = row.id;
   }
@@ -186,6 +213,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
       }
     }
     await db.insert(spese).values({
+      origine: 'Foglio',
       immobile_id, categoria_id: catId[catNome], data: itToIso(data) ?? new Date().toISOString().slice(0, 10),
       descrizione: descrizione ? String(descrizione) : '(senza descrizione)', importo: String(num(importo)),
       note: struttura && !immobile_id ? `Struttura dal foglio: ${struttura}` : null,
@@ -201,6 +229,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const [, titolo, dataScad, ricorrenza, note, ultimoCompl] = scadRows[i];
     if (!titolo) continue;
     await db.insert(scadenze).values({
+      origine: 'Foglio',
       titolo: String(titolo), data_scadenza: itToIso(dataScad) ?? new Date().toISOString().slice(0, 10),
       ricorrenza: (RICO.includes(String(ricorrenza)) ? String(ricorrenza) : 'Una tantum') as 'Una tantum',
       note: note ? String(note) : null, ultimo_completamento: itToIso(ultimoCompl),
@@ -218,6 +247,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const alloggio_id = alloggioPerFoglio[String(stanza || '').trim()];
     if (!alloggio_id) continue;
     await db.insert(pulizie).values({
+      origine: 'Foglio',
       alloggio_id, data: itToIso(data) ?? new Date().toISOString().slice(0, 10),
       confermata_il: completatoIl && itToIso(completatoIl) ? new Date(itToIso(completatoIl)!) : null,
       note: [operatore ? `Operatore: ${operatore}` : null, note].filter(Boolean).join(' — ') || null,
@@ -239,6 +269,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const pr = (p.rows ?? p)[0] as { id: string; ospite_id: string } | undefined;
     if (!pr) continue;
     await db.insert(schedine).values({
+      origine: 'Foglio',
       prenotazione_id: pr.id, ospite_id: pr.ospite_id, cognome: String(cognome || ''), nome: String(nome || ''),
       sesso: ['M', 'F'].includes(String(r[13])) ? (String(r[13]) as 'M') : null,
       data_nascita: itToIso(r[5]), luogo_nascita: r[6] ? String(r[6]) : null,
@@ -264,6 +295,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
       prenotazione_id = ((p.rows ?? p)[0] as { id: string } | undefined)?.id ?? null;
     }
     await db.insert(documenti).values({
+      origine: 'Foglio',
       tipo: 'Contratto ospite', nome: `Contratto ${ospite || '?'} — ${stanza || '?'}`,
       prenotazione_id, caricato_il: dataGen ? new Date(String(dataGen)) : new Date(),
     });
@@ -296,11 +328,6 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     await db.insert(emailProcessate).values({ message_id: String(msgId), tipo: String(tipo || '?'), data: data ? new Date(String(data)) : new Date(), esito: String(esito || '?') }).onConflictDoNothing();
     nEm++;
   }
-
-  // Utente titolare
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync('strada-lupo-89', salt, 64).toString('hex');
-  await db.insert(utenti).values({ username: 'raffaele', password_hash: `${salt}:${hash}`, nome: 'Raffaele Salzillo', ruolo: 'Titolare' });
 
   return {
     proprietari: 2, immobili: 2, alloggi: ALLOGGI_SEED.length, ospiti: nOspiti,
