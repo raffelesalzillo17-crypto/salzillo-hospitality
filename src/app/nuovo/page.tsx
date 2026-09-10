@@ -40,6 +40,16 @@ export default function Nuovo() {
   const [errore, setErrore] = useState('');
   const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  async function aggiorna() {
+    setSyncing(true);
+    try {
+      await fetch('/api/nuovo/sync', { method: 'POST', headers: { 'x-plancia-key': key } });
+      const d = await (await fetch('/api/nuovo/dati', { headers: { 'x-plancia-key': key } })).json();
+      if (d.ok) setDati(d);
+    } catch { /* */ } finally { setSyncing(false); }
+  }
 
   useEffect(() => {
     let k = '';
@@ -95,7 +105,10 @@ export default function Nuovo() {
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Nuovo sistema <span className="beta">anteprima</span></h1>
         </div>
-        <span className="hint">dati dal database · il foglio Google resta la fonte viva</span>
+        <div className="topright">
+          <span className="hint">dati dal database · il foglio Google resta la fonte viva</span>
+          <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>
+        </div>
       </header>
 
       <nav className="tabs">
@@ -343,6 +356,9 @@ button{cursor:pointer;font-family:inherit}
 .topbar h1{font-size:24px;margin:2px 0 0;}
 .beta{font-size:11px;font-weight:700;background:var(--coral-soft);color:var(--coral);padding:3px 8px;border-radius:100px;vertical-align:middle;}
 .hint{font-size:12px;color:var(--ink-muted);}
+.topright{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.sync{font-size:12px;font-weight:700;padding:6px 12px;border-radius:100px;border:1px solid var(--coral);background:var(--coral-soft);color:var(--coral);}
+.sync:disabled{opacity:.6;}
 .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
 .tabs button{padding:8px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink-muted);border-radius:100px;font-size:13px;font-weight:600;}
 .tabs button.on{background:var(--coral);color:#fff;border-color:var(--coral);}
