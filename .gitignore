@@ -43,3 +43,4 @@ google-credentials.json
 .env.local
 .vercel
 .env*.local
+.report_key_local
