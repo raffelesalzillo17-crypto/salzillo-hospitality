@@ -30,8 +30,12 @@ Entra sezione per sezione con calma. Ecco cosa è cambiato.
 
 *Calendario*
 – Tre viste: Calendario, Prezzi, Eventi.
-– Prezzi: imposti il prezzo/notte consigliato per un periodo (promemoria, non tocca le prenotazioni).
+– Prezzi: imposti il prezzo/notte consigliato per un periodo — e ora compare anche sopra la griglia, giorno per giorno.
 – Eventi: sagre, fiere, concerti, ponti — i giorni con eventi si evidenziano sulla griglia.
+
+*Pagamenti e pulizie*
+– Dal dettaglio di una prenotazione (creata in /nuovo): "Registra pagamento" — caparra o saldo, con metodo.
+– Dalla dashboard, le pulizie da fare hanno il tasto "fatto".
 
 *Scadenze*
 – Raggruppate per ente/regione (Questura, Regione Campania, Comune, Agenzia Entrate…).
@@ -41,6 +45,8 @@ Entra sezione per sezione con calma. Ecco cosa è cambiato.
 – Barra di scorciatoie in alto: nuova prenotazione, preventivo, calendario, documenti.
 
 *I calendari iCal di Il Tulipano* (Airbnb + Booking) sono collegati e il controllo automatico gira ogni mattina.
+
+Ho fatto un giro completo su ogni sezione con un utente di prova (poi eliminato): dashboard, calendario e sotto-schede, prenotazioni, ospiti, documenti, immobili, scadenze, rendiconti, tema. Tutto funziona. Nessun dato di prova lasciato.
 
 *DA DECIDERE INSIEME*
 
