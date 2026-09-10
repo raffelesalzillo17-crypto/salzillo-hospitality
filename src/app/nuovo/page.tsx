@@ -814,9 +814,27 @@ function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
 }
 
 function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => void }) {
-  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzo: '', cliente: '', note: '' });
-  const url = `/api/nuovo/documento?tipo=preventivo&alloggio=${f.alloggioId}&checkin=${f.checkin}&checkout=${f.checkout}&ospiti=${f.ospiti}&prezzo=${f.prezzo}&cliente=${encodeURIComponent(f.cliente)}&note=${encodeURIComponent(f.note)}`;
-  const pronto = f.alloggioId && f.checkin && f.checkout && f.prezzo;
+  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzoNotte: '', prezzo: '', cliente: '', note: '' });
+
+  const nnotti = f.checkin && f.checkout ? Math.max(0, Math.round((Date.parse(f.checkout) - Date.parse(f.checkin)) / 864e5)) : 0;
+  // quando cambia il prezzo/notte o le date, ricalcola il totale; e viceversa
+  function setNotte(v: string) {
+    const tot = v && nnotti ? (Number(v) * nnotti).toFixed(2) : '';
+    setF((s) => ({ ...s, prezzoNotte: v, prezzo: tot }));
+  }
+  function setTotale(v: string) {
+    const pn = v && nnotti ? (Number(v) / nnotti).toFixed(2) : '';
+    setF((s) => ({ ...s, prezzo: v, prezzoNotte: pn }));
+  }
+
+  const q = new URLSearchParams({
+    tipo: 'preventivo', alloggio: f.alloggioId, checkin: f.checkin, checkout: f.checkout,
+    ospiti: f.ospiti, cliente: f.cliente, note: f.note,
+    ...(f.prezzoNotte ? { prezzoNotte: f.prezzoNotte } : {}), ...(f.prezzo ? { prezzo: f.prezzo } : {}),
+  });
+  const url = `/api/nuovo/documento?${q.toString()}`;
+  const pronto = f.alloggioId && f.checkin && f.checkout && nnotti > 0 && (f.prezzo || f.prezzoNotte);
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="card modal" onClick={(e) => e.stopPropagation()}>
@@ -826,8 +844,10 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
           <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
+          {nnotti > 0 && <p className="sub">= {nnotti} notti</p>}
           <label>Ospiti<input type="number" min="1" value={f.ospiti} onChange={(e) => setF({ ...f, ospiti: e.target.value })} /></label>
-          <label>Prezzo totale €<input type="number" step="0.01" value={f.prezzo} onChange={(e) => setF({ ...f, prezzo: e.target.value })} /></label>
+          <label>Prezzo a notte €<input type="number" step="0.01" value={f.prezzoNotte} onChange={(e) => setNotte(e.target.value)} /></label>
+          <label>Prezzo totale € <span style={{ fontWeight: 400 }}>(o compila questo)</span><input type="number" step="0.01" value={f.prezzo} onChange={(e) => setTotale(e.target.value)} /></label>
           <label>Nome cliente<input value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
         </div>

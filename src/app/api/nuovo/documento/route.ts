@@ -19,7 +19,9 @@ export async function GET(req: NextRequest) {
     } else if (tipo === 'preventivo') {
       out = await pdfPreventivo({
         alloggioId: q.get('alloggio') || '', checkin: q.get('checkin') || '', checkout: q.get('checkout') || '',
-        numeroOspiti: Number(q.get('ospiti') || '1'), prezzo: Number(q.get('prezzo') || '0'),
+        numeroOspiti: Number(q.get('ospiti') || '1'),
+        prezzo: q.get('prezzo') ? Number(q.get('prezzo')) : undefined,
+        prezzoNotte: q.get('prezzoNotte') ? Number(q.get('prezzoNotte')) : undefined,
         nomeCliente: q.get('cliente') || undefined, note: q.get('note') || undefined,
       });
     } else if (tipo === 'contratto-gestione') {

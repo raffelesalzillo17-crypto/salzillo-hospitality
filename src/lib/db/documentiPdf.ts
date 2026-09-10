@@ -16,6 +16,21 @@ const eur = (n: number) => n.toLocaleString('it-IT', { minimumFractionDigits: 2,
 const dataIt = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const notti = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(co) - Date.parse(ci)) / 864e5));
 
+// Le font standard di pdf-lib usano la codifica WinAnsi: caratteri come → – — " " … •
+// mandano in errore. Questa funzione li converte in equivalenti sicuri e toglie il resto —
+// va applicata a QUALSIASI testo (soprattutto quello scritto dall'utente: note, nomi).
+const RIMPIAZZI: Record<string, string> = {
+  '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '–': '-', '—': '-', '‐': '-', '‑': '-',
+  '“': '"', '”': '"', '„': '"', '‘': "'", '’': "'", '‚': "'", '…': '...', '•': '-',
+  '·': '.', '×': 'x', '™': '(TM)', '®': '(R)', '©': '(C)', ' ': ' ', '\t': ' ',
+};
+function pulisci(s: unknown): string {
+  let t = String(s ?? '');
+  for (const [k, v] of Object.entries(RIMPIAZZI)) t = t.split(k).join(v);
+  // togli tutto ciò che non è Latin-1 stampabile (mantiene accenti, €, £, ecc.)
+  return t.replace(/[^\x20-\x7E¡-ÿ€£]/g, '');
+}
+
 class Foglio {
   pdf!: PDFDocument; page!: PDFPage; font!: PDFFont; bold!: PDFFont; y = 790;
   static async crea() {
@@ -27,7 +42,7 @@ class Foglio {
     return f;
   }
   t(s: string, x = 50, size = 10, grassetto = false, color = INK) {
-    this.page.drawText(s, { x, y: this.y, size, font: grassetto ? this.bold : this.font, color });
+    this.page.drawText(pulisci(s), { x, y: this.y, size, font: grassetto ? this.bold : this.font, color });
   }
   nl(n = 15) { this.y -= n; if (this.y < 60) { this.page = this.pdf.addPage([595.28, 841.89]); this.y = 790; } }
   riga(y?: number) { const yy = y ?? this.y; this.page.drawLine({ start: { x: 50, y: yy }, end: { x: 545, y: yy }, thickness: 0.7, color: MUTED }); }
@@ -89,24 +104,33 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
 }
 
 // ── Preventivo (per diretto / No Tax) ──────────────────────────────────────
-export async function pdfPreventivo(opts: { alloggioId: string; checkin: string; checkout: string; numeroOspiti: number; prezzo: number; nomeCliente?: string; note?: string }): Promise<{ bytes: Uint8Array; nome: string } | null> {
+export async function pdfPreventivo(opts: {
+  alloggioId: string; checkin: string; checkout: string; numeroOspiti: number;
+  prezzo?: number; prezzoNotte?: number; nomeCliente?: string; note?: string;
+}): Promise<{ bytes: Uint8Array; nome: string } | null> {
   const db = getDb();
   const [a] = await db.select({ nome: alloggi.nome, immobile: immobili.nome, indirizzo: immobili.indirizzo, comune: immobili.comune })
     .from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id)).where(eq(alloggi.id, opts.alloggioId));
   if (!a) return null;
   const n = notti(opts.checkin, opts.checkout);
+  // si può dare il totale OPPURE il prezzo a notte: l'altro si calcola
+  const prezzoNotte = opts.prezzoNotte ?? (opts.prezzo ? opts.prezzo / n : 0);
+  const totale = opts.prezzo ?? Math.round(prezzoNotte * n * 100) / 100;
+
   const f = await Foglio.crea();
   f.intestazione('Preventivo');
   if (opts.nomeCliente) { f.t(`Per: ${opts.nomeCliente}`, 50, 10, false, MUTED); f.nl(18); }
   f.riga(); f.nl(14);
   for (const [k, v] of [
-    ['Alloggio', `${a.nome} — ${a.immobile}`], ['Indirizzo', `${a.indirizzo}, ${a.comune}`],
-    ['Periodo', `${dataIt(opts.checkin)} → ${dataIt(opts.checkout)} (${n} notti)`], ['Ospiti', String(opts.numeroOspiti)],
+    ['Alloggio', `${a.nome} - ${a.immobile}`], ['Indirizzo', `${a.indirizzo}, ${a.comune}`],
+    ['Check-in', dataIt(opts.checkin)], ['Check-out', dataIt(opts.checkout)],
+    ['Notti', String(n)], ['Ospiti', String(opts.numeroOspiti)],
+    ['Prezzo a notte', eur(prezzoNotte)],
   ] as [string, string][]) { f.t(k, 50, 9, true); f.t(v, 200, 9); f.nl(15); }
   f.nl(8); f.riga(); f.nl(16);
-  f.t('Totale soggiorno', 50, 11, true); f.page.drawText(eur(opts.prezzo), { x: 440, y: f.y, size: 13, font: f.bold, color: CORAL }); f.nl(16);
-  f.t(`(${eur(opts.prezzo / n)} a notte)`, 50, 8, false, MUTED); f.nl(20);
-  if (opts.note) { f.t(opts.note, 50, 9, false, MUTED); f.nl(15); }
+  f.t('Totale soggiorno', 50, 11, true); f.page.drawText(eur(totale), { x: 430, y: f.y, size: 13, font: f.bold, color: CORAL }); f.nl(16);
+  f.t(`${n} notti x ${eur(prezzoNotte)}`, 50, 8, false, MUTED); f.nl(20);
+  if (opts.note) { for (const l of spezza(opts.note, 95)) { f.t(l, 50, 9, false, MUTED); f.nl(12); } f.nl(6); }
   f.t('Preventivo valido 7 giorni. Per confermare risponda a questo messaggio.', 50, 9, false, MUTED);
   f.piede();
   return { bytes: await f.salva(), nome: `preventivo-${a.nome}-${opts.checkin}.pdf`.toLowerCase().replace(/\s+/g, '-') };
