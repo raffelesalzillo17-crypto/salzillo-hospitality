@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
-  leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb,
+  leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb,
 } from '@/lib/db/queries';
 
 // Tutti i dati per la nuova interfaccia (/nuovo), letti dal database.
@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const oggi = new Date();
-    const [prenotazioni, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese] = await Promise.all([
+    const oggiISO = oggi.toISOString().slice(0, 10);
+    const [prenotazioni, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca] = await Promise.all([
       leggiPrenotazioniDb(),
       leggiOspitiDb(),
       leggiAnagraficaDb(),
@@ -26,17 +27,19 @@ export async function GET(req: NextRequest) {
       leggiSpeseDb(),
       leggiScadenzeDb(),
       riepilogoMeseDb(oggi.getFullYear(), oggi.getMonth() + 1),
+      cosaMancaDb(oggiISO),
     ]);
 
     return NextResponse.json({
       ok: true,
-      oggi: oggi.toISOString().slice(0, 10),
+      oggi: oggiISO,
       prenotazioni,
       ospiti,
       anagrafica,
       alloggi,
       spese,
       scadenze,
+      cosaManca,
       riepilogoMese: riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,
         prenotazioni: r.prenotazioni, lordo: Number(r.lordo),

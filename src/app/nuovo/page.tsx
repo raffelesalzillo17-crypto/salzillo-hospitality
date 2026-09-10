@@ -22,9 +22,25 @@ type Alloggio = {
 type Ospite = { id: string; nome: string; cognome: string; telefono: string | null; email: string | null; valutazione: string; note: string | null };
 type RigaMese = { immobile: string; proprietario: string; prenotazioni: number; lordo: number; utile: number; nettoProprietario: number };
 type Anagrafica = { id: string; nome: string; immobili: { id: string; nome: string; comune: string; cin: string | null; alloggi: { id: string; nome: string; regime_fiscale: string }[] }[] }[];
+type CosaManca = {
+  schedineDaInviare: { id: string; cognome: string; nome: string; scadeIl: string | null; alloggio: string }[];
+  scadenzeVicine: { id: string; titolo: string; dataScadenza: string; immobile: string | null }[];
+  pulizieDaFare: { id: string; data: string; alloggio: string }[];
+  pagamentiInSospeso: { id: string; ospite: string; checkin: string; lordo: string; alloggio: string }[];
+};
 type Dati = {
   ok: boolean; oggi: string; prenotazioni: Prenotazione[]; ospiti: Ospite[];
-  anagrafica: Anagrafica; alloggi: Alloggio[]; spese: unknown[]; scadenze: unknown[]; riepilogoMese: RigaMese[];
+  anagrafica: Anagrafica; alloggi: Alloggio[]; spese: unknown[]; scadenze: unknown[];
+  riepilogoMese: RigaMese[]; cosaManca: CosaManca;
+};
+type Rendiconto = {
+  proprietario: string; anno: number; mese: number;
+  righe: { id: string; checkin: string; checkout: string; alloggio: string; immobile: string; canale: string;
+    ospite: string; lordo: string; commissione: string; cedolare: string; costoPulizia: string;
+    feeGestione: string; utile: string; nettoProprietario: string }[];
+  spese: { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string }[];
+  totali: { lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
+    utile: number; nettoProprietario: number; totSpese: number; nettoFinale: number };
 };
 
 const eur = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
@@ -38,7 +54,7 @@ export default function Nuovo() {
   const [keyInput, setKeyInput] = useState('');
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'rendiconti'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -112,9 +128,9 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili'] as const).map((t) => (
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'rendiconti'] as const).map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'dashboard' ? 'Dashboard' : t === 'calendario' ? 'Calendario' : t === 'prenotazioni' ? 'Prenotazioni' : t === 'ospiti' ? 'Ospiti' : 'Immobili'}
+            {t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </nav>
@@ -160,8 +176,24 @@ export default function Nuovo() {
               </div>
             ))}
           </div>
+          <div className="card">
+            <h2>Cosa manca</h2>
+            {(() => {
+              const cm = dati.cosaManca;
+              const vuoto = cm.schedineDaInviare.length + cm.scadenzeVicine.length + cm.pulizieDaFare.length + cm.pagamentiInSospeso.length === 0;
+              if (vuoto) return <p className="empty">Tutto in ordine — niente in sospeso.</p>;
+              return <>
+                {cm.schedineDaInviare.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>schedina</span> {s.cognome} {s.nome} <small>{s.alloggio}{s.scadeIl ? ` · entro ${new Date(s.scadeIl).toLocaleString('it-IT')}` : ''}</small></div>)}
+                {cm.pulizieDaFare.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>pulizia</span> {p.alloggio} <small>{dataIt(p.data)}</small></div>)}
+                {cm.scadenzeVicine.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#8C7BD822', color: '#8C7BD8' }}>scadenza</span> {s.titolo} <small>{dataIt(s.dataScadenza)}{s.immobile ? ` · ${s.immobile}` : ''}</small></div>)}
+                {cm.pagamentiInSospeso.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#1D6DF022', color: '#1D6DF0' }}>pagamento</span> {p.ospite} <small>{p.alloggio} · {dataIt(p.checkin)} · {eur(Number(p.lordo))}</small></div>)}
+              </>;
+            })()}
+          </div>
         </div>
       )}
+
+      {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} keyStr={key} />}
 
       {tab === 'calendario' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={setPrenSel} />}
 
@@ -224,6 +256,83 @@ export default function Nuovo() {
       )}
 
       {prenSel && <DettaglioPrenotazione p={prenSel} onClose={() => setPrenSel(null)} />}
+    </div>
+  );
+}
+
+// ── Rendiconti proprietario ────────────────────────────────────────────────
+function Rendiconti({ anagrafica, oggi, keyStr }: { anagrafica: Anagrafica; oggi: string; keyStr: string }) {
+  const [propId, setPropId] = useState(anagrafica[0]?.id ?? '');
+  const now = new Date(oggi);
+  const [anno, setAnno] = useState(now.getFullYear());
+  const [mese, setMese] = useState(now.getMonth() + 1);
+  const [r, setR] = useState<Rendiconto | null>(null);
+  const [caricando, setCaricando] = useState(false);
+
+  useEffect(() => {
+    if (!propId) return;
+    setCaricando(true);
+    fetch(`/api/nuovo/rendiconto?proprietario=${propId}&anno=${anno}&mese=${mese}`, { headers: { 'x-plancia-key': keyStr } })
+      .then((x) => x.json()).then((d) => setR(d.ok ? d.rendiconto : null)).finally(() => setCaricando(false));
+  }, [propId, anno, mese, keyStr]);
+
+  const meseNome = new Date(anno, mese - 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="card">
+      <div className="rendctl">
+        <select value={propId} onChange={(e) => setPropId(e.target.value)}>
+          {anagrafica.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+        <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>
+          {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{new Date(2000, i).toLocaleDateString('it-IT', { month: 'long' })}</option>)}
+        </select>
+        <select value={anno} onChange={(e) => setAnno(Number(e.target.value))}>
+          {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      {caricando ? <p className="empty">Carico…</p> : !r ? <p className="empty">Nessun dato.</p> : (
+        <>
+          <h2>{r.proprietario} · <span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
+          {r.righe.length === 0 ? <p className="empty">Nessuna prenotazione questo mese.</p> : (
+            <div className="tablescroll">
+              <table className="tbl full">
+                <thead><tr><th>Check-in</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Commiss.</th><th className="num">Cedolare</th><th className="num">Pulizia</th><th className="num">Fee</th><th className="num">Netto propr.</th></tr></thead>
+                <tbody>
+                  {r.righe.map((x) => (
+                    <tr key={x.id}>
+                      <td>{dataIt(x.checkin)}</td><td>{x.ospite}</td><td>{x.alloggio}</td><td>{x.canale}</td>
+                      <td className="num">{eur(Number(x.lordo))}</td><td className="num">−{eur(Number(x.commissione))}</td>
+                      <td className="num">−{eur(Number(x.cedolare))}</td><td className="num">−{eur(Number(x.costoPulizia))}</td>
+                      <td className="num">−{eur(Number(x.feeGestione))}</td><td className="num strong">{eur(Number(x.nettoProprietario))}</td>
+                    </tr>
+                  ))}
+                  <tr className="tot">
+                    <td colSpan={4}>Totale prenotazioni ({r.righe.length})</td>
+                    <td className="num">{eur(r.totali.lordo)}</td><td className="num">−{eur(r.totali.commissione)}</td>
+                    <td className="num">−{eur(r.totali.cedolare)}</td><td className="num">−{eur(r.totali.costoPulizia)}</td>
+                    <td className="num">−{eur(r.totali.feeGestione)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+          {r.spese.length > 0 && (
+            <table className="tbl" style={{ marginTop: 16 }}>
+              <thead><tr><th>Spese del mese</th><th></th><th className="num">Importo</th></tr></thead>
+              <tbody>
+                {r.spese.map((s) => <tr key={s.id}><td>{dataIt(s.data)} · {s.categoria}</td><td>{s.descrizione}</td><td className="num">−{eur(Number(s.importo))}</td></tr>)}
+                <tr className="tot"><td colSpan={2}>Totale spese</td><td className="num">−{eur(r.totali.totSpese)}</td></tr>
+              </tbody>
+            </table>
+          )}
+          <div className="rendtot">
+            <span>Spetta al proprietario</span>
+            <b>{eur(r.totali.nettoFinale)}</b>
+          </div>
+          <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia). Il PDF pronto da inviare arriverà nella prossima fase.</p>
+        </>
+      )}
     </div>
   );
 }
@@ -408,4 +517,9 @@ button{cursor:pointer;font-family:inherit}
 .modal .x{position:absolute;top:12px;right:14px;border:none;background:none;font-size:16px;color:var(--ink-muted);}
 .modal h2{font-size:20px;text-transform:none;letter-spacing:0;margin:4px 0;}
 .err{color:#E5484D;font-size:13px;}
+.rendctl{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.rendctl select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
+.rendtot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--coral-soft);border-radius:12px;}
+.rendtot span{font-weight:700;}
+.rendtot b{font-size:22px;color:var(--coral);}
 `;

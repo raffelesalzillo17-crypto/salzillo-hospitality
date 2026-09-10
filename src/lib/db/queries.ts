@@ -210,6 +210,100 @@ export async function leggiPulizieDb() {
 
 // ── Riepiloghi (dashboard / rendiconti) ────────────────────────────────────
 
+/** Rendiconto di un proprietario per un mese: le prenotazioni con check-in in quel mese,
+ *  la cascata economica per ciascuna, e i totali. Base per il PDF e la pagina proprietario. */
+export async function rendicontoProprietarioDb(proprietarioId: string, anno: number, mese: number) {
+  const db = getDb();
+  const daISO = `${anno}-${String(mese).padStart(2, '0')}-01`;
+  const aISO = `${anno}-${String(mese).padStart(2, '0')}-31`;
+  const [prop] = await db.select().from(proprietari).where(eq(proprietari.id, proprietarioId));
+  if (!prop) return null;
+
+  const righe = await db
+    .select({
+      id: prenotazioni.id, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout,
+      alloggio: alloggi.nome, immobile: immobili.nome, canale: prenotazioni.canale,
+      lordo: prenotazioni.lordo, commissione: prenotazioni.commissione, cedolare: prenotazioni.cedolare,
+      costoPulizia: prenotazioni.costo_pulizia, feeGestione: prenotazioni.fee_gestione,
+      utile: prenotazioni.utile, nettoProprietario: prenotazioni.netto_proprietario,
+      ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome,
+    })
+    .from(prenotazioni)
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
+    .where(and(
+      eq(immobili.proprietario_id, proprietarioId),
+      gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
+      eq(prenotazioni.stato, 'Attiva'),
+    ))
+    .orderBy(prenotazioni.checkin);
+
+  const speseRighe = await db
+    .select({ id: spese.id, data: spese.data, descrizione: spese.descrizione, importo: spese.importo, categoria: categorieSpesa.nome, immobile: immobili.nome })
+    .from(spese)
+    .innerJoin(categorieSpesa, eq(categorieSpesa.id, spese.categoria_id))
+    .innerJoin(immobili, eq(immobili.id, spese.immobile_id))
+    .where(and(eq(immobili.proprietario_id, proprietarioId), gte(spese.data, daISO), lte(spese.data, aISO)));
+
+  const t = righe.reduce((s, r) => ({
+    lordo: s.lordo + Number(r.lordo), commissione: s.commissione + Number(r.commissione),
+    cedolare: s.cedolare + Number(r.cedolare), costoPulizia: s.costoPulizia + Number(r.costoPulizia),
+    feeGestione: s.feeGestione + Number(r.feeGestione), utile: s.utile + Number(r.utile),
+    nettoProprietario: s.nettoProprietario + Number(r.nettoProprietario),
+  }), { lordo: 0, commissione: 0, cedolare: 0, costoPulizia: 0, feeGestione: 0, utile: 0, nettoProprietario: 0 });
+  const totSpese = speseRighe.reduce((s, r) => s + Number(r.importo), 0);
+
+  return {
+    proprietario: prop.nome, anno, mese,
+    righe: righe.map((r) => ({ ...r, ospite: `${r.ospiteNome} ${r.ospiteCognome}`.trim() })),
+    spese: speseRighe,
+    totali: { ...t, totSpese, nettoFinale: Math.round((t.nettoProprietario - totSpese) * 100) / 100 },
+  };
+}
+
+/** Cose da fare / che mancano — alimenta la sezione "cosa manca" della dashboard. */
+export async function cosaMancaDb(oggiISO: string) {
+  const db = getDb();
+  const fra14 = new Date(Date.parse(oggiISO) + 14 * 864e5).toISOString().slice(0, 10);
+
+  const schedineDaInviare = await db
+    .select({ id: schedine.id, cognome: schedine.cognome, nome: schedine.nome, scadeIl: schedine.scade_il, alloggio: alloggi.nome })
+    .from(schedine)
+    .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .where(eq(schedine.stato, 'Da inviare'));
+
+  const scadenzeVicine = await db
+    .select({ id: scadenze.id, titolo: scadenze.titolo, dataScadenza: scadenze.data_scadenza, immobile: immobili.nome })
+    .from(scadenze)
+    .leftJoin(immobili, eq(immobili.id, scadenze.immobile_id))
+    .where(and(gte(scadenze.data_scadenza, oggiISO), lte(scadenze.data_scadenza, fra14)))
+    .orderBy(scadenze.data_scadenza);
+
+  const pulizieDaFare = await db
+    .select({ id: pulizie.id, data: pulizie.data, alloggio: alloggi.nome })
+    .from(pulizie)
+    .innerJoin(alloggi, eq(alloggi.id, pulizie.alloggio_id))
+    .where(and(sql`${pulizie.confermata_il} IS NULL`, lte(pulizie.data, fra14)));
+
+  // pagamenti: prenotazioni Diretto/No Tax attive senza saldo completo (semplificato: nessun pagamento registrato)
+  const senzaPagamento = await db
+    .select({ id: prenotazioni.id, ospite: sql<string>`${ospiti.nome} || ' ' || ${ospiti.cognome}`, checkin: prenotazioni.checkin, lordo: prenotazioni.lordo, alloggio: alloggi.nome })
+    .from(prenotazioni)
+    .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .leftJoin(pagamenti, eq(pagamenti.prenotazione_id, prenotazioni.id))
+    .where(and(
+      eq(prenotazioni.stato, 'Attiva'),
+      sql`${prenotazioni.canale} IN ('Diretto', 'No Tax')`,
+      gte(prenotazioni.checkin, oggiISO),
+      sql`${pagamenti.id} IS NULL`,
+    ));
+
+  return { schedineDaInviare, scadenzeVicine, pulizieDaFare, pagamentiInSospeso: senzaPagamento };
+}
+
 /** Totali economici del mese (1-12) per immobile — base per la dashboard e i rendiconti. */
 export async function riepilogoMeseDb(anno: number, mese: number) {
   const db = getDb();
