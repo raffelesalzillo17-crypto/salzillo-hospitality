@@ -266,6 +266,7 @@ export const scadenze = pgTable('scadenze', {
   origine: origineRecord('origine').notNull().default('Database'),
   immobile_id: uuid('immobile_id').references(() => immobili.id), // null = generale
   titolo: text('titolo').notNull(),
+  ente: text('ente'), // Questura / Regione Campania / Comune / Agenzia Entrate / SIAE / ...
   data_scadenza: date('data_scadenza').notNull(),
   ricorrenza: ricorrenza('ricorrenza').notNull().default('Una tantum'),
   note: text('note'),
@@ -353,6 +354,29 @@ export const preventivi = pgTable('preventivi', {
   inviato_il: timestamp('inviato_il', { withTimezone: true }),
   accettato_il: timestamp('accettato_il', { withTimezone: true }),
   creato_da: uuid('creato_da').references(() => utenti.id),
+});
+
+// Eventi locali (sagre, fiere, concerti, ponti) — servono a decidere i prezzi.
+export const impattoEvento = pgEnum('impatto_evento', ['Alto', 'Medio', 'Basso']);
+export const eventiLocali = pgTable('eventi_locali', {
+  ...base,
+  titolo: text('titolo').notNull(),
+  dal: date('dal').notNull(),
+  al: date('al').notNull(),
+  comune: text('comune'),
+  impatto: impattoEvento('impatto').notNull().default('Medio'),
+  note: text('note'),
+});
+
+// Prezzi per periodo: prezzo/notte consigliato per un intervallo di date, per un alloggio
+// (o per tutti se alloggio_id è null). Non tocca le prenotazioni: è un promemoria operativo.
+export const prezziPeriodo = pgTable('prezzi_periodo', {
+  ...base,
+  alloggio_id: uuid('alloggio_id').references(() => alloggi.id), // null = tutti gli alloggi
+  dal: date('dal').notNull(),
+  al: date('al').notNull(),
+  prezzo_notte: numeric('prezzo_notte', { precision: 12, scale: 2 }).notNull(),
+  note: text('note'),
 });
 
 // Un invio al giorno del report notturno (dedup fra cron 5:30 e backup 5:20).

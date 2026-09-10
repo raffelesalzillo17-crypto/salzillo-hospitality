@@ -12,7 +12,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
-  scadenze, pulizie, schedine, pagamenti, preventivi,
+  scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo,
 } from './schema';
 
 /** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
@@ -198,6 +198,27 @@ export async function preventivoPerPdf(id: string) {
   return p ?? null;
 }
 
+/** Eventi locali futuri o in corso (sagre, fiere...) per decidere i prezzi. */
+export async function leggiEventiLocaliDb() {
+  const oggi = new Date().toISOString().slice(0, 10);
+  return getDb().select().from(eventiLocali).where(gte(eventiLocali.al, oggi)).orderBy(eventiLocali.dal);
+}
+
+/** Prezzi consigliati per periodo (con nome alloggio; null = tutti). */
+export async function leggiPrezziPeriodoDb() {
+  const oggi = new Date().toISOString().slice(0, 10);
+  return getDb()
+    .select({
+      id: prezziPeriodo.id, dal: prezziPeriodo.dal, al: prezziPeriodo.al,
+      prezzoNotte: prezziPeriodo.prezzo_notte, note: prezziPeriodo.note,
+      alloggioId: prezziPeriodo.alloggio_id, alloggio: alloggi.nome,
+    })
+    .from(prezziPeriodo)
+    .leftJoin(alloggi, eq(alloggi.id, prezziPeriodo.alloggio_id))
+    .where(gte(prezziPeriodo.al, oggi))
+    .orderBy(prezziPeriodo.dal);
+}
+
 /** Elenco alloggi con nome immobile — sostituisce la lista hardcoded di src/lib/strutture.ts. */
 export async function leggiAlloggiDb() {
   const db = getDb();
@@ -239,7 +260,7 @@ export async function leggiScadenzeDb() {
   const db = getDb();
   return db
     .select({
-      id: scadenze.id, titolo: scadenze.titolo, dataScadenza: scadenze.data_scadenza,
+      id: scadenze.id, titolo: scadenze.titolo, ente: scadenze.ente, dataScadenza: scadenze.data_scadenza,
       ricorrenza: scadenze.ricorrenza, note: scadenze.note,
       ultimoCompletamento: scadenze.ultimo_completamento, immobile: immobili.nome,
     })

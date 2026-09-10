@@ -9,7 +9,7 @@ import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze,
-  pulizie, contrattiGestione, preventivi,
+  pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo,
 } from './schema';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 
@@ -298,6 +298,38 @@ export async function accettaPreventivo(id: string, utenteId?: string) {
   return { preventivo: r, prenotazione: pren };
 }
 
+// ── Eventi locali / Prezzi per periodo ──────────────────────────────────────
+
+export async function creaEventoLocale(d: { titolo: string; dal: string; al: string; comune?: string; impatto?: string; note?: string }) {
+  const [r] = await getDb().insert(eventiLocali).values({
+    titolo: d.titolo.trim(), dal: d.dal, al: d.al || d.dal, comune: d.comune || null,
+    impatto: (d.impatto as 'Medio') || 'Medio', note: d.note || null,
+  }).returning();
+  return r;
+}
+export async function aggiornaEventoLocale(id: string, d: Record<string, unknown>) {
+  const set: Record<string, unknown> = { aggiornato_il: new Date() };
+  for (const [k, v] of Object.entries({ titolo: d.titolo, dal: d.dal, al: d.al, comune: d.comune, impatto: d.impatto, note: d.note })) if (v !== undefined) set[k] = v || null;
+  const [r] = await getDb().update(eventiLocali).set(set).where(eq(eventiLocali.id, id)).returning();
+  return r;
+}
+export async function cancellaEventoLocale(id: string) {
+  await getDb().delete(eventiLocali).where(eq(eventiLocali.id, id));
+  return { ok: true };
+}
+
+export async function creaPrezzoPeriodo(d: { alloggioId?: string; dal: string; al: string; prezzoNotte: number; note?: string }) {
+  const [r] = await getDb().insert(prezziPeriodo).values({
+    alloggio_id: d.alloggioId || null, dal: d.dal, al: d.al || d.dal,
+    prezzo_notte: s(d.prezzoNotte), note: d.note || null,
+  }).returning();
+  return r;
+}
+export async function cancellaPrezzoPeriodo(id: string) {
+  await getDb().delete(prezziPeriodo).where(eq(prezziPeriodo.id, id));
+  return { ok: true };
+}
+
 // ── Pagamenti ────────────────────────────────────────────────────────────────
 
 export async function aggiungiPagamento(d: { prenotazioneId: string; tipo: string; importo: number; data?: string; metodo?: string; note?: string }) {
@@ -322,13 +354,38 @@ export async function creaSpesa(d: { immobileId?: string; categoriaId: string; d
   return r;
 }
 
-export async function creaScadenza(d: { immobileId?: string; titolo: string; dataScadenza: string; ricorrenza?: string; note?: string }) {
+export async function creaScadenza(d: { immobileId?: string; titolo: string; ente?: string; dataScadenza: string; ricorrenza?: string; note?: string }) {
   const db = getDb();
   const [r] = await db.insert(scadenze).values({
-    origine: 'Database', immobile_id: d.immobileId || null, titolo: d.titolo.trim(),
+    origine: 'Database', immobile_id: d.immobileId || null, titolo: d.titolo.trim(), ente: d.ente || null,
     data_scadenza: d.dataScadenza, ricorrenza: (d.ricorrenza as 'Una tantum') || 'Una tantum', note: d.note || null,
   }).returning();
   return r;
+}
+
+/** Scadenze fiscali/amministrative tipiche di un B&B in Campania, se non già presenti. */
+export async function seedScadenzeTipiche() {
+  const db = getDb();
+  const esistenti = await db.select({ titolo: scadenze.titolo }).from(scadenze);
+  const gia = new Set(esistenti.map((s) => s.titolo.toLowerCase()));
+  const anno = new Date().getFullYear();
+  const preset: { titolo: string; ente: string; dataScadenza: string; ricorrenza: string; note: string }[] = [
+    { titolo: 'Cedolare secca — 1° acconto', ente: 'Agenzia delle Entrate', dataScadenza: `${anno}-06-30`, ricorrenza: 'Annuale', note: 'Acconto imposta sostitutiva sugli affitti (regime cedolare).' },
+    { titolo: 'Cedolare secca — 2° acconto', ente: 'Agenzia delle Entrate', dataScadenza: `${anno}-11-30`, ricorrenza: 'Annuale', note: 'Secondo acconto.' },
+    { titolo: 'Dichiarazione redditi (730/Redditi PF)', ente: 'Agenzia delle Entrate', dataScadenza: `${anno}-09-30`, ricorrenza: 'Annuale', note: 'Dichiarazione dei redditi da locazione breve.' },
+    { titolo: 'Comunicazione dati locazioni brevi (portali)', ente: 'Agenzia delle Entrate', dataScadenza: `${anno}-06-30`, ricorrenza: 'Annuale', note: 'Ritenuta operata dai portali (Airbnb/Booking) su affitti brevi.' },
+    { titolo: 'Rinnovo / verifica CIN', ente: 'Ministero del Turismo', dataScadenza: `${anno}-12-31`, ricorrenza: 'Annuale', note: 'Codice Identificativo Nazionale: verifica che sia attivo ed esposto negli annunci.' },
+    { titolo: 'Flusso mensile portale regionale (Sinfonia)', ente: 'Regione Campania', dataScadenza: `${anno}-${String(new Date().getMonth() + 2).padStart(2, '0')}-10`, ricorrenza: 'Mensile', note: 'Invio movimenti turistici del mese precedente al portale Sinfonia.' },
+    { titolo: 'Imposta di soggiorno — versamento', ente: 'Comune', dataScadenza: `${anno}-${String(new Date().getMonth() + 2).padStart(2, '0')}-16`, ricorrenza: 'Mensile', note: 'Dove dovuta. A Marcianise non è ancora in vigore — tenere monitorato.' },
+  ];
+  const daInserire = preset.filter((p) => !gia.has(p.titolo.toLowerCase()));
+  for (const p of daInserire) {
+    await db.insert(scadenze).values({
+      origine: 'Database', titolo: p.titolo, ente: p.ente, data_scadenza: p.dataScadenza,
+      ricorrenza: p.ricorrenza as 'Annuale', note: p.note,
+    });
+  }
+  return { aggiunte: daInserire.length };
 }
 export async function completaScadenza(id: string) {
   const db = getDb();

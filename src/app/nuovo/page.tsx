@@ -31,7 +31,7 @@ type Anagrafica = {
   id: string; nome: string; email: string | null; telefono: string | null; iban: string | null;
   immobili: { id: string; nome: string; indirizzo: string; comune: string; provincia: string; cin: string | null; alloggi: AlloggioDb[] }[];
 }[];
-type Scadenza = { id: string; titolo: string; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null };
+type Scadenza = { id: string; titolo: string; ente: string | null; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null };
 type Spesa = { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string | null; note: string | null };
 type CosaManca = {
   schedineDaInviare: { id: string; cognome: string; nome: string; scadeIl: string | null; alloggio: string }[];
@@ -53,6 +53,8 @@ type Dati = {
   anagrafica: Anagrafica; alloggi: Alloggio[]; spese: Spesa[]; scadenze: Scadenza[];
   riepilogoMese: RigaMese[]; cosaManca: CosaManca; preventivi?: Preventivo[];
   categorieSpesa?: { id: string; nome: string }[];
+  eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
+  prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
 };
 type SintesiMese = { anno: number; mese: number; prenotazioni: number; lordo: number; nettoProprietario: number };
 type Rendiconto = {
@@ -388,7 +390,7 @@ export default function Nuovo() {
         </div>
       )}
 
-      {tab === 'calendario' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={setPrenSel} />}
+      {tab === 'calendario' && <SezioneCalendario dati={dati} attive={attive} oggi={oggi} onSel={setPrenSel} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
       {tab === 'prenotazioni' && (() => {
         const q = fPren.q.trim().toLowerCase();
@@ -587,23 +589,53 @@ export default function Nuovo() {
         </div>
       )}
 
-      {tab === 'scadenze' && (
-        <div className="card">
-          <div className="cardhead">
-            <h2>Scadenze <small>({dati.scadenze.length})</small></h2>
-            {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: 'Nuova scadenza', azione: 'crea-scadenza', campi: [
-              { k: 'titolo', label: 'Titolo', req: true }, { k: 'dataScadenza', label: 'Data', tipo: 'date', req: true },
-              { k: 'ricorrenza', label: 'Ricorrenza', tipo: 'select', opzioni: ['Una tantum', 'Mensile', 'Semestrale', 'Annuale'].map((r) => ({ v: r, t: r })) },
-              { k: 'immobileId', label: 'Immobile (vuoto = generale)', tipo: 'select', opzioni: [{ v: '', t: '— generale —' }, ...dati.anagrafica.flatMap((p) => p.immobili.map((i) => ({ v: i.id, t: i.nome })))] },
-              { k: 'note', label: 'Note' },
-            ] })}>＋ Scadenza</button>}
+      {tab === 'scadenze' && (() => {
+        const oggiD = oggi;
+        const fra30 = new Date(Date.parse(oggi) + 30 * 864e5).toISOString().slice(0, 10);
+        const gruppi = new Map<string, Scadenza[]>();
+        for (const s of [...dati.scadenze].sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza))) {
+          const k = s.ente || (s.immobile ? s.immobile : 'Generali');
+          if (!gruppi.has(k)) gruppi.set(k, []);
+          gruppi.get(k)!.push(s);
+        }
+        const ordine = [...gruppi.keys()].sort();
+        return (
+          <div className="card">
+            <div className="cardhead">
+              <h2>Scadenze <small>({dati.scadenze.length})</small></h2>
+              {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {dati.scadenze.length === 0 && <button className="add" onClick={async () => { if (confirm('Aggiungo le scadenze fiscali/amministrative tipiche di un B&B in Campania?')) { await api('seed-scadenze'); await carica(); } }}>✨ Scadenze tipiche</button>}
+                <button className="add" onClick={() => setModale({ titolo: 'Nuova scadenza', azione: 'crea-scadenza', campi: [
+                  { k: 'titolo', label: 'Titolo', req: true },
+                  { k: 'ente', label: 'Ente / regione', tipo: 'select', opzioni: ['', 'Questura (Alloggiati Web)', 'Regione Campania', 'Comune', 'Agenzia delle Entrate', 'Ministero del Turismo', 'SIAE', 'Altro'].map((v) => ({ v, t: v || '— nessuno —' })) },
+                  { k: 'dataScadenza', label: 'Data', tipo: 'date', req: true },
+                  { k: 'ricorrenza', label: 'Ricorrenza', tipo: 'select', opzioni: ['Una tantum', 'Mensile', 'Semestrale', 'Annuale'].map((r) => ({ v: r, t: r })) },
+                  { k: 'immobileId', label: 'Immobile (vuoto = generale)', tipo: 'select', opzioni: [{ v: '', t: '— generale —' }, ...dati.anagrafica.flatMap((p) => p.immobili.map((i) => ({ v: i.id, t: i.nome })))] },
+                  { k: 'note', label: 'Note' },
+                ] })}>＋ Scadenza</button>
+              </div>}
+            </div>
+            {dati.scadenze.length === 0 && <p className="empty">Nessuna scadenza. Usa &quot;Scadenze tipiche&quot; per partire.</p>}
+            {ordine.map((k) => (
+              <div key={k} className="docgroup">
+                <h3><span>🏛️ {k}</span><span className="empty">{gruppi.get(k)!.length}</span></h3>
+                {gruppi.get(k)!.map((s) => {
+                  const urg = s.dataScadenza <= oggiD ? 'scaduta' : s.dataScadenza <= fra30 ? 'vicina' : '';
+                  return (
+                    <div key={s.id} className="docrow">
+                      <span className={`pill ${urg === 'scaduta' ? 'pill-Scaduto' : urg === 'vicina' ? 'pill-Inviato' : 'pill-Bozza'}`}>{dataIt(s.dataScadenza)}</span>
+                      <b>{s.titolo}</b>
+                      <span className="empty">{s.ricorrenza !== 'Una tantum' ? s.ricorrenza.toLowerCase() : ''} {s.immobile ? `· ${s.immobile}` : ''}</span>
+                      {s.note && <span className="empty" style={{ flexBasis: '100%' }}>{s.note}</span>}
+                      {sess.puoModificare && <span className="azioni"><button className="mini" onClick={async () => { if (confirm('Segnare come fatta?')) { await api('completa-scadenza', { id: s.id }); await carica(); } }}>✓ fatto</button></span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
-          <div className="tablescroll"><table className="tbl full"><thead><tr><th>Scadenza</th><th>Titolo</th><th>Ricorrenza</th><th>Immobile</th><th></th></tr></thead>
-            <tbody>{dati.scadenze.map((s) => <tr key={s.id}><td>{dataIt(s.dataScadenza)}</td><td>{s.titolo}</td><td>{s.ricorrenza}</td><td>{s.immobile || 'generale'}</td>
-              <td>{sess.puoModificare && <button className="danger" onClick={async () => { if (confirm('Segnare come fatta?')) { await api('completa-scadenza', { id: s.id }); await carica(); } }}>fatto</button>}</td></tr>)}
-            {dati.scadenze.length === 0 && <tr><td colSpan={5} className="empty">Nessuna scadenza.</td></tr>}</tbody></table></div>
-        </div>
-      )}
+        );
+      })()}
 
       {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
         onClose={() => setPrenSel(null)} onSalvato={async () => { setPrenSel(null); await carica(); }} />}
@@ -844,9 +876,142 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
   );
 }
 
+// ── Sezione Calendario: griglia + Prezzi + Eventi ──────────────────────────
+type EventoLoc = { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null };
+type PrezzoPer = { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null };
+
+function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiato }: {
+  dati: Dati; attive: Prenotazione[]; oggi: string; onSel: (p: Prenotazione) => void; puoModificare: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [sub, setSub] = useState<'griglia' | 'prezzi' | 'eventi'>('griglia');
+  const eventi = (dati.eventi ?? []) as EventoLoc[];
+  const prezzi = (dati.prezzi ?? []) as PrezzoPer[];
+  return (
+    <>
+      <div className="subtabs">
+        {(['griglia', 'prezzi', 'eventi'] as const).map((s) => (
+          <button key={s} className={sub === s ? 'on' : ''} onClick={() => setSub(s)}>
+            {s === 'griglia' ? '📅 Calendario' : s === 'prezzi' ? `💶 Prezzi${prezzi.length ? ` (${prezzi.length})` : ''}` : `🎉 Eventi${eventi.length ? ` (${eventi.length})` : ''}`}
+          </button>
+        ))}
+      </div>
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} />}
+      {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
+      {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
+    </>
+  );
+}
+
+function PannelloPrezzi({ prezzi, alloggi, eventi, puoModificare, onCambiato }: {
+  prezzi: PrezzoPer[]; alloggi: Alloggio[]; eventi: EventoLoc[]; puoModificare: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [f, setF] = useState({ alloggioId: '', dal: '', al: '', prezzoNotte: '', note: '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      await api('crea-prezzo', { dati: { alloggioId: f.alloggioId || undefined, dal: f.dal, al: f.al || f.dal, prezzoNotte: Number(f.prezzoNotte), note: f.note || undefined } });
+      setF({ alloggioId: '', dal: '', al: '', prezzoNotte: '', note: '' }); await onCambiato();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }
+  async function rimuovi(id: string) { if (confirm('Rimuovere questo prezzo?')) { await api('cancella-prezzo', { id }); await onCambiato(); } }
+  return (
+    <div className="card">
+      <h2>Prezzi consigliati per periodo</h2>
+      <p className="empty" style={{ marginTop: -4 }}>Solo un promemoria per te quando fissi i prezzi su Airbnb/Booking o fai un preventivo. Non tocca le prenotazioni già fatte.</p>
+      {puoModificare && (
+        <div className="filtri" style={{ marginTop: 10 }}>
+          <select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>
+            <option value="">Tutti gli alloggi</option>
+            {alloggi.filter((a) => a.attivo).map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+          <input type="date" value={f.dal} onChange={(e) => setF({ ...f, dal: e.target.value })} title="dal" />
+          <input type="date" value={f.al} onChange={(e) => setF({ ...f, al: e.target.value })} title="al" />
+          <input type="number" step="0.01" placeholder="€/notte" value={f.prezzoNotte} onChange={(e) => setF({ ...f, prezzoNotte: e.target.value })} style={{ width: 100 }} />
+          <input placeholder="nota (es. ponte, sagra)" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+          <button className="add" disabled={busy || !f.dal || !f.prezzoNotte} onClick={salva}>＋ Aggiungi</button>
+        </div>
+      )}
+      {err && <p className="err">{err}</p>}
+      <div className="tablescroll">
+        <table className="tbl full">
+          <thead><tr><th>Periodo</th><th>Alloggio</th><th className="num">€/notte</th><th>Nota</th>{puoModificare && <th></th>}</tr></thead>
+          <tbody>
+            {prezzi.map((p) => {
+              const ev = eventi.filter((e) => e.dal <= p.al && e.al >= p.dal);
+              return (
+                <tr key={p.id}>
+                  <td>{dataIt(p.dal)} → {dataIt(p.al)}</td>
+                  <td>{p.alloggio ?? 'Tutti'}</td>
+                  <td className="num strong">{eur(Number(p.prezzoNotte))}</td>
+                  <td>{p.note}{ev.length > 0 && <span className="empty"> · 🎉 {ev.map((e) => e.titolo).join(', ')}</span>}</td>
+                  {puoModificare && <td><button className="mini" onClick={() => rimuovi(p.id)}>✕</button></td>}
+                </tr>
+              );
+            })}
+            {prezzi.length === 0 && <tr><td colSpan={puoModificare ? 5 : 4} className="empty">Nessun prezzo impostato.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PannelloEventi({ eventi, puoModificare, onCambiato }: {
+  eventi: EventoLoc[]; puoModificare: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [f, setF] = useState({ titolo: '', dal: '', al: '', comune: 'Marcianise', impatto: 'Medio', note: '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      await api('crea-evento', { dati: { titolo: f.titolo, dal: f.dal, al: f.al || f.dal, comune: f.comune || undefined, impatto: f.impatto, note: f.note || undefined } });
+      setF({ titolo: '', dal: '', al: '', comune: 'Marcianise', impatto: 'Medio', note: '' }); await onCambiato();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }
+  async function rimuovi(id: string) { if (confirm('Rimuovere questo evento?')) { await api('cancella-evento', { id }); await onCambiato(); } }
+  const imp: Record<string, string> = { Alto: '#E5484D', Medio: '#F5A623', Basso: '#8C7BD8' };
+  return (
+    <div className="card">
+      <h2>Eventi in zona</h2>
+      <p className="empty" style={{ marginTop: -4 }}>Sagre, fiere, concerti, ponti: sapere quando c&apos;è movimento in zona aiuta a decidere i prezzi.</p>
+      {puoModificare && (
+        <div className="filtri" style={{ marginTop: 10 }}>
+          <input placeholder="Titolo (es. Fiera di San Simmaco)" value={f.titolo} onChange={(e) => setF({ ...f, titolo: e.target.value })} />
+          <input type="date" value={f.dal} onChange={(e) => setF({ ...f, dal: e.target.value })} title="dal" />
+          <input type="date" value={f.al} onChange={(e) => setF({ ...f, al: e.target.value })} title="al" />
+          <input placeholder="comune" value={f.comune} onChange={(e) => setF({ ...f, comune: e.target.value })} style={{ width: 110 }} />
+          <select value={f.impatto} onChange={(e) => setF({ ...f, impatto: e.target.value })}>
+            {['Alto', 'Medio', 'Basso'].map((i) => <option key={i}>{i}</option>)}
+          </select>
+          <button className="add" disabled={busy || !f.titolo || !f.dal} onClick={salva}>＋ Aggiungi</button>
+        </div>
+      )}
+      {err && <p className="err">{err}</p>}
+      <div className="tablescroll">
+        <table className="tbl full">
+          <thead><tr><th>Evento</th><th>Quando</th><th>Comune</th><th>Impatto</th>{puoModificare && <th></th>}</tr></thead>
+          <tbody>
+            {eventi.map((e) => (
+              <tr key={e.id}>
+                <td><b>{e.titolo}</b>{e.note && <div className="empty">{e.note}</div>}</td>
+                <td>{dataIt(e.dal)}{e.al !== e.dal ? ` → ${dataIt(e.al)}` : ''}</td>
+                <td>{e.comune}</td>
+                <td><span className="pill" style={{ background: (imp[e.impatto] || '#888') + '22', color: imp[e.impatto] || '#888' }}>{e.impatto}</span></td>
+                {puoModificare && <td><button className="mini" onClick={() => rimuovi(e.id)}>✕</button></td>}
+              </tr>
+            ))}
+            {eventi.length === 0 && <tr><td colSpan={puoModificare ? 5 : 4} className="empty">Nessun evento inserito.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Calendario stile Airbnb ─────────────────────────────────────────────────
-function Calendario({ prenotazioni, alloggi, oggi, onSel }: {
-  prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void;
+function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [] }: {
+  prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[];
 }) {
   const [meseOffset, setMeseOffset] = useState(0);
   const CELL = 40; // px per giorno
@@ -878,8 +1043,9 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel }: {
           {giorni.map((g) => {
             const d = new Date(g);
             const we = d.getDay() === 0 || d.getDay() === 6;
-            return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '')}>
-              <span>{d.getDate()}</span><small>{d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
+            const ev = eventi.find((e) => e.dal <= g && e.al >= g);
+            return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
+              <span>{d.getDate()}</span><small>{ev ? '🎉' : d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
             </div>;
           })}
           {alloggi.filter((a) => a.attivo).map((a) => (
@@ -1411,6 +1577,11 @@ button{cursor:pointer;font-family:inherit}
 .modalactions button{padding:9px 16px;border-radius:100px;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
 .modal{max-height:90vh;overflow-y:auto;}
 .tematoggle{font-size:12px;font-weight:700;padding:6px 12px;border-radius:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink-muted);display:inline-flex;align-items:center;gap:5px;}
+.subtabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+.subtabs button{padding:7px 13px;border:1px solid var(--line);background:var(--surface);color:var(--ink-muted);border-radius:9px;font-size:12.5px;font-weight:700;}
+.subtabs button.on{background:var(--coral-soft);color:var(--coral);border-color:var(--coral);}
+.cal-day.hasev{background:var(--coral-soft);}
+.cal-day.hasev.today{background:var(--coral);}
 .filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
 .filtri select,.filtri input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
 .filtri .cerca{flex:1;min-width:160px;margin:0;}

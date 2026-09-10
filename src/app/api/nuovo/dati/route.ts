@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
   leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb, leggiCategorieSpesaDb,
-  leggiPreventiviDb,
+  leggiPreventiviDb, leggiEventiLocaliDb, leggiPrezziPeriodoDb,
 } from '@/lib/db/queries';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
 
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       leggiCategorieSpesaDb(),
       leggiPreventiviDb(),
     ]);
+    const [eventi, prezzi] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb()]);
 
     // Filtro di visibilità
     const visibili = await alloggiVisibili(sess);
@@ -62,6 +63,8 @@ export async function GET(req: NextRequest) {
       cosaManca,
       categorieSpesa,
       preventivi: sess.vedeFinanziario ? preventivi : [],
+      eventi,
+      prezzi,
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,
         prenotazioni: r.prenotazioni, lordo: Number(r.lordo),

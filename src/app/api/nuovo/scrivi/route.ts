@@ -38,9 +38,15 @@ export async function POST(req: NextRequest) {
       case 'aggiorna-alloggio': r = await M.aggiornaAlloggio(id!, dati); break;
       case 'crea-spesa': r = await M.creaSpesa(dati as Parameters<typeof M.creaSpesa>[0]); break;
       case 'crea-scadenza': r = await M.creaScadenza(dati as Parameters<typeof M.creaScadenza>[0]); break;
+      case 'seed-scadenze': r = await M.seedScadenzeTipiche(); break;
       case 'crea-preventivo': r = await M.creaPreventivo({ ...(dati as Parameters<typeof M.creaPreventivo>[0]), creatoDa: sess.id }); break;
       case 'stato-preventivo': r = await M.aggiornaStatoPreventivo(id!, String(dati.stato)); break;
       case 'accetta-preventivo': r = await M.accettaPreventivo(id!, sess.id); break;
+      case 'crea-evento': r = await M.creaEventoLocale(dati as Parameters<typeof M.creaEventoLocale>[0]); break;
+      case 'aggiorna-evento': r = await M.aggiornaEventoLocale(id!, dati); break;
+      case 'cancella-evento': r = await M.cancellaEventoLocale(id!); break;
+      case 'crea-prezzo': r = await M.creaPrezzoPeriodo(dati as Parameters<typeof M.creaPrezzoPeriodo>[0]); break;
+      case 'cancella-prezzo': r = await M.cancellaPrezzoPeriodo(id!); break;
       case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;
       case 'aggiorna-contratto-gestione': r = await M.aggiornaContrattoGestione(id!, dati); break;
       case 'completa-scadenza': r = await M.completaScadenza(id!); break;
