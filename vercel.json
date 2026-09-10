@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/sync-email-prenotazioni",
       "schedule": "15 12 * * *"
+    },
+    {
+      "path": "/api/cron/sync-db",
+      "schedule": "30 * * * *"
     }
   ]
 }
