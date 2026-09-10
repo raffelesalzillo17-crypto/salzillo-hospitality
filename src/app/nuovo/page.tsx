@@ -1189,7 +1189,7 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             ) : (
               <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Conferma per l&apos;ospite</a>
-                <button className="sync" onClick={() => setPag({ tipo: 'Caparra', importo: '', metodo: 'Bonifico' })}>💰 Registra pagamento</button>
+                {p.origine !== 'Foglio' && <button className="sync" onClick={() => setPag({ tipo: 'Caparra', importo: '', metodo: 'Bonifico' })}>💰 Registra pagamento</button>}
               </p>
             ))}
 

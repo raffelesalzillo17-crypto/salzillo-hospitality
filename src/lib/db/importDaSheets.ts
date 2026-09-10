@@ -90,6 +90,14 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   // i sync successivi non la toccano — così le modifiche fatte in /nuovo restano.
   // Le prenotazioni/ospiti/spese/... si riscrivono ma SOLO le righe con origine='Foglio':
   // quelle create direttamente nel nuovo sistema (origine='Database') sopravvivono.
+  // prima i record che dipendono dalle prenotazioni del foglio (FK NO ACTION):
+  // così il DELETE sotto non fallisce se qualcuno vi ha agganciato pagamenti/schedine/ecc.
+  await db.execute(sql`DELETE FROM pagamenti WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
+  await db.execute(sql`DELETE FROM ospiti_prenotazione WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
+  await db.execute(sql`DELETE FROM pulizie WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
+  await db.execute(sql`DELETE FROM schedine WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
+  await db.execute(sql`DELETE FROM notifiche WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
+  await db.execute(sql`UPDATE preventivi SET prenotazione_id = NULL WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
   await db.execute(sql`DELETE FROM prenotazioni WHERE origine = 'Foglio'`);
   await db.execute(sql`DELETE FROM ospiti WHERE origine = 'Foglio' AND id NOT IN (SELECT ospite_id FROM prenotazioni UNION SELECT ospite_id FROM ospiti_prenotazione)`);
   await db.execute(sql`DELETE FROM spese WHERE origine = 'Foglio'`);
