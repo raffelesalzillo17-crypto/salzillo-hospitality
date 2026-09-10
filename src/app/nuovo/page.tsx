@@ -21,7 +21,18 @@ type Alloggio = {
 };
 type Ospite = { id: string; nome: string; cognome: string; telefono: string | null; email: string | null; valutazione: string; note: string | null };
 type RigaMese = { immobile: string; proprietario: string; prenotazioni: number; lordo: number; utile: number; nettoProprietario: number };
-type Anagrafica = { id: string; nome: string; immobili: { id: string; nome: string; comune: string; cin: string | null; alloggi: { id: string; nome: string; regime_fiscale: string }[] }[] }[];
+type AlloggioDb = {
+  id: string; nome: string; regime_fiscale: string; costo_pulizia: string; attivo: boolean;
+  emoji: string | null; wifi_ssid: string | null; wifi_password: string | null;
+  trasmette_alloggiati: boolean; trasmette_regione: boolean;
+  imposta_soggiorno_comune: string | null; imposta_soggiorno_importo: string;
+};
+type Anagrafica = {
+  id: string; nome: string; email: string | null; telefono: string | null; iban: string | null;
+  immobili: { id: string; nome: string; indirizzo: string; comune: string; provincia: string; cin: string | null; alloggi: AlloggioDb[] }[];
+}[];
+type Scadenza = { id: string; titolo: string; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null };
+type Spesa = { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string | null; note: string | null };
 type CosaManca = {
   schedineDaInviare: { id: string; cognome: string; nome: string; scadeIl: string | null; alloggio: string }[];
   scadenzeVicine: { id: string; titolo: string; dataScadenza: string; immobile: string | null }[];
@@ -30,8 +41,9 @@ type CosaManca = {
 };
 type Dati = {
   ok: boolean; oggi: string; prenotazioni: Prenotazione[]; ospiti: Ospite[];
-  anagrafica: Anagrafica; alloggi: Alloggio[]; spese: unknown[]; scadenze: unknown[];
+  anagrafica: Anagrafica; alloggi: Alloggio[]; spese: Spesa[]; scadenze: Scadenza[];
   riepilogoMese: RigaMese[]; cosaManca: CosaManca;
+  categorieSpesa?: { id: string; nome: string }[];
 };
 type Rendiconto = {
   proprietario: string; anno: number; mese: number;
@@ -49,6 +61,60 @@ const CANALE_COLOR: Record<string, string> = {
   'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
 };
 
+type Campo = { k: string; label: string; tipo?: 'text' | 'number' | 'date' | 'select' | 'checkbox'; opzioni?: { v: string; t: string }[]; req?: boolean };
+
+function FormModale({ titolo, campi, iniziali = {}, onInvia, onClose }: {
+  titolo: string; campi: Campo[]; iniziali?: Record<string, unknown>;
+  onInvia: (v: Record<string, unknown>) => Promise<void>; onClose: () => void;
+}) {
+  const [v, setV] = useState<Record<string, unknown>>(() => {
+    const o: Record<string, unknown> = {};
+    for (const c of campi) o[c.k] = iniziali[c.k] ?? (c.tipo === 'checkbox' ? false : c.tipo === 'number' ? '' : '');
+    return o;
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const mancano = campi.some((c) => c.req && !v[c.k]);
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={onClose}>✕</button>
+        <h2>{titolo}</h2>
+        <div className="form">
+          {campi.map((c) => (
+            <label key={c.k}>{c.label}
+              {c.tipo === 'select'
+                ? <select value={String(v[c.k] ?? '')} onChange={(e) => setV({ ...v, [c.k]: e.target.value })}>
+                    {(c.opzioni ?? []).map((o) => <option key={o.v} value={o.v}>{o.t}</option>)}
+                  </select>
+                : c.tipo === 'checkbox'
+                ? <input type="checkbox" checked={!!v[c.k]} onChange={(e) => setV({ ...v, [c.k]: e.target.checked })} style={{ width: 'auto', alignSelf: 'flex-start' }} />
+                : <input type={c.tipo === 'number' ? 'number' : c.tipo === 'date' ? 'date' : 'text'} step={c.tipo === 'number' ? '0.01' : undefined}
+                    value={String(v[c.k] ?? '')} onChange={(e) => setV({ ...v, [c.k]: e.target.value })} />}
+            </label>
+          ))}
+        </div>
+        <div className="modalactions">
+          <button className="add" disabled={busy || mancano} onClick={async () => {
+            setBusy(true); setErr('');
+            try {
+              const out: Record<string, unknown> = {};
+              for (const c of campi) {
+                const raw = v[c.k];
+                out[c.k] = c.tipo === 'number' ? (raw === '' ? undefined : Number(raw)) : raw === '' ? undefined : raw;
+              }
+              await onInvia(out);
+            } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+          }}>{busy ? 'salvo…' : 'Salva'}</button>
+          <button onClick={onClose}>Annulla</button>
+        </div>
+        {err && <p className="err">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
 async function api(azione: string, payload: Record<string, unknown> = {}) {
   const r = await fetch('/api/nuovo/scrivi', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -65,10 +131,18 @@ export default function Nuovo() {
   const [u, setU] = useState(''); const [p, setP] = useState('');
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'rendiconti'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [nuovaPren, setNuovaPren] = useState(false);
+  const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
+
+  async function inviaModale(vals: Record<string, unknown>) {
+    if (!modale) return;
+    await api(modale.azione, { id: modale.id, dati: vals });
+    setModale(null);
+    await carica();
+  }
 
   async function carica() {
     const d = await (await fetch('/api/nuovo/dati')).json();
@@ -144,7 +218,7 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'rendiconti'] as const).map((t) => (
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'spese', 'scadenze', 'rendiconti'] as const).map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
           </button>
@@ -255,16 +329,63 @@ export default function Nuovo() {
 
       {tab === 'immobili' && (
         <div className="grid">
+          {sess.puoModificare && (
+            <div className="card" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button className="add" onClick={() => setModale({ titolo: 'Nuovo proprietario', azione: 'crea-proprietario', campi: [
+                { k: 'nome', label: 'Nome', req: true },
+                { k: 'tipo', label: 'Tipo', tipo: 'select', opzioni: [{ v: 'Persona fisica', t: 'Persona fisica' }, { v: 'Società', t: 'Società' }] },
+                { k: 'codiceFiscalePiva', label: 'Codice fiscale / P.IVA' }, { k: 'email', label: 'Email' },
+                { k: 'telefono', label: 'Telefono' }, { k: 'iban', label: 'IBAN (per i bonifici)' }, { k: 'note', label: 'Note' },
+              ] })}>＋ Proprietario</button>
+            </div>
+          )}
           {dati.anagrafica.map((pr) => (
             <div key={pr.id} className="card">
-              <h2>{pr.nome} <small>proprietario</small></h2>
+              <div className="cardhead">
+                <h2>{pr.nome} <small>proprietario</small></h2>
+                {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo immobile di ${pr.nome}`, azione: 'crea-immobile', campi: [
+                  { k: 'proprietarioId', label: 'Proprietario', tipo: 'select', opzioni: dati.anagrafica.map((x) => ({ v: x.id, t: x.nome })) },
+                  { k: 'nome', label: 'Nome (es. Via Clanio 60)', req: true }, { k: 'indirizzo', label: 'Indirizzo', req: true },
+                  { k: 'comune', label: 'Comune', req: true }, { k: 'provincia', label: 'Provincia', req: true },
+                  { k: 'cin', label: 'CIN' }, { k: 'cir', label: 'CIR' },
+                ], iniziali: { proprietarioId: pr.id, comune: 'Marcianise', provincia: 'CE' } })}>＋ Immobile</button>}
+              </div>
               {pr.immobili.map((im) => (
                 <div key={im.id} className="imm">
-                  <h3>{im.nome} <small>· {im.comune}{im.cin ? ` · CIN ${im.cin}` : ''}</small></h3>
+                  <div className="cardhead"><h3>{im.nome} <small>· {im.comune}{im.cin ? ` · CIN ${im.cin}` : ''}</small></h3>
+                    {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
+                      { k: 'immobileId', label: 'Immobile', tipo: 'select', opzioni: pr.immobili.map((x) => ({ v: x.id, t: x.nome })) },
+                      { k: 'nome', label: 'Nome (es. Il Tulipano)', req: true },
+                      { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
+                      { k: 'costoPulizia', label: 'Costo pulizia €', tipo: 'number' },
+                      { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password' },
+                      { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
+                      { k: 'trasmetteRegione', label: 'Trasmette al portale regionale (Sinfonia)', tipo: 'checkbox' },
+                      { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune (vuoto = non dovuta)' },
+                      { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — € per persona/notte', tipo: 'number' },
+                    ], iniziali: { immobileId: im.id, costoPulizia: 20 } })}>＋ Alloggio</button>}
+                  </div>
                   {im.alloggi.map((a) => (
-                    <div key={a.id} className="row">
-                      <b>{a.nome}</b>
+                    <div key={a.id} className="row" onClick={() => sess.puoModificare && setModale({ titolo: `Modifica ${a.nome}`, azione: 'aggiorna-alloggio', id: a.id, campi: [
+                      { k: 'nome', label: 'Nome' },
+                      { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
+                      { k: 'costoPulizia', label: 'Costo pulizia €', tipo: 'number' },
+                      { k: 'attivo', label: 'Attivo', tipo: 'checkbox' },
+                      { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password' },
+                      { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
+                      { k: 'trasmetteRegione', label: 'Trasmette al portale regionale', tipo: 'checkbox' },
+                      { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune' },
+                      { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — €/persona/notte', tipo: 'number' },
+                    ], iniziali: {
+                      nome: a.nome, regimeFiscale: a.regime_fiscale, costoPulizia: a.costo_pulizia, attivo: a.attivo,
+                      wifiSsid: a.wifi_ssid, wifiPassword: a.wifi_password, trasmetteAlloggiati: a.trasmette_alloggiati,
+                      trasmetteRegione: a.trasmette_regione, impostaSoggiornoComune: a.imposta_soggiorno_comune,
+                      impostaSoggiornoImporto: a.imposta_soggiorno_importo,
+                    } })} style={{ cursor: sess.puoModificare ? 'pointer' : 'default' }}>
+                      <b>{a.emoji} {a.nome}</b>
                       <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale}</span>
+                      {a.imposta_soggiorno_comune && <small>tassa soggiorno {a.imposta_soggiorno_comune}</small>}
+                      {!a.attivo && <small>non attivo</small>}
                     </div>
                   ))}
                 </div>
@@ -274,10 +395,50 @@ export default function Nuovo() {
         </div>
       )}
 
+      {tab === 'spese' && (
+        <div className="card">
+          <div className="cardhead">
+            <h2>Spese <small>({dati.spese.length})</small></h2>
+            {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: 'Nuova spesa', azione: 'crea-spesa', campi: [
+              { k: 'data', label: 'Data', tipo: 'date', req: true },
+              { k: 'categoriaId', label: 'Categoria', tipo: 'select', opzioni: (dati.categorieSpesa ?? []).map((c) => ({ v: c.id, t: c.nome })), req: true },
+              { k: 'descrizione', label: 'Descrizione', req: true }, { k: 'importo', label: 'Importo €', tipo: 'number', req: true },
+              { k: 'immobileId', label: 'Immobile (vuoto = spesa generale)', tipo: 'select', opzioni: [{ v: '', t: '— generale —' }, ...dati.anagrafica.flatMap((p) => p.immobili.map((i) => ({ v: i.id, t: i.nome })))] },
+              { k: 'metodoPagamento', label: 'Metodo', tipo: 'select', opzioni: [{ v: '', t: '—' }, ...['Bonifico', 'Contanti', 'Carta', 'Piattaforma'].map((m) => ({ v: m, t: m }))] },
+              { k: 'daRimborsareProprietario', label: 'Da rimborsare al proprietario', tipo: 'checkbox' },
+              { k: 'note', label: 'Note' },
+            ], iniziali: { data: oggi } })}>＋ Spesa</button>}
+          </div>
+          <div className="tablescroll"><table className="tbl full"><thead><tr><th>Data</th><th>Categoria</th><th>Descrizione</th><th>Immobile</th><th className="num">Importo</th></tr></thead>
+            <tbody>{dati.spese.map((s) => <tr key={s.id}><td>{dataIt(s.data)}</td><td>{s.categoria}</td><td>{s.descrizione}</td><td>{s.immobile || 'generale'}</td><td className="num">{eur(Number(s.importo))}</td></tr>)}
+            {dati.spese.length === 0 && <tr><td colSpan={5} className="empty">Nessuna spesa registrata.</td></tr>}</tbody></table></div>
+        </div>
+      )}
+
+      {tab === 'scadenze' && (
+        <div className="card">
+          <div className="cardhead">
+            <h2>Scadenze <small>({dati.scadenze.length})</small></h2>
+            {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: 'Nuova scadenza', azione: 'crea-scadenza', campi: [
+              { k: 'titolo', label: 'Titolo', req: true }, { k: 'dataScadenza', label: 'Data', tipo: 'date', req: true },
+              { k: 'ricorrenza', label: 'Ricorrenza', tipo: 'select', opzioni: ['Una tantum', 'Mensile', 'Semestrale', 'Annuale'].map((r) => ({ v: r, t: r })) },
+              { k: 'immobileId', label: 'Immobile (vuoto = generale)', tipo: 'select', opzioni: [{ v: '', t: '— generale —' }, ...dati.anagrafica.flatMap((p) => p.immobili.map((i) => ({ v: i.id, t: i.nome })))] },
+              { k: 'note', label: 'Note' },
+            ] })}>＋ Scadenza</button>}
+          </div>
+          <div className="tablescroll"><table className="tbl full"><thead><tr><th>Scadenza</th><th>Titolo</th><th>Ricorrenza</th><th>Immobile</th><th></th></tr></thead>
+            <tbody>{dati.scadenze.map((s) => <tr key={s.id}><td>{dataIt(s.dataScadenza)}</td><td>{s.titolo}</td><td>{s.ricorrenza}</td><td>{s.immobile || 'generale'}</td>
+              <td>{sess.puoModificare && <button className="danger" onClick={async () => { if (confirm('Segnare come fatta?')) { await api('completa-scadenza', { id: s.id }); await carica(); } }}>fatto</button>}</td></tr>)}
+            {dati.scadenze.length === 0 && <tr><td colSpan={5} className="empty">Nessuna scadenza.</td></tr>}</tbody></table></div>
+        </div>
+      )}
+
       {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
         onClose={() => setPrenSel(null)} onSalvato={async () => { setPrenSel(null); await carica(); }} />}
       {nuovaPren && <FormPrenotazione alloggi={dati.alloggi} ospiti={dati.ospiti}
         onClose={() => setNuovaPren(false)} onSalvato={async () => { setNuovaPren(false); await carica(); }} />}
+      {modale && <FormModale titolo={modale.titolo} campi={modale.campi} iniziali={modale.iniziali}
+        onInvia={inviaModale} onClose={() => setModale(null)} />}
     </div>
   );
 }

@@ -191,6 +191,11 @@ export async function leggiSpeseDb() {
     .orderBy(desc(spese.data));
 }
 
+export async function leggiCategorieSpesaDb() {
+  const db = getDb();
+  return db.select({ id: categorieSpesa.id, nome: categorieSpesa.nome }).from(categorieSpesa).where(eq(categorieSpesa.attiva, true)).orderBy(categorieSpesa.nome);
+}
+
 export async function leggiScadenzeDb() {
   const db = getDb();
   return db

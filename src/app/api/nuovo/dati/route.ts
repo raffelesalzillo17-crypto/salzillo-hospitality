@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
-  leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb,
+  leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb, leggiCategorieSpesaDb,
 } from '@/lib/db/queries';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   try {
     const oggi = new Date();
     const oggiISO = oggi.toISOString().slice(0, 10);
-    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca] = await Promise.all([
+    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa] = await Promise.all([
       leggiPrenotazioniDb(),
       leggiOspitiDb(),
       leggiAnagraficaDb(),
@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       leggiScadenzeDb(),
       riepilogoMeseDb(oggi.getFullYear(), oggi.getMonth() + 1),
       cosaMancaDb(oggiISO),
+      leggiCategorieSpesaDb(),
     ]);
 
     // Filtro di visibilità
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest) {
       spese: sess.vedeFinanziario ? spese : [],
       scadenze,
       cosaManca,
+      categorieSpesa,
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,
         prenotazioni: r.prenotazioni, lordo: Number(r.lordo),
