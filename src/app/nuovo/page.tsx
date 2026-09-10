@@ -895,13 +895,16 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
 
   const nomeAlloggio = alloggi.find((a) => a.id === f.alloggioId)?.nome ?? '';
   const telPulito = f.tel.replace(/[^\d]/g, '');
+  const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
+  const primoNome = f.cliente ? f.cliente.trim().split(/\s+/)[0] : '';
   const msgWa = [
-    `Ciao${f.cliente ? ' ' + f.cliente.split(' ')[0] : ''}! Ecco il preventivo per ${nomeAlloggio}:`,
-    `Check-in ${f.checkin ? dataIt(f.checkin) : '—'} · Check-out ${f.checkout ? dataIt(f.checkout) : '—'} (${nnotti} notti)`,
-    `Totale: ${eur(totFinale)}${scontoEuro > 0 ? ` (sconto −${eur(scontoEuro)})` : ''}`,
-    `Hai ${f.ore || '24'} ore per confermare: entro questo termine tengo l'alloggio bloccato per te, poi le date tornano disponibili.`,
+    `${saluto}${primoNome ? ' ' + primoNome : ''}, sono Raffaele di Salzillo Hospitality.`,
+    `Ecco il preventivo per ${nomeAlloggio}:`,
+    `Check-in ${f.checkin ? dataIt(f.checkin) : '—'} · Check-out ${f.checkout ? dataIt(f.checkout) : '—'} (${nnotti} notti, ${f.ospiti} ospiti)`,
+    `Totale ${eur(totFinale)}${scontoEuro > 0 ? ` (sconto −${eur(scontoEuro)})` : ''}`,
+    `Per bloccare le date puoi confermare entro ${f.ore || '24'} ore: fino ad allora l'alloggio resta riservato a te, dopodiché torna disponibile.`,
     `Cancellazione gratuita fino a 48h prima del check-in.`,
-    `Ti allego il PDF con tutti i dettagli.`,
+    `Ti allego il PDF con tutti i dettagli. Per qualsiasi dubbio scrivimi pure qui.`,
   ].join('\n');
   const waUrl = `https://wa.me/${telPulito.length >= 9 ? (telPulito.length === 10 ? '39' + telPulito : telPulito) : ''}?text=${encodeURIComponent(msgWa)}`;
 
