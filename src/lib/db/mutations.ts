@@ -11,6 +11,7 @@ import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze,
   pulizie, contrattiGestione,
 } from './schema';
+import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 const oggiISO = () => new Date().toISOString().slice(0, 10);
@@ -147,13 +148,25 @@ export async function creaPrenotazione(d: {
     ospiteId = o.id;
   }
   const imp = await calcolaImportiPrenotazione({ alloggioId: d.alloggioId, canale: d.canale, lordo: d.lordo });
+
+  // evento Google Calendar (best-effort — un calendario per immobile se impostato)
+  const [ctx] = await db.select({
+    alloggio: alloggi.nome, immobileId: alloggi.immobile_id, calendarId: immobili.calendar_id, telefono: ospiti.telefono,
+  }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .leftJoin(ospiti, eq(ospiti.id, ospiteId!)).where(eq(alloggi.id, d.alloggioId));
+  const [o] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome }).from(ospiti).where(eq(ospiti.id, ospiteId!));
+  const eventId = await creaEventoPrenotazione({
+    calendarId: ctx?.calendarId ?? null, alloggio: ctx?.alloggio ?? '', ospite: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim(),
+    canale: d.canale, checkin: d.checkin, checkout: d.checkout, lordo: d.lordo, utile: imp.utile, telefono: ctx?.telefono,
+  });
+
   const [r] = await db.insert(prenotazioni).values({
     origine: 'Database', alloggio_id: d.alloggioId, ospite_id: ospiteId,
     checkin: d.checkin, checkout: d.checkout, numero_ospiti: d.numeroOspiti ?? 1,
     canale: d.canale as 'Airbnb', codice_conferma_canale: d.codiceConfermaCanale || null,
     lordo: s(d.lordo), commissione: s(imp.commissione), cedolare: s(imp.cedolare),
     costo_pulizia: s(imp.costoPulizia), fee_gestione: s(imp.feeGestione), utile: s(imp.utile),
-    netto_proprietario: s(imp.nettoProprietario),
+    netto_proprietario: s(imp.nettoProprietario), calendar_event_id: eventId,
     stato: (d.stato as 'Attiva') || 'Attiva', note: d.note || null, creata_da: d.creataDa || null,
   }).returning();
   return r;
@@ -188,9 +201,15 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
 
 export async function cancellaPrenotazione(id: string, conPenale: boolean, importoPenale?: number) {
   const db = getDb();
+  const [attuale] = await db.select({ eventId: prenotazioni.calendar_event_id, alloggioId: prenotazioni.alloggio_id }).from(prenotazioni).where(eq(prenotazioni.id, id));
+  if (attuale?.eventId) {
+    const [im] = await db.select({ calendarId: immobili.calendar_id }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id)).where(eq(alloggi.id, attuale.alloggioId));
+    await eliminaEventoPrenotazione(im?.calendarId ?? null, attuale.eventId);
+  }
   const [r] = await db.update(prenotazioni).set({
     stato: conPenale ? 'Cancellata con penale' : 'Cancellata',
     penale_importo: conPenale && importoPenale ? s(importoPenale) : null,
+    calendar_event_id: null,
     aggiornato_il: new Date(),
   }).where(eq(prenotazioni.id, id)).returning();
   return r;

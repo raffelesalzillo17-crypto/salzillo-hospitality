@@ -92,6 +92,7 @@ export const immobili = pgTable('immobili', {
   provincia: text('provincia').notNull(),
   cin: text('cin'),
   cir: text('cir'),
+  calendar_id: text('calendar_id'), // un calendario Google per immobile (idea di Raffaele)
   note: text('note'),
 });
 
@@ -116,7 +117,6 @@ export const alloggi = pgTable('alloggi', {
   imposta_soggiorno_comune: text('imposta_soggiorno_comune'),
   imposta_soggiorno_importo: numeric('imposta_soggiorno_importo', { precision: 6, scale: 2 }).notNull().default('0'),
   imposta_soggiorno_max_notti: integer('imposta_soggiorno_max_notti'),
-  calendar_id: text('calendar_id'), // un calendario Google per immobile
 });
 
 export const ospiti = pgTable('ospiti', {
