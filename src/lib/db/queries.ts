@@ -289,7 +289,7 @@ export async function cosaMancaDb(oggiISO: string) {
 
   // pagamenti: prenotazioni Diretto/No Tax attive senza saldo completo (semplificato: nessun pagamento registrato)
   const senzaPagamento = await db
-    .select({ id: prenotazioni.id, ospite: sql<string>`${ospiti.nome} || ' ' || ${ospiti.cognome}`, checkin: prenotazioni.checkin, lordo: prenotazioni.lordo, alloggio: alloggi.nome })
+    .select({ id: prenotazioni.id, ospite: sql<string>`${ospiti.nome} || ' ' || ${ospiti.cognome}`.as('ospite'), checkin: prenotazioni.checkin, lordo: prenotazioni.lordo, alloggio: alloggi.nome })
     .from(prenotazioni)
     .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
@@ -313,10 +313,10 @@ export async function riepilogoMeseDb(anno: number, mese: number) {
     .select({
       immobile: immobili.nome,
       proprietario: proprietari.nome,
-      prenotazioni: sql<number>`count(*)::int`,
-      lordo: sql<string>`coalesce(sum(${prenotazioni.lordo}),0)`,
-      utile: sql<string>`coalesce(sum(${prenotazioni.utile}),0)`,
-      nettoProprietario: sql<string>`coalesce(sum(${prenotazioni.netto_proprietario}),0)`,
+      prenotazioni: sql<number>`count(*)::int`.as('prenotazioni'),
+      lordo: sql<string>`coalesce(sum(${prenotazioni.lordo}),0)`.as('lordo'),
+      utile: sql<string>`coalesce(sum(${prenotazioni.utile}),0)`.as('utile'),
+      nettoProprietario: sql<string>`coalesce(sum(${prenotazioni.netto_proprietario}),0)`.as('netto_proprietario'),
     })
     .from(prenotazioni)
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
