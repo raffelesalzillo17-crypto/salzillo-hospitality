@@ -337,7 +337,9 @@ export default function Nuovo() {
               if (vuoto) return <p className="empty">Tutto in ordine — niente in sospeso.</p>;
               return <>
                 {cm.schedineDaInviare.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>schedina</span> {s.cognome} {s.nome} <small>{s.alloggio}{s.scadeIl ? ` · entro ${new Date(s.scadeIl).toLocaleString('it-IT')}` : ''}</small></div>)}
-                {cm.pulizieDaFare.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>pulizia</span> {p.alloggio} <small>{dataIt(p.data)}</small></div>)}
+                {cm.pulizieDaFare.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>pulizia</span> {p.alloggio} <small>{dataIt(p.data)}</small>
+                  {sess.puoModificare && <button className="mini" style={{ marginLeft: 'auto' }} onClick={async () => { if (confirm(`Pulizia ${p.alloggio} del ${dataIt(p.data)}: segnare come fatta?`)) { await api('conferma-pulizia', { id: p.id }); await carica(); } }}>✓ fatto</button>}
+                </div>)}
                 {cm.scadenzeVicine.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#8C7BD822', color: '#8C7BD8' }}>scadenza</span> {s.titolo} <small>{dataIt(s.dataScadenza)}{s.immobile ? ` · ${s.immobile}` : ''}</small></div>)}
                 {cm.pagamentiInSospeso.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#1D6DF022', color: '#1D6DF0' }}>pagamento</span> {p.ospite} <small>{p.alloggio} · {dataIt(p.checkin)} · {eur(Number(p.lordo))}</small></div>)}
               </>;
@@ -375,14 +377,16 @@ export default function Nuovo() {
           <div className="card">
             <h2>Le sezioni di questa pagina</h2>
             <ul className="guidalist">
-              <li><b>Dashboard</b> — il riepilogo del giorno: chi arriva/parte, soldi del mese, cosa manca, occupazione</li>
-              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Click su una barra → tutti i dettagli</li>
-              <li><b>Prenotazioni</b> — l&apos;elenco completo. Da qui crei una prenotazione nuova o un preventivo</li>
-              <li><b>Ospiti</b> — l&apos;anagrafica di chi ha soggiornato</li>
+              <li><b>Dashboard</b> — il riepilogo del giorno: chi arriva/parte, soldi del mese, cosa manca, occupazione. In alto le scorciatoie rapide</li>
+              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
+              <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
+              <li><b>Ospiti</b> — l&apos;anagrafica. Cerca e clicca per modificare</li>
+              <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono e si modificano</li>
-              <li><b>Spese / Scadenze</b> — i costi e le scadenze da ricordare</li>
-              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con PDF pronto da mandare</li>
+              <li><b>Spese</b> — i costi. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
+              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare</li>
             </ul>
+            <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
           </div>
           <div className="card">
             <h2>Dove sono i file</h2>
@@ -905,7 +909,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
           </button>
         ))}
       </div>
-      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} />}
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} />}
       {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
     </>
@@ -1020,8 +1024,8 @@ function PannelloEventi({ eventi, puoModificare, onCambiato }: {
 }
 
 // ── Calendario stile Airbnb ─────────────────────────────────────────────────
-function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [] }: {
-  prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[];
+function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [] }: {
+  prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
 }) {
   const [meseOffset, setMeseOffset] = useState(0);
   const CELL = 40; // px per giorno
@@ -1058,9 +1062,19 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [] }: {
               <span>{d.getDate()}</span><small>{ev ? '🎉' : d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
             </div>;
           })}
+          {prezzi.length > 0 && <>
+            <div className="cal-room cal-prezzo">💶 €/notte</div>
+            <div className="cal-track" style={{ gridColumn: `2 / span ${giorni.length}`, height: 22 }}>
+              {giorni.map((g) => {
+                const glob = prezzi.filter((p) => !p.alloggioId && p.dal <= g && p.al >= g).pop();
+                return <div key={g} className="cal-cell cal-prz" style={{ width: CELL }}>{glob ? Math.round(Number(glob.prezzoNotte)) : ''}</div>;
+              })}
+            </div>
+          </>}
           {alloggi.filter((a) => a.attivo).map((a) => (
             <CalRow key={a.id} alloggio={a} giorni={giorni} cell={CELL}
               prenotazioni={prenotazioni.filter((p) => p.alloggio === a.nome && p.checkout > primoGiorno && p.checkin <= ultimoGiorno)}
+              prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
               onSel={onSel} />
           ))}
         </div>
@@ -1072,8 +1086,8 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [] }: {
   );
 }
 
-function CalRow({ alloggio, giorni, cell, prenotazioni, onSel }: {
-  alloggio: Alloggio; giorni: string[]; cell: number; prenotazioni: Prenotazione[]; onSel: (p: Prenotazione) => void;
+function CalRow({ alloggio, giorni, cell, prenotazioni, prezzi = [], onSel }: {
+  alloggio: Alloggio; giorni: string[]; cell: number; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[]; onSel: (p: Prenotazione) => void;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
@@ -1081,7 +1095,10 @@ function CalRow({ alloggio, giorni, cell, prenotazioni, onSel }: {
     <>
       <div className="cal-room">{alloggio.emoji} {alloggio.nome}</div>
       <div className="cal-track" style={{ gridColumn: `2 / span ${giorni.length}` }}>
-        {giorni.map((g) => <div key={g} className="cal-cell" style={{ width: cell }} />)}
+        {giorni.map((g) => {
+          const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
+          return <div key={g} className="cal-cell" style={{ width: cell }}>{pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}</div>;
+        })}
         {prenotazioni.map((p) => {
           const start = Math.max(0, idx(p.checkin));
           const end = Math.min(giorni.length, idx(p.checkout));
@@ -1107,6 +1124,16 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
   const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [pag, setPag] = useState<null | { tipo: string; importo: string; metodo: string }>(null);
+
+  async function salvaPagamento() {
+    if (!pag) return;
+    setBusy(true); setErr('');
+    try {
+      await api('aggiungi-pagamento', { dati: { prenotazioneId: p.id, tipo: pag.tipo, importo: Number(pag.importo), metodo: pag.metodo } });
+      setPag(null); onSalvato();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
 
   async function salva() {
     setBusy(true); setErr('');
@@ -1147,9 +1174,25 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             </tbody></table>
             {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
             {p.note && <p className="sub">{p.note}</p>}
-            <p style={{ marginTop: 10 }}>
-              <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Conferma per l&apos;ospite</a>
-            </p>
+
+            {puoModificare && (pag ? (
+              <div className="form" style={{ marginTop: 10, padding: 12, background: 'var(--coral-soft)', borderRadius: 10 }}>
+                <b style={{ fontSize: 13 }}>Registra un pagamento</b>
+                <label>Tipo<select value={pag.tipo} onChange={(e) => setPag({ ...pag, tipo: e.target.value })}>{['Caparra', 'Saldo', 'Rimborso'].map((t) => <option key={t}>{t}</option>)}</select></label>
+                <label>Importo €<input type="number" step="0.01" value={pag.importo} onChange={(e) => setPag({ ...pag, importo: e.target.value })} autoFocus /></label>
+                <label>Metodo<select value={pag.metodo} onChange={(e) => setPag({ ...pag, metodo: e.target.value })}>{['Bonifico', 'Contanti', 'Carta', 'Piattaforma'].map((m) => <option key={m}>{m}</option>)}</select></label>
+                <div className="modalactions">
+                  <button className="add" onClick={salvaPagamento} disabled={busy || !pag.importo}>{busy ? 'salvo…' : 'Salva pagamento'}</button>
+                  <button onClick={() => setPag(null)}>Annulla</button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Conferma per l&apos;ospite</a>
+                <button className="sync" onClick={() => setPag({ tipo: 'Caparra', importo: '', metodo: 'Bonifico' })}>💰 Registra pagamento</button>
+              </p>
+            ))}
+
             {puoModificare && (
               <div className="modalactions">
                 <button className="add" onClick={() => setModifica(true)}>✏️ Modifica</button>
@@ -1540,7 +1583,7 @@ button{cursor:pointer;font-family:inherit}
 .cal-day.today small{color:#fff;}
 .cal-room{position:sticky;left:0;z-index:2;background:var(--surface);font-weight:700;font-size:12px;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line);height:46px;}
 .cal-track{position:relative;height:46px;border-bottom:1px solid var(--line);display:flex;}
-.cal-cell{border-left:1px solid var(--line);height:100%;flex:none;}
+.cal-cell{border-left:1px solid var(--line);height:100%;flex:none;position:relative;}
 .cal-bar{position:absolute;top:7px;height:32px;border-radius:8px;border:none;color:#fff;font-size:11px;font-weight:700;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.2);}
 .cal-bar span{overflow:hidden;text-overflow:ellipsis;}
 .callegend{display:flex;gap:14px;margin-top:12px;font-size:12px;flex-wrap:wrap;}
@@ -1600,6 +1643,9 @@ button{cursor:pointer;font-family:inherit}
 .azionirapide .add{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
 .cal-day.hasev{background:var(--coral-soft);}
 .cal-day.hasev.today{background:var(--coral);}
+.cal-room.cal-prezzo{height:22px;font-size:11px;color:var(--ink-muted);}
+.cal-prz{border-left:1px solid var(--line);height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--coral);}
+.cal-przrow{position:absolute;top:1px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;color:var(--ink-muted);opacity:.7;pointer-events:none;}
 .filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
 .filtri select,.filtri input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
 .filtri .cerca{flex:1;min-width:160px;margin:0;}
