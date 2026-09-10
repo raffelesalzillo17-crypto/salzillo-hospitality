@@ -181,4 +181,4 @@ Aggiornato dopo la discovery con Raffaele (8 giri — vedi [[discovery-nuovo-sis
 
 ## Stato
 
-- **10/09/2026**: piano scritto, poi discovery completata con Raffaele (8 giri di domande — vedi [[discovery-nuovo-sistema-salzillo-hospitality]]) e schema della sez. 2 aggiornato di conseguenza. Raffaele ha deciso: si finisce la raccolta requisiti, poi si parte con tutte le fasi in sequenza. Attesi ancora: la correzione sui proprietari e lo screenshot del calendario Airbnb. Prossimo passo operativo: **Fase 0 — GitHub**.
+- **10/09/2026**: fasi 0-3 fatte in autonomia. **Fase 0** GitHub (repo privato, commit continui). **Fase 1** Neon provisionato, schema di 21 tabelle applicato. **Fase 2** strato di query di lettura (`src/lib/db/queries.ts`), testato. **Fase 3** import completo da Google Sheets verificato al centesimo (62 prenotazioni, 47 ospiti, 2 proprietari, 2 immobili, 5 alloggi; totali economici identici alla fonte). Google Sheets resta la fonte viva. **Prossimo**: Fase 4 (lettura dal DB dietro interruttore + settimana di confronto) e Fase 5 (modello proprietario + UI + calendario).
