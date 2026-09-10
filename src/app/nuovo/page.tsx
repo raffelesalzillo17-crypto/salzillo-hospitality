@@ -131,7 +131,7 @@ export default function Nuovo() {
   const [u, setU] = useState(''); const [p, setP] = useState('');
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti' | 'guida'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [nuovaPren, setNuovaPren] = useState(false);
@@ -220,7 +220,7 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'spese', 'scadenze', 'rendiconti'] as const).map((t) => (
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'immobili', 'spese', 'scadenze', 'rendiconti', 'guida'] as const).map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
           </button>
@@ -286,6 +286,55 @@ export default function Nuovo() {
       )}
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
+
+      {tab === 'guida' && (
+        <div className="grid">
+          <div className="card">
+            <h2>Come sono organizzati i dati</h2>
+            <p className="sub" style={{ marginBottom: 14 }}>Tutto parte dal proprietario e scende fino alla singola prenotazione. Ogni cosa è collegata alla successiva — nessun numero da ricordare, si vedono sempre i nomi.</p>
+            <div className="tree">
+              <div className="tn tn0">👤 <b>Proprietario</b> <span>(Salzillo Luigi, Raffaela Iodice…)</span>
+                <div className="tn tn1">🏠 <b>Immobile</b> <span>— un edificio con un indirizzo (Via Clanio 60, Via Campania 36)</span>
+                  <div className="tn tn2">🚪 <b>Alloggio</b> <span>— la stanza/appartamento che affitti (Il Tulipano, Stanza Rosa…). Qui vivono: regime fiscale, costo pulizia, WiFi, se trasmette alle autorità, imposta di soggiorno</span>
+                    <div className="tn tn3">📅 <b>Prenotazione</b> <span>— date, canale, prezzo. Il sistema calcola da solo commissione, cedolare, pulizia, utile, netto proprietario</span>
+                      <div className="tn tn4">👥 <b>Ospite</b> — chi soggiorna (con storico di tutti i suoi soggiorni)</div>
+                      <div className="tn tn4">💶 <b>Pagamenti</b> — caparra, saldo</div>
+                      <div className="tn tn4">📋 <b>Schedina</b> — i dati per la Questura (Alloggiati Web)</div>
+                      <div className="tn tn4">📄 <b>Documenti</b> — conferma, contratto, ricevuta salvati su Drive</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="sub" style={{ marginTop: 14 }}>A parte, non legati a una prenotazione: <b>Spese</b> (per immobile o generali), <b>Scadenze</b> (fiscali/amministrative), <b>Rendiconti</b> (uno per proprietario, per mese).</p>
+          </div>
+          <div className="card">
+            <h2>Le sezioni di questa pagina</h2>
+            <ul className="guidalist">
+              <li><b>Dashboard</b> — il riepilogo del giorno: chi arriva/parte, soldi del mese, cosa manca, occupazione</li>
+              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Click su una barra → tutti i dettagli</li>
+              <li><b>Prenotazioni</b> — l&apos;elenco completo. Da qui crei una prenotazione nuova o un preventivo</li>
+              <li><b>Ospiti</b> — l&apos;anagrafica di chi ha soggiornato</li>
+              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono e si modificano</li>
+              <li><b>Spese / Scadenze</b> — i costi e le scadenze da ricordare</li>
+              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con PDF pronto da mandare</li>
+            </ul>
+          </div>
+          <div className="card">
+            <h2>Dove sono i file</h2>
+            <p className="sub">Su Google Drive, cartella <b>&quot;Archivio — Salzillo Hospitality&quot;</b>:</p>
+            <div className="tree">
+              <div className="tn tn0">📁 Archivio — Salzillo Hospitality
+                <div className="tn tn1">📊 SH · Prenotazioni &amp; Ospiti <span>(il vecchio foglio, ancora la fonte viva)</span></div>
+                <div className="tn tn1">📊 SH · Struttura &amp; Spese</div>
+                <div className="tn tn1">📊 SH · Sistema</div>
+                <div className="tn tn1">📁 Documenti Salzillo Hospitality <span>— una cartella per ospite, coi PDF</span></div>
+              </div>
+            </div>
+            <p className="empty" style={{ marginTop: 12 }}>Quando il nuovo sistema sarà la fonte principale, i 3 fogli diventeranno un backup automatico settimanale e non si toccheranno più a mano.</p>
+          </div>
+        </div>
+      )}
 
       {tab === 'calendario' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={setPrenSel} />}
 
@@ -904,6 +953,14 @@ button{cursor:pointer;font-family:inherit}
 .rendtot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--coral-soft);border-radius:12px;}
 .rendtot span{font-weight:700;}
 .rendtot b{font-size:22px;color:var(--coral);}
+.tree{font-size:13px;line-height:1.5;}
+.tn{position:relative;}
+.tn span{color:var(--ink-muted);font-weight:400;}
+.tn1,.tn2,.tn3,.tn4{margin-left:16px;padding-left:14px;border-left:2px solid var(--line);margin-top:8px;}
+.tn0{margin-top:4px;}
+.tn4{margin-top:5px;font-size:12.5px;}
+.guidalist{margin:0;padding-left:18px;font-size:13px;line-height:1.7;}
+.guidalist li{margin-bottom:4px;}
 .linklike{border:none;background:none;color:var(--coral);font-weight:600;cursor:pointer;padding:0;font-size:inherit;}
 .cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;}
 .cardhead h2{margin:0;}
