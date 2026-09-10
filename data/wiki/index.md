@@ -50,6 +50,7 @@ Catalogo di tutte le pagine del wiki, organizzato per categoria. Ogni ingest agg
 - [[analisi-critica-sistema-salzillo-hospitality]] — revisione critica dell'architettura del sistema (10/09/2026): il tetto di Google Sheets come database, assenza di modello proprietario/immobile, autenticazione frammentata, priorità proposte
 - [[piano-migrazione-database-modello-proprietario]] — piano dettagliato in 6 fasi per sostituire Google Sheets con Postgres/Neon e introdurre le entità Proprietario/Immobile (10/09/2026)
 - [[discovery-nuovo-sistema-salzillo-hospitality]] — intervista strutturata a Raffaele (15 sezioni) per definire cosa deve fare il nuovo sistema a database (10/09/2026)
+- [[pms-professionali-idee-da-rubare]] — ricerca sui gestionali professionali (Krossbooking, Octorate, Smoobu, Hospitable): 15 idee da adottare per il nostro sistema (10/09/2026)
 
 ## Decisioni
 
