@@ -280,6 +280,15 @@ export default function Nuovo() {
       </nav>
 
       {tab === 'dashboard' && (
+        <>
+        {sess.puoModificare && (
+          <div className="azionirapide">
+            <button className="add" onClick={() => setNuovaPren(true)}>＋ Prenotazione</button>
+            <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
+            <button className="add" onClick={() => setTab('calendario')}>📅 Calendario</button>
+            <button className="add" onClick={() => setTab('documenti')}>📁 Documenti</button>
+          </div>
+        )}
         <div className="grid">
           <div className="card">
             <h2>Arrivi · prossimi 7 giorni</h2>
@@ -335,6 +344,7 @@ export default function Nuovo() {
             })()}
           </div>
         </div>
+        </>
       )}
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
@@ -1586,6 +1596,8 @@ button{cursor:pointer;font-family:inherit}
 .subtabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
 .subtabs button{padding:7px 13px;border:1px solid var(--line);background:var(--surface);color:var(--ink-muted);border-radius:9px;font-size:12.5px;font-weight:700;}
 .subtabs button.on{background:var(--coral-soft);color:var(--coral);border-color:var(--coral);}
+.azionirapide{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+.azionirapide .add{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
 .cal-day.hasev{background:var(--coral-soft);}
 .cal-day.hasev.today{background:var(--coral);}
 .filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
