@@ -19,7 +19,7 @@ type Alloggio = {
   emoji: string | null; wifiSsid: string | null; immobile: string; indirizzo: string;
   trasmetteAlloggiati: boolean; impostaSoggiornoComune: string | null;
 };
-type Ospite = { id: string; nome: string; cognome: string; telefono: string | null; email: string | null; valutazione: string; note: string | null };
+type Ospite = { id: string; nome: string; cognome: string; telefono: string | null; email: string | null; codice_fiscale: string | null; valutazione: string; note: string | null };
 type RigaMese = { immobile: string; proprietario: string; prenotazioni: number; lordo: number; utile: number; nettoProprietario: number };
 type AlloggioDb = {
   id: string; nome: string; regime_fiscale: string; costo_pulizia: string; attivo: boolean;
@@ -145,6 +145,7 @@ export default function Nuovo() {
   const [sinfoniaImm, setSinfoniaImm] = useState<string | null>(null);
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
+  const [qOspiti, setQOspiti] = useState('');
 
   async function inviaModale(vals: Record<string, unknown>) {
     if (!modale) return;
@@ -372,21 +373,46 @@ export default function Nuovo() {
         </div>
       )}
 
-      {tab === 'ospiti' && (
-        <div className="card">
-          <h2>Ospiti <small>({dati.ospiti.length})</small></h2>
-          <div className="tablescroll">
-            <table className="tbl full">
-              <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th></tr></thead>
-              <tbody>
-                {dati.ospiti.map((o) => (
-                  <tr key={o.id}><td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono || '—'}</td><td>{o.email || '—'}</td><td>{o.valutazione}</td></tr>
-                ))}
-              </tbody>
-            </table>
+      {tab === 'ospiti' && (() => {
+        const campiOspite: Campo[] = [
+          { k: 'cognome', label: 'Cognome', req: true }, { k: 'nome', label: 'Nome', req: true },
+          { k: 'telefono', label: 'Telefono' }, { k: 'email', label: 'Email' },
+          { k: 'codiceFiscale', label: 'Codice fiscale' },
+          { k: 'valutazione', label: 'Valutazione', tipo: 'select', opzioni: [{ v: 'Neutro', t: 'Neutro' }, { v: 'Buono', t: 'Buono' }, { v: 'Problematico', t: 'Problematico' }] },
+          { k: 'note', label: 'Note' },
+        ];
+        const q = qOspiti.trim().toLowerCase();
+        const lista = q
+          ? dati.ospiti.filter((o) => `${o.cognome} ${o.nome} ${o.telefono ?? ''} ${o.email ?? ''}`.toLowerCase().includes(q))
+          : dati.ospiti;
+        return (
+          <div className="card">
+            <div className="cardhead">
+              <h2>Ospiti <small>({lista.length}{q ? ` di ${dati.ospiti.length}` : ''})</small></h2>
+              {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: 'Nuovo ospite', azione: 'crea-ospite', campi: campiOspite, iniziali: { valutazione: 'Neutro' } })}>＋ Ospite</button>}
+            </div>
+            <input className="cerca" placeholder="Cerca per nome, cognome, telefono, email…" value={qOspiti} onChange={(e) => setQOspiti(e.target.value)} />
+            <div className="tablescroll">
+              <table className="tbl full">
+                <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th></tr></thead>
+                <tbody>
+                  {lista.map((o) => (
+                    <tr key={o.id} className={sess.puoModificare ? 'clic' : undefined}
+                      onClick={() => sess.puoModificare && setModale({
+                        titolo: `${o.cognome} ${o.nome}`.trim(), azione: 'aggiorna-ospite', id: o.id, campi: campiOspite,
+                        iniziali: { cognome: o.cognome, nome: o.nome, telefono: o.telefono ?? '', email: o.email ?? '', codiceFiscale: o.codice_fiscale ?? '', valutazione: o.valutazione, note: o.note ?? '' },
+                      })}>
+                      <td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono || '—'}</td><td>{o.email || '—'}</td>
+                      <td><span className={`vchip v-${o.valutazione}`}>{o.valutazione}</span></td>
+                    </tr>
+                  ))}
+                  {lista.length === 0 && <tr><td colSpan={5} className="empty">Nessun ospite trovato.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {tab === 'immobili' && (
         <div className="grid">
@@ -1138,6 +1164,13 @@ button{cursor:pointer;font-family:inherit}
 .rendtot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--coral-soft);border-radius:12px;}
 .rendtot span{font-weight:700;}
 .rendtot b{font-size:22px;color:var(--coral);}
+.cerca{width:100%;padding:10px 12px;margin:10px 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:15px;font-family:inherit;}
+.tbl tr.clic{cursor:pointer;}
+.tbl tr.clic:hover td{background:var(--coral-soft);}
+.vchip{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;}
+.v-Buono{background:#1FAA6E22;color:#1FAA6E;}
+.v-Neutro{background:var(--line);color:var(--ink-muted);}
+.v-Problematico{background:#E5484D22;color:#E5484D;}
 .kpirow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
 .kpi{flex:1;min-width:130px;padding:12px 14px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:12px;}
 .kpi span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted);}
