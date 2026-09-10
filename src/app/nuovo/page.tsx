@@ -135,6 +135,8 @@ export default function Nuovo() {
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [nuovaPren, setNuovaPren] = useState(false);
+  const [preventivo, setPreventivo] = useState(false);
+  const [sinfoniaImm, setSinfoniaImm] = useState<string | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
 
   async function inviaModale(vals: Record<string, unknown>) {
@@ -291,7 +293,10 @@ export default function Nuovo() {
         <div className="card">
           <div className="cardhead">
             <h2>Prenotazioni <small>({dati.prenotazioni.length})</small></h2>
-            {sess.puoModificare && <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>}
+            {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
+              <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
+            </div>}
           </div>
           <div className="tablescroll">
             <table className="tbl full">
@@ -353,6 +358,7 @@ export default function Nuovo() {
               {pr.immobili.map((im) => (
                 <div key={im.id} className="imm">
                   <div className="cardhead"><h3>{im.nome} <small>· {im.comune}{im.cin ? ` · CIN ${im.cin}` : ''}</small></h3>
+                    {sess.ruolo === 'Titolare' && im.alloggi.some((a) => a.trasmette_regione) && <button className="add" onClick={() => setSinfoniaImm(im.id)}>Sinfonia</button>}
                     {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
                       { k: 'immobileId', label: 'Immobile', tipo: 'select', opzioni: pr.immobili.map((x) => ({ v: x.id, t: x.nome })) },
                       { k: 'nome', label: 'Nome (es. Il Tulipano)', req: true },
@@ -439,6 +445,8 @@ export default function Nuovo() {
         onClose={() => setNuovaPren(false)} onSalvato={async () => { setNuovaPren(false); await carica(); }} />}
       {modale && <FormModale titolo={modale.titolo} campi={modale.campi} iniziali={modale.iniziali}
         onInvia={inviaModale} onClose={() => setModale(null)} />}
+      {preventivo && <Preventivo alloggi={dati.alloggi} onClose={() => setPreventivo(false)} />}
+      {sinfoniaImm && <SinfoniaBox immobileId={sinfoniaImm} oggi={oggi} onClose={() => setSinfoniaImm(null)} />}
     </div>
   );
 }
@@ -650,6 +658,9 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             </tbody></table>
             {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
             {p.note && <p className="sub">{p.note}</p>}
+            <p style={{ marginTop: 10 }}>
+              <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Conferma per l&apos;ospite</a>
+            </p>
             {puoModificare && p.stato === 'Attiva' && (
               <div className="modalactions">
                 <button className="add" onClick={() => setModifica(true)}>Modifica</button>
@@ -744,6 +755,71 @@ function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
         </div>
         {err && <p className="err">{err}</p>}
         <p className="empty" style={{ marginTop: 8 }}>Non crea l&apos;evento su Google Calendar (lo farà dopo il passaggio). Resta nel database anche dopo il sync col foglio.</p>
+      </div>
+    </div>
+  );
+}
+
+function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => void }) {
+  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzo: '', cliente: '', note: '' });
+  const url = `/api/nuovo/documento?tipo=preventivo&alloggio=${f.alloggioId}&checkin=${f.checkin}&checkout=${f.checkout}&ospiti=${f.ospiti}&prezzo=${f.prezzo}&cliente=${encodeURIComponent(f.cliente)}&note=${encodeURIComponent(f.note)}`;
+  const pronto = f.alloggioId && f.checkin && f.checkout && f.prezzo;
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={onClose}>✕</button>
+        <h2>Preventivo</h2>
+        <div className="form">
+          <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
+          <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
+          <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
+          <label>Ospiti<input type="number" min="1" value={f.ospiti} onChange={(e) => setF({ ...f, ospiti: e.target.value })} /></label>
+          <label>Prezzo totale €<input type="number" step="0.01" value={f.prezzo} onChange={(e) => setF({ ...f, prezzo: e.target.value })} /></label>
+          <label>Nome cliente<input value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} /></label>
+          <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+        </div>
+        <div className="modalactions">
+          {pronto ? <a className="add" href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Genera PDF</a> : <button className="add" disabled>Compila i campi</button>}
+          <button onClick={onClose}>Chiudi</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SinfoniaBox({ immobileId, oggi, onClose }: { immobileId: string; oggi: string; onClose: () => void }) {
+  const now = new Date(oggi);
+  const [anno, setAnno] = useState(now.getFullYear());
+  const [mese, setMese] = useState(now.getMonth() + 1);
+  const [r, setR] = useState<{ contenuto: string; totaleArrivi: number; totalePartenze: number; avvisi: string[]; righe: unknown[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setBusy(true);
+    fetch(`/api/nuovo/sinfonia?immobile=${immobileId}&anno=${anno}&mese=${mese}`)
+      .then((x) => x.json()).then((d) => setR(d.ok ? d : null)).finally(() => setBusy(false));
+  }, [immobileId, anno, mese]);
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={onClose}>✕</button>
+        <h2>File Sinfonia (portale regionale)</h2>
+        <div className="rendctl">
+          <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>{Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{new Date(2000, i).toLocaleDateString('it-IT', { month: 'long' })}</option>)}</select>
+          <select value={anno} onChange={(e) => setAnno(Number(e.target.value))}>{[now.getFullYear() - 1, now.getFullYear()].map((y) => <option key={y} value={y}>{y}</option>)}</select>
+        </div>
+        {busy ? <p className="empty">Genero…</p> : !r ? <p className="err">Errore.</p> : (
+          <>
+            <p className="sub">Arrivi: {r.totaleArrivi} · Partenze: {r.totalePartenze} · {r.righe.length} righe</p>
+            {r.avvisi.map((a, i) => <p key={i} className="err">⚠️ {a}</p>)}
+            <pre style={{ background: 'var(--bg)', padding: 10, borderRadius: 8, fontSize: 12, overflowX: 'auto', maxHeight: 200 }}>{r.contenuto || '(nessun movimento nel mese)'}</pre>
+            <div className="modalactions">
+              <a className="add" href={`/api/nuovo/sinfonia?immobile=${immobileId}&anno=${anno}&mese=${mese}&scarica=1`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>⬇️ Scarica .txt</a>
+            </div>
+            <p className="empty" style={{ marginTop: 8 }}>Bozza: la provenienza degli ospiti è stimata dove manca la schedina. Da confrontare col portale Sinfonia reale prima dell&apos;invio.</p>
+          </>
+        )}
       </div>
     </div>
   );
