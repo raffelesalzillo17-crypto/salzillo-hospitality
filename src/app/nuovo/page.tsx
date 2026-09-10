@@ -45,14 +45,20 @@ type Dati = {
   riepilogoMese: RigaMese[]; cosaManca: CosaManca;
   categorieSpesa?: { id: string; nome: string }[];
 };
+type SintesiMese = { anno: number; mese: number; prenotazioni: number; lordo: number; nettoProprietario: number };
 type Rendiconto = {
   proprietario: string; anno: number; mese: number;
+  ambito: { etichetta: string; tipo: 'tutto' | 'immobile' | 'alloggio'; immobileId: string | null; alloggioId: string | null };
   righe: { id: string; checkin: string; checkout: string; alloggio: string; immobile: string; canale: string;
     ospite: string; lordo: string; commissione: string; cedolare: string; costoPulizia: string;
     feeGestione: string; utile: string; nettoProprietario: string }[];
   spese: { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string }[];
   totali: { lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
-    utile: number; nettoProprietario: number; totSpese: number; nettoFinale: number; impostaSoggiorno: number };
+    utile: number; nettoProprietario: number; totSpese: number; nettoFinale: number; impostaSoggiorno: number; numPrenotazioni: number };
+  confronti: {
+    meseScorso: SintesiMese; annoScorso: SintesiMese;
+    previsione: { anno: number; mese: number; acquisito: Omit<SintesiMese, 'anno' | 'mese'>; annoScorso: Omit<SintesiMese, 'anno' | 'mese'> };
+  };
 };
 
 const eur = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
@@ -506,20 +512,27 @@ export default function Nuovo() {
 // ── Rendiconti proprietario ────────────────────────────────────────────────
 function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string }) {
   const [propId, setPropId] = useState(anagrafica[0]?.id ?? '');
+  const [ambito, setAmbito] = useState(''); // '' = tutti; 'imm:<id>' | 'all:<id>'
   const now = new Date(oggi);
   const [anno, setAnno] = useState(now.getFullYear());
   const [mese, setMese] = useState(now.getMonth() + 1);
   const [r, setR] = useState<Rendiconto | null>(null);
   const [caricando, setCaricando] = useState(false);
 
+  const prop = anagrafica.find((p) => p.id === propId);
+  const ambitoQ = ambito.startsWith('imm:') ? `&immobile=${ambito.slice(4)}` : ambito.startsWith('all:') ? `&alloggio=${ambito.slice(4)}` : '';
+
+  useEffect(() => { setAmbito(''); }, [propId]);
   useEffect(() => {
     if (!propId) return;
     setCaricando(true);
-    fetch(`/api/nuovo/rendiconto?proprietario=${propId}&anno=${anno}&mese=${mese}`)
+    fetch(`/api/nuovo/rendiconto?proprietario=${propId}&anno=${anno}&mese=${mese}${ambitoQ}`)
       .then((x) => x.json()).then((d) => setR(d.ok ? d.rendiconto : null)).finally(() => setCaricando(false));
-  }, [propId, anno, mese]);
+  }, [propId, anno, mese, ambitoQ]);
 
   const meseNome = new Date(anno, mese - 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  const meseBreve = (a: number, m: number) => new Date(a, m - 1).toLocaleDateString('it-IT', { month: 'long' });
+  const pdfHref = `/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}${ambitoQ}`;
 
   return (
     <div className="card">
@@ -534,10 +547,40 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
           {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
+      {prop && (prop.immobili.length > 1 || prop.immobili.some((i) => i.alloggi.length > 1)) && (
+        <div className="rendctl" style={{ marginTop: 8 }}>
+          <select value={ambito} onChange={(e) => setAmbito(e.target.value)} style={{ minWidth: 220 }}>
+            <option value="">Tutti gli immobili di {prop.nome}</option>
+            {prop.immobili.map((im) => (
+              <optgroup key={im.id} label={im.nome}>
+                <option value={`imm:${im.id}`}>{im.nome} — tutto l&apos;immobile</option>
+                {im.alloggi.map((al) => <option key={al.id} value={`all:${al.id}`}>{al.nome}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
       {caricando ? <p className="empty">Carico…</p> : !r ? <p className="empty">Nessun dato.</p> : (
         <>
           <h2>{r.proprietario} · <span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
-          {r.righe.length === 0 ? <p className="empty">Nessuna prenotazione questo mese.</p> : (
+          {r.ambito.tipo !== 'tutto' && <p className="sub" style={{ marginTop: -6 }}>{r.ambito.etichetta}</p>}
+
+          <div className="kpirow">
+            <div className="kpi"><span>Prenotazioni</span><b>{r.totali.numPrenotazioni}</b></div>
+            <div className="kpi"><span>Incassato lordo</span><b>{eur(r.totali.lordo)}</b></div>
+            <div className="kpi coral"><span>Spetta al proprietario</span><b>{eur(r.totali.nettoFinale)}</b></div>
+          </div>
+
+          <table className="tbl" style={{ marginTop: 16 }}>
+            <thead><tr><th>Confronto</th><th className="num">Prenot.</th><th className="num">Lordo</th><th className="num">Netto propr.</th></tr></thead>
+            <tbody>
+              <tr><td><b><span style={{ textTransform: 'capitalize' }}>{meseNome}</span></b></td><td className="num strong">{r.totali.numPrenotazioni}</td><td className="num">{eur(r.totali.lordo)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td></tr>
+              <tr><td style={{ textTransform: 'capitalize' }}>Mese scorso ({meseBreve(r.confronti.meseScorso.anno, r.confronti.meseScorso.mese)})</td><td className="num">{r.confronti.meseScorso.prenotazioni}</td><td className="num">{eur(r.confronti.meseScorso.lordo)}</td><td className="num">{eur(r.confronti.meseScorso.nettoProprietario)}</td></tr>
+              <tr><td>Stesso mese {anno - 1}</td><td className="num">{r.confronti.annoScorso.prenotazioni}</td><td className="num">{eur(r.confronti.annoScorso.lordo)}</td><td className="num">{eur(r.confronti.annoScorso.nettoProprietario)}</td></tr>
+            </tbody>
+          </table>
+
+          {r.righe.length === 0 ? <p className="empty" style={{ marginTop: 12 }}>Nessuna prenotazione questo mese.</p> : (
             <div className="tablescroll">
               <table className="tbl full">
                 <thead><tr><th>Check-in</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Commiss.</th><th className="num">Cedolare</th><th className="num">Pulizia</th><th className="num">Fee</th><th className="num">Netto propr.</th></tr></thead>
@@ -569,13 +612,21 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
               </tbody>
             </table>
           )}
+          <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: −{eur(r.totali.costoPulizia)} · Fee di gestione: −{eur(r.totali.feeGestione)}</p>
           {r.totali.impostaSoggiorno > 0 && <p className="sub">Imposta di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
+
+          <div className="previsione">
+            <span>Previsione <span style={{ textTransform: 'capitalize' }}>{meseBreve(r.confronti.previsione.anno, r.confronti.previsione.mese)}</span></span>
+            <p>Già acquisite <b>{r.confronti.previsione.acquisito.prenotazioni} prenotazioni</b> per {eur(r.confronti.previsione.acquisito.lordo)} di lordo.</p>
+            <p className="empty">Stesso mese l&apos;anno scorso: {r.confronti.previsione.annoScorso.prenotazioni} prenotazioni, {eur(r.confronti.previsione.annoScorso.lordo)} di lordo.</p>
+          </div>
+
           <div className="rendtot">
             <span>Spetta al proprietario</span>
             <b>{eur(r.totali.nettoFinale)}</b>
           </div>
           <p style={{ marginTop: 12 }}>
-            <a className="sync" href={`/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
+            <a className="sync" href={pdfHref} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
           </p>
           <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
         </>
@@ -814,7 +865,8 @@ function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
 }
 
 function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => void }) {
-  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzoNotte: '', prezzo: '', cliente: '', note: '' });
+  const [f, setF] = useState({ alloggioId: alloggi[0]?.id ?? '', checkin: '', checkout: '', ospiti: '2', prezzoNotte: '', prezzo: '', sconto: '', scontoTipo: 'euro', cliente: '', tel: '', ore: '24', note: '' });
+  const [vediAnteprima, setVediAnteprima] = useState(false);
 
   const nnotti = f.checkin && f.checkout ? Math.max(0, Math.round((Date.parse(f.checkout) - Date.parse(f.checkin)) / 864e5)) : 0;
   // quando cambia il prezzo/notte o le date, ricalcola il totale; e viceversa
@@ -827,13 +879,31 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
     setF((s) => ({ ...s, prezzo: v, prezzoNotte: pn }));
   }
 
+  const totLordo = f.prezzo ? Number(f.prezzo) : (f.prezzoNotte && nnotti ? Number(f.prezzoNotte) * nnotti : 0);
+  const scontoNum = Number(f.sconto) || 0;
+  const scontoEuro = scontoNum > 0 ? (f.scontoTipo === 'percento' ? Math.round(totLordo * scontoNum) / 100 : scontoNum) : 0;
+  const totFinale = Math.max(0, Math.round((totLordo - scontoEuro) * 100) / 100);
+
   const q = new URLSearchParams({
     tipo: 'preventivo', alloggio: f.alloggioId, checkin: f.checkin, checkout: f.checkout,
-    ospiti: f.ospiti, cliente: f.cliente, note: f.note,
+    ospiti: f.ospiti, cliente: f.cliente, tel: f.tel, ore: f.ore || '24', note: f.note,
     ...(f.prezzoNotte ? { prezzoNotte: f.prezzoNotte } : {}), ...(f.prezzo ? { prezzo: f.prezzo } : {}),
+    ...(scontoNum > 0 ? { sconto: f.sconto, scontoTipo: f.scontoTipo } : {}),
   });
   const url = `/api/nuovo/documento?${q.toString()}`;
   const pronto = f.alloggioId && f.checkin && f.checkout && nnotti > 0 && (f.prezzo || f.prezzoNotte);
+
+  const nomeAlloggio = alloggi.find((a) => a.id === f.alloggioId)?.nome ?? '';
+  const telPulito = f.tel.replace(/[^\d]/g, '');
+  const msgWa = [
+    `Ciao${f.cliente ? ' ' + f.cliente.split(' ')[0] : ''}! Ecco il preventivo per ${nomeAlloggio}:`,
+    `Check-in ${f.checkin ? dataIt(f.checkin) : '—'} · Check-out ${f.checkout ? dataIt(f.checkout) : '—'} (${nnotti} notti)`,
+    `Totale: ${eur(totFinale)}${scontoEuro > 0 ? ` (sconto −${eur(scontoEuro)})` : ''}`,
+    `Hai ${f.ore || '24'} ore per confermare: entro questo termine tengo l'alloggio bloccato per te, poi le date tornano disponibili.`,
+    `Cancellazione gratuita fino a 48h prima del check-in.`,
+    `Ti allego il PDF con tutti i dettagli.`,
+  ].join('\n');
+  const waUrl = `https://wa.me/${telPulito.length >= 9 ? (telPulito.length === 10 ? '39' + telPulito : telPulito) : ''}?text=${encodeURIComponent(msgWa)}`;
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -848,11 +918,33 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
           <label>Ospiti<input type="number" min="1" value={f.ospiti} onChange={(e) => setF({ ...f, ospiti: e.target.value })} /></label>
           <label>Prezzo a notte €<input type="number" step="0.01" value={f.prezzoNotte} onChange={(e) => setNotte(e.target.value)} /></label>
           <label>Prezzo totale € <span style={{ fontWeight: 400 }}>(o compila questo)</span><input type="number" step="0.01" value={f.prezzo} onChange={(e) => setTotale(e.target.value)} /></label>
+          <label>Sconto <span style={{ fontWeight: 400 }}>(facoltativo)</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="number" step="0.01" min="0" value={f.sconto} onChange={(e) => setF({ ...f, sconto: e.target.value })} style={{ flex: 1 }} />
+              <select value={f.scontoTipo} onChange={(e) => setF({ ...f, scontoTipo: e.target.value })} style={{ width: 64 }}>
+                <option value="euro">€</option>
+                <option value="percento">%</option>
+              </select>
+            </div>
+          </label>
+          {totLordo > 0 && <p className="sub">{scontoEuro > 0 ? `Totale scontato: ${eur(totFinale)}  (sconto −${eur(scontoEuro)})` : `Totale: ${eur(totFinale)}`}</p>}
           <label>Nome cliente<input value={f.cliente} onChange={(e) => setF({ ...f, cliente: e.target.value })} /></label>
+          <label>Telefono cliente <span style={{ fontWeight: 400 }}>(per WhatsApp)</span><input type="tel" inputMode="tel" placeholder="es. 333 1234567" value={f.tel} onChange={(e) => setF({ ...f, tel: e.target.value })} /></label>
+          <label>Ore per confermare <span style={{ fontWeight: 400 }}>(blocco alloggio)</span><input type="number" min="1" value={f.ore} onChange={(e) => setF({ ...f, ore: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
         </div>
+        {pronto && vediAnteprima && (
+          <div style={{ marginTop: 12 }}>
+            <iframe src={url} title="Anteprima preventivo" style={{ width: '100%', height: 460, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }} />
+            <p className="empty" style={{ marginTop: 4 }}>È quello che vedrà l&apos;ospite. Il PDF resta salvato: puoi ri-aprirlo quando vuoi.</p>
+          </div>
+        )}
         <div className="modalactions">
-          {pronto ? <a className="add" href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Genera PDF</a> : <button className="add" disabled>Compila i campi</button>}
+          {pronto
+            ? <button className="add" onClick={() => setVediAnteprima((v) => !v)}>{vediAnteprima ? 'Nascondi anteprima' : '👁 Vedi anteprima'}</button>
+            : <button className="add" disabled>Compila i campi</button>}
+          {pronto && telPulito.length >= 9 && <a className="sync" href={waUrl} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 Scrivi su WhatsApp</a>}
+          {pronto && <a href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none', alignSelf: 'center', fontSize: 13, color: 'var(--ink-muted)' }}>apri a schermo intero</a>}
           <button onClick={onClose}>Chiudi</button>
         </div>
       </div>
@@ -1043,6 +1135,15 @@ button{cursor:pointer;font-family:inherit}
 .rendtot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--coral-soft);border-radius:12px;}
 .rendtot span{font-weight:700;}
 .rendtot b{font-size:22px;color:var(--coral);}
+.kpirow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+.kpi{flex:1;min-width:130px;padding:12px 14px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:12px;}
+.kpi span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted);}
+.kpi b{display:block;margin-top:4px;font-size:19px;}
+.kpi.coral{background:var(--coral-soft);}
+.kpi.coral b{color:var(--coral);}
+.previsione{margin-top:16px;padding:12px 16px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:12px;}
+.previsione>span{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted);}
+.previsione p{margin:4px 0 0;font-size:13px;}
 .tree{font-size:13px;line-height:1.5;}
 .tn{position:relative;}
 .tn span{color:var(--ink-muted);font-weight:400;}

@@ -19,8 +19,11 @@ export async function GET(req: NextRequest) {
   if (sess.ruolo === 'Proprietario' && sess.proprietarioId !== proprietarioId) {
     return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 403 });
   }
+  const immobileId = req.nextUrl.searchParams.get('immobile') || undefined;
+  const alloggioId = req.nextUrl.searchParams.get('alloggio') || undefined;
+  const ambito = alloggioId ? { alloggioId } : immobileId ? { immobileId } : undefined;
   try {
-    const r = await rendicontoProprietarioDb(proprietarioId, anno, mese);
+    const r = await rendicontoProprietarioDb(proprietarioId, anno, mese, ambito);
     if (!r) return NextResponse.json({ ok: false, error: 'Proprietario non trovato' }, { status: 404 });
     return NextResponse.json({ ok: true, rendiconto: r });
   } catch (err) {

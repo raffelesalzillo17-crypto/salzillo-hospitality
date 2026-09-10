@@ -22,7 +22,10 @@ export async function GET(req: NextRequest) {
         numeroOspiti: Number(q.get('ospiti') || '1'),
         prezzo: q.get('prezzo') ? Number(q.get('prezzo')) : undefined,
         prezzoNotte: q.get('prezzoNotte') ? Number(q.get('prezzoNotte')) : undefined,
-        nomeCliente: q.get('cliente') || undefined, note: q.get('note') || undefined,
+        sconto: q.get('sconto') ? Number(q.get('sconto')) : undefined,
+        scontoTipo: q.get('scontoTipo') === 'percento' ? 'percento' : q.get('scontoTipo') === 'euro' ? 'euro' : undefined,
+        nomeCliente: q.get('cliente') || undefined, telefonoCliente: q.get('tel') || undefined,
+        validoOre: q.get('ore') ? Number(q.get('ore')) : undefined, note: q.get('note') || undefined,
       });
     } else if (tipo === 'contratto-gestione') {
       out = await pdfContrattoGestione(q.get('contratto') || '');

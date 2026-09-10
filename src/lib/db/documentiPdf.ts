@@ -4,10 +4,11 @@
  * Il rendiconto proprietario ha il suo file a parte (/api/nuovo/rendiconto/pdf).
  */
 
-import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { eq } from 'drizzle-orm';
 import { getDb } from './index';
 import { prenotazioni, ospiti, alloggi, immobili, proprietari, contrattiGestione } from './schema';
+import { LOGO_SALZILLO_PNG_BASE64 } from './logoSalzillo';
 
 const CORAL = rgb(1, 0.353, 0.373);
 const INK = rgb(0.11, 0.11, 0.12);
@@ -32,13 +33,14 @@ function pulisci(s: unknown): string {
 }
 
 class Foglio {
-  pdf!: PDFDocument; page!: PDFPage; font!: PDFFont; bold!: PDFFont; y = 790;
+  pdf!: PDFDocument; page!: PDFPage; font!: PDFFont; bold!: PDFFont; logo?: PDFImage; y = 790;
   static async crea() {
     const f = new Foglio();
     f.pdf = await PDFDocument.create();
     f.page = f.pdf.addPage([595.28, 841.89]);
     f.font = await f.pdf.embedFont(StandardFonts.Helvetica);
     f.bold = await f.pdf.embedFont(StandardFonts.HelveticaBold);
+    try { f.logo = await f.pdf.embedPng(Buffer.from(LOGO_SALZILLO_PNG_BASE64, 'base64')); } catch { /* logo opzionale */ }
     return f;
   }
   t(s: string, x = 50, size = 10, grassetto = false, color = INK) {
@@ -47,11 +49,19 @@ class Foglio {
   nl(n = 15) { this.y -= n; if (this.y < 60) { this.page = this.pdf.addPage([595.28, 841.89]); this.y = 790; } }
   riga(y?: number) { const yy = y ?? this.y; this.page.drawLine({ start: { x: 50, y: yy }, end: { x: 545, y: yy }, thickness: 0.7, color: MUTED }); }
   intestazione(titolo: string) {
-    this.t('SALZILLO HOSPITALITY', 50, 9, true, CORAL); this.nl(14);
-    this.t(titolo, 50, 20, true); this.nl(26);
+    if (this.logo) {
+      const w = 74, h = (w * this.logo.height) / this.logo.width;
+      this.page.drawImage(this.logo, { x: 50, y: 836 - h, width: w, height: h });
+    } else {
+      this.page.drawText('SALZILLO HOSPITALITY', { x: 50, y: 818, size: 10, font: this.bold, color: CORAL });
+    }
+    this.page.drawText(pulisci(titolo), { x: 140, y: 800, size: 20, font: this.bold, color: INK });
+    this.y = 776;
+    this.riga(this.y); this.nl(18);
   }
   piede() {
     this.nl(30);
+    this.riga(this.y + 8);
     this.t(`Documento generato il ${new Date().toLocaleDateString('it-IT')} — Salzillo Hospitality`, 50, 7, false, MUTED);
   }
   async salva() { return this.pdf.save(); }
@@ -106,7 +116,8 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
 // ── Preventivo (per diretto / No Tax) ──────────────────────────────────────
 export async function pdfPreventivo(opts: {
   alloggioId: string; checkin: string; checkout: string; numeroOspiti: number;
-  prezzo?: number; prezzoNotte?: number; nomeCliente?: string; note?: string;
+  prezzo?: number; prezzoNotte?: number; sconto?: number; scontoTipo?: 'euro' | 'percento';
+  nomeCliente?: string; telefonoCliente?: string; validoOre?: number; note?: string;
 }): Promise<{ bytes: Uint8Array; nome: string } | null> {
   const db = getDb();
   const [a] = await db.select({ nome: alloggi.nome, immobile: immobili.nome, indirizzo: immobili.indirizzo, comune: immobili.comune })
@@ -115,11 +126,23 @@ export async function pdfPreventivo(opts: {
   const n = notti(opts.checkin, opts.checkout);
   // si può dare il totale OPPURE il prezzo a notte: l'altro si calcola
   const prezzoNotte = opts.prezzoNotte ?? (opts.prezzo ? opts.prezzo / n : 0);
-  const totale = opts.prezzo ?? Math.round(prezzoNotte * n * 100) / 100;
+  const totalePieno = opts.prezzo ?? Math.round(prezzoNotte * n * 100) / 100;
+  // sconto facoltativo: in euro o in percentuale sul totale pieno
+  const sconto = opts.sconto && opts.sconto > 0
+    ? (opts.scontoTipo === 'percento' ? Math.round(totalePieno * opts.sconto) / 100 : Math.round(opts.sconto * 100) / 100)
+    : 0;
+  const totale = Math.round((totalePieno - sconto) * 100) / 100;
+
+  const oggi = new Date();
+  const dataOggiIt = `${String(oggi.getDate()).padStart(2, '0')}/${String(oggi.getMonth() + 1).padStart(2, '0')}/${oggi.getFullYear()}`;
 
   const f = await Foglio.crea();
   f.intestazione('Preventivo');
-  if (opts.nomeCliente) { f.t(`Per: ${opts.nomeCliente}`, 50, 10, false, MUTED); f.nl(18); }
+  f.t(`Data preventivo: ${dataOggiIt}`, 50, 9, false, MUTED); f.nl(15);
+  if (opts.nomeCliente || opts.telefonoCliente) {
+    const chi = [opts.nomeCliente, opts.telefonoCliente].filter(Boolean).join('  -  ');
+    f.t(`Per: ${chi}`, 50, 10, true); f.nl(18);
+  }
   f.riga(); f.nl(14);
   for (const [k, v] of [
     ['Alloggio', `${a.nome} - ${a.immobile}`], ['Indirizzo', `${a.indirizzo}, ${a.comune}`],
@@ -128,12 +151,34 @@ export async function pdfPreventivo(opts: {
     ['Prezzo a notte', eur(prezzoNotte)],
   ] as [string, string][]) { f.t(k, 50, 9, true); f.t(v, 200, 9); f.nl(15); }
   f.nl(8); f.riga(); f.nl(16);
+  if (sconto > 0) {
+    f.t('Prezzo pieno', 50, 10, true); f.page.drawText(eur(totalePieno), { x: 430, y: f.y, size: 11, font: f.bold, color: MUTED }); f.nl(15);
+    const etich = opts.scontoTipo === 'percento' ? `Sconto ${opts.sconto}%` : 'Sconto';
+    f.t(etich, 50, 10, true, CORAL); f.page.drawText(`- ${eur(sconto)}`, { x: 430, y: f.y, size: 11, font: f.bold, color: CORAL }); f.nl(16);
+  }
   f.t('Totale soggiorno', 50, 11, true); f.page.drawText(eur(totale), { x: 430, y: f.y, size: 13, font: f.bold, color: CORAL }); f.nl(16);
-  f.t(`${n} notti x ${eur(prezzoNotte)}`, 50, 8, false, MUTED); f.nl(20);
-  if (opts.note) { for (const l of spezza(opts.note, 95)) { f.t(l, 50, 9, false, MUTED); f.nl(12); } f.nl(6); }
-  f.t('Preventivo valido 7 giorni. Per confermare risponda a questo messaggio.', 50, 9, false, MUTED);
+  f.t(`${n} notti x ${eur(prezzoNotte)}${sconto > 0 ? `  -  sconto ${eur(sconto)}` : ''}`, 50, 8, false, MUTED); f.nl(20);
+  if (opts.note) { f.nl(4); for (const l of spezza(opts.note, 95)) { f.t(l, 50, 9, false, MUTED); f.nl(12); } }
+  f.nl(10); f.riga(); f.nl(14);
+  f.t('Condizioni di cancellazione', 50, 9, true); f.nl(13);
+  for (const l of [
+    'Cancellazione gratuita fino a 48 ore prima del check-in: rimborso completo.',
+    "Entro le 48 ore prima del check-in, o in caso di mancato arrivo, l'importo non e' rimborsabile.",
+  ]) { f.t(l, 50, 9, false, MUTED); f.nl(12); }
+  f.nl(10);
+  const ore = opts.validoOre && opts.validoOre > 0 ? Math.round(opts.validoOre) : 24;
+  f.t('Validita e prenotazione', 50, 9, true); f.nl(13);
+  for (const l of [
+    `Questo preventivo e' valido ${ore} ore dall'invio.`,
+    `Entro questo termine teniamo l'alloggio bloccato e riservato a lei per le date indicate.`,
+    `Trascorse le ${ore} ore senza conferma, le date tornano disponibili per altri ospiti.`,
+    `Per confermare risponda a questo messaggio.`,
+  ]) { f.t(l, 50, 9, false, MUTED); f.nl(12); }
   f.piede();
-  return { bytes: await f.salva(), nome: `preventivo-${a.nome}-${opts.checkin}.pdf`.toLowerCase().replace(/\s+/g, '-') };
+  const slug = (s: string) => s.toLowerCase().replace(/[àáâä]/g, 'a').replace(/[èéêë]/g, 'e').replace(/[ìíîï]/g, 'i').replace(/[òóôö]/g, 'o').replace(/[ùúûü]/g, 'u').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const dataFile = `${String(oggi.getDate()).padStart(2, '0')}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${oggi.getFullYear()}`;
+  const chi = opts.nomeCliente ? `-${slug(opts.nomeCliente)}` : '';
+  return { bytes: await f.salva(), nome: `preventivo-${slug(a.nome)}${chi}-${dataFile}.pdf` };
 }
 
 // ── Contratto di gestione (tra Salzillo Hospitality e il proprietario) ─────

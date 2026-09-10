@@ -8,7 +8,7 @@
  * a una variabile d'ambiente.
  */
 
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
@@ -223,13 +223,69 @@ export async function leggiPulizieDb() {
 
 // ── Riepiloghi (dashboard / rendiconti) ────────────────────────────────────
 
+/** Sintesi sintetica di un mese (n° prenotazioni, lordo, netto proprietario) — per i confronti. */
+async function sintesiRendiconto(
+  db: ReturnType<typeof getDb>, proprietarioId: string, anno: number, mese: number,
+  ambito: { immobileId?: string; alloggioId?: string } | undefined, stati: string[],
+) {
+  const [daISO, aISO] = estremiMese(anno, mese);
+  const conds = [
+    eq(immobili.proprietario_id, proprietarioId),
+    gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
+    inArray(prenotazioni.stato, stati as never[]),
+  ];
+  if (ambito?.immobileId) conds.push(eq(immobili.id, ambito.immobileId));
+  if (ambito?.alloggioId) conds.push(eq(alloggi.id, ambito.alloggioId));
+  const [row] = await db
+    .select({
+      n: sql<number>`count(*)::int`.as('n'),
+      lordo: sql<number>`coalesce(sum(${prenotazioni.lordo}), 0)`.as('lordo'),
+      nettoProprietario: sql<number>`coalesce(sum(${prenotazioni.netto_proprietario}), 0)`.as('netto_proprietario'),
+    })
+    .from(prenotazioni)
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .where(and(...conds));
+  return {
+    prenotazioni: Number(row?.n ?? 0),
+    lordo: Math.round(Number(row?.lordo ?? 0) * 100) / 100,
+    nettoProprietario: Math.round(Number(row?.nettoProprietario ?? 0) * 100) / 100,
+  };
+}
+
 /** Rendiconto di un proprietario per un mese: le prenotazioni con check-in in quel mese,
- *  la cascata economica per ciascuna, e i totali. Base per il PDF e la pagina proprietario. */
-export async function rendicontoProprietarioDb(proprietarioId: string, anno: number, mese: number) {
+ *  la cascata economica per ciascuna, i totali, i confronti (mese scorso, stesso mese anno
+ *  scorso) e la previsione per il mese successivo. Base per il PDF e la pagina proprietario.
+ *  `ambito` opzionale: limita a un singolo immobile o a un singolo alloggio del proprietario. */
+export async function rendicontoProprietarioDb(
+  proprietarioId: string, anno: number, mese: number,
+  ambito?: { immobileId?: string; alloggioId?: string },
+) {
   const db = getDb();
   const [daISO, aISO] = estremiMese(anno, mese);
   const [prop] = await db.select().from(proprietari).where(eq(proprietari.id, proprietarioId));
   if (!prop) return null;
+
+  // etichetta dell'ambito + immobile di riferimento per filtrare le spese
+  let ambitoEtichetta = 'Tutti gli immobili';
+  let speseImmobileId: string | undefined;
+  if (ambito?.alloggioId) {
+    const [al] = await db.select({ nome: alloggi.nome, immNome: immobili.nome, immId: immobili.id })
+      .from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+      .where(eq(alloggi.id, ambito.alloggioId));
+    if (al) { ambitoEtichetta = `${al.nome} — ${al.immNome}`; speseImmobileId = al.immId; }
+  } else if (ambito?.immobileId) {
+    const [im] = await db.select({ nome: immobili.nome }).from(immobili).where(eq(immobili.id, ambito.immobileId));
+    if (im) { ambitoEtichetta = im.nome; speseImmobileId = ambito.immobileId; }
+  }
+
+  const righeConds = [
+    eq(immobili.proprietario_id, proprietarioId),
+    gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
+    eq(prenotazioni.stato, 'Attiva'),
+  ];
+  if (ambito?.immobileId) righeConds.push(eq(immobili.id, ambito.immobileId));
+  if (ambito?.alloggioId) righeConds.push(eq(alloggi.id, ambito.alloggioId));
 
   const righe = await db
     .select({
@@ -246,19 +302,17 @@ export async function rendicontoProprietarioDb(proprietarioId: string, anno: num
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
     .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
     .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
-    .where(and(
-      eq(immobili.proprietario_id, proprietarioId),
-      gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
-      eq(prenotazioni.stato, 'Attiva'),
-    ))
+    .where(and(...righeConds))
     .orderBy(prenotazioni.checkin);
 
+  const speseConds = [eq(immobili.proprietario_id, proprietarioId), gte(spese.data, daISO), lte(spese.data, aISO)];
+  if (speseImmobileId) speseConds.push(eq(immobili.id, speseImmobileId));
   const speseRighe = await db
     .select({ id: spese.id, data: spese.data, descrizione: spese.descrizione, importo: spese.importo, categoria: categorieSpesa.nome, immobile: immobili.nome })
     .from(spese)
     .innerJoin(categorieSpesa, eq(categorieSpesa.id, spese.categoria_id))
     .innerJoin(immobili, eq(immobili.id, spese.immobile_id))
-    .where(and(eq(immobili.proprietario_id, proprietarioId), gte(spese.data, daISO), lte(spese.data, aISO)));
+    .where(and(...speseConds));
 
   // imposta di soggiorno per prenotazione: notti (cap max) × persone × importo/persona/notte
   const nottiDi = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(co) - Date.parse(ci)) / 864e5));
@@ -279,11 +333,40 @@ export async function rendicontoProprietarioDb(proprietarioId: string, anno: num
   }), { lordo: 0, commissione: 0, cedolare: 0, costoPulizia: 0, feeGestione: 0, utile: 0, nettoProprietario: 0, impostaSoggiorno: 0 });
   const totSpese = speseRighe.reduce((s, r) => s + Number(r.importo), 0);
 
+  // ── Confronti e previsione ──────────────────────────────────────────────
+  const [mesePrec, annoMesePrec] = mese === 1 ? [12, anno - 1] : [mese - 1, anno];
+  const [mesePros, annoMesePros] = mese === 12 ? [1, anno + 1] : [mese + 1, anno];
+  const ATTIVE = ['Attiva'];
+  const ACQUISITE = ['Attiva', 'In attesa di conferma'];
+
+  const [meseScorso, annoScorso, previstoAcquisito, previstoStorico] = await Promise.all([
+    sintesiRendiconto(db, proprietarioId, annoMesePrec, mesePrec, ambito, ATTIVE),
+    sintesiRendiconto(db, proprietarioId, anno - 1, mese, ambito, ATTIVE),
+    sintesiRendiconto(db, proprietarioId, annoMesePros, mesePros, ambito, ACQUISITE),
+    sintesiRendiconto(db, proprietarioId, annoMesePros - 1, mesePros, ambito, ATTIVE),
+  ]);
+
+  const nettoFinale = Math.round((t.nettoProprietario - totSpese) * 100) / 100;
+
   return {
     proprietario: prop.nome, anno, mese,
+    ambito: {
+      etichetta: ambitoEtichetta,
+      tipo: ambito?.alloggioId ? 'alloggio' : ambito?.immobileId ? 'immobile' : 'tutto',
+      immobileId: ambito?.immobileId ?? null, alloggioId: ambito?.alloggioId ?? null,
+    },
     righe: righe.map((r) => ({ ...r, ospite: `${r.ospiteNome} ${r.ospiteCognome}`.trim(), impostaSoggiorno: impostaDi(r) })),
     spese: speseRighe,
-    totali: { ...t, totSpese, nettoFinale: Math.round((t.nettoProprietario - totSpese) * 100) / 100 },
+    totali: { ...t, totSpese, nettoFinale, numPrenotazioni: righe.length },
+    confronti: {
+      meseScorso: { anno: annoMesePrec, mese: mesePrec, ...meseScorso },
+      annoScorso: { anno: anno - 1, mese, ...annoScorso },
+      previsione: {
+        anno: annoMesePros, mese: mesePros,
+        acquisito: previstoAcquisito,
+        annoScorso: previstoStorico,
+      },
+    },
   };
 }
 
