@@ -15,6 +15,14 @@ import {
   scadenze, pulizie, schedine, pagamenti,
 } from './schema';
 
+/** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
+function estremiMese(anno: number, mese: number): [string, string] {
+  const primo = `${anno}-${String(mese).padStart(2, '0')}-01`;
+  const ultGiorno = new Date(anno, mese, 0).getDate(); // giorno 0 del mese dopo = ultimo del mese
+  const ultimo = `${anno}-${String(mese).padStart(2, '0')}-${String(ultGiorno).padStart(2, '0')}`;
+  return [primo, ultimo];
+}
+
 // ── Prenotazioni ─────────────────────────────────────────────────────────────
 
 export type PrenotazioneVista = {
@@ -214,8 +222,7 @@ export async function leggiPulizieDb() {
  *  la cascata economica per ciascuna, e i totali. Base per il PDF e la pagina proprietario. */
 export async function rendicontoProprietarioDb(proprietarioId: string, anno: number, mese: number) {
   const db = getDb();
-  const daISO = `${anno}-${String(mese).padStart(2, '0')}-01`;
-  const aISO = `${anno}-${String(mese).padStart(2, '0')}-31`;
+  const [daISO, aISO] = estremiMese(anno, mese);
   const [prop] = await db.select().from(proprietari).where(eq(proprietari.id, proprietarioId));
   if (!prop) return null;
 
@@ -307,8 +314,7 @@ export async function cosaMancaDb(oggiISO: string) {
 /** Totali economici del mese (1-12) per immobile — base per la dashboard e i rendiconti. */
 export async function riepilogoMeseDb(anno: number, mese: number) {
   const db = getDb();
-  const daISO = `${anno}-${String(mese).padStart(2, '0')}-01`;
-  const aISO = `${anno}-${String(mese).padStart(2, '0')}-31`;
+  const [daISO, aISO] = estremiMese(anno, mese);
   return db
     .select({
       immobile: immobili.nome,
