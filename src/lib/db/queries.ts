@@ -235,10 +235,12 @@ export async function rendicontoProprietarioDb(proprietarioId: string, anno: num
     .select({
       id: prenotazioni.id, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout,
       alloggio: alloggi.nome, immobile: immobili.nome, canale: prenotazioni.canale,
+      numeroOspiti: prenotazioni.numero_ospiti,
       lordo: prenotazioni.lordo, commissione: prenotazioni.commissione, cedolare: prenotazioni.cedolare,
       costoPulizia: prenotazioni.costo_pulizia, feeGestione: prenotazioni.fee_gestione,
       utile: prenotazioni.utile, nettoProprietario: prenotazioni.netto_proprietario,
       ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome,
+      impostaSoggiornoImporto: alloggi.imposta_soggiorno_importo, impostaSoggiornoMaxNotti: alloggi.imposta_soggiorno_max_notti,
     })
     .from(prenotazioni)
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
@@ -258,17 +260,28 @@ export async function rendicontoProprietarioDb(proprietarioId: string, anno: num
     .innerJoin(immobili, eq(immobili.id, spese.immobile_id))
     .where(and(eq(immobili.proprietario_id, proprietarioId), gte(spese.data, daISO), lte(spese.data, aISO)));
 
+  // imposta di soggiorno per prenotazione: notti (cap max) × persone × importo/persona/notte
+  const nottiDi = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(co) - Date.parse(ci)) / 864e5));
+  const impostaDi = (r: typeof righe[number]) => {
+    const imp = Number(r.impostaSoggiornoImporto);
+    if (!imp) return 0;
+    let notti = nottiDi(r.checkin, r.checkout);
+    if (r.impostaSoggiornoMaxNotti) notti = Math.min(notti, r.impostaSoggiornoMaxNotti);
+    return Math.round(notti * r.numeroOspiti * imp * 100) / 100;
+  };
+
   const t = righe.reduce((s, r) => ({
     lordo: s.lordo + Number(r.lordo), commissione: s.commissione + Number(r.commissione),
     cedolare: s.cedolare + Number(r.cedolare), costoPulizia: s.costoPulizia + Number(r.costoPulizia),
     feeGestione: s.feeGestione + Number(r.feeGestione), utile: s.utile + Number(r.utile),
     nettoProprietario: s.nettoProprietario + Number(r.nettoProprietario),
-  }), { lordo: 0, commissione: 0, cedolare: 0, costoPulizia: 0, feeGestione: 0, utile: 0, nettoProprietario: 0 });
+    impostaSoggiorno: s.impostaSoggiorno + impostaDi(r),
+  }), { lordo: 0, commissione: 0, cedolare: 0, costoPulizia: 0, feeGestione: 0, utile: 0, nettoProprietario: 0, impostaSoggiorno: 0 });
   const totSpese = speseRighe.reduce((s, r) => s + Number(r.importo), 0);
 
   return {
     proprietario: prop.nome, anno, mese,
-    righe: righe.map((r) => ({ ...r, ospite: `${r.ospiteNome} ${r.ospiteCognome}`.trim() })),
+    righe: righe.map((r) => ({ ...r, ospite: `${r.ospiteNome} ${r.ospiteCognome}`.trim(), impostaSoggiorno: impostaDi(r) })),
     spese: speseRighe,
     totali: { ...t, totSpese, nettoFinale: Math.round((t.nettoProprietario - totSpese) * 100) / 100 },
   };

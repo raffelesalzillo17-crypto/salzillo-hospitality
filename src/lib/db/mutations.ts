@@ -249,4 +249,27 @@ export async function confermaPulizia(id: string, addettoId?: string) {
   return r;
 }
 
+// ── Contratto di gestione ───────────────────────────────────────────────────
+
+export async function creaContrattoGestione(d: { proprietarioId: string; dal: string; al?: string; percentualeFee?: number; direzioneIncasso?: string; condizioni?: string }) {
+  const db = getDb();
+  const [r] = await db.insert(contrattiGestione).values({
+    proprietario_id: d.proprietarioId, dal: d.dal, al: d.al || null,
+    percentuale_fee: s(d.percentualeFee ?? 0),
+    direzione_incasso: d.direzioneIncasso === 'Proprietario' ? 'Proprietario' : 'Gestore',
+    condizioni: d.condizioni || null,
+  }).returning();
+  return r;
+}
+export async function aggiornaContrattoGestione(id: string, d: Record<string, unknown>) {
+  const db = getDb();
+  const set: Record<string, unknown> = { aggiornato_il: new Date() };
+  for (const [k, v] of Object.entries({
+    dal: d.dal, al: d.al, condizioni: d.condizioni, direzione_incasso: d.direzioneIncasso,
+    percentuale_fee: d.percentualeFee != null ? s(Number(d.percentualeFee)) : undefined,
+  })) if (v !== undefined) set[k] = v === '' ? null : v;
+  const [r] = await db.update(contrattiGestione).set(set).where(eq(contrattiGestione.id, id)).returning();
+  return r;
+}
+
 export { nottiTra };

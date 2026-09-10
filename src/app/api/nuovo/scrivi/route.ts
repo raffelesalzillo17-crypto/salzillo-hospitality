@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       case 'aggiorna-alloggio': r = await M.aggiornaAlloggio(id!, dati); break;
       case 'crea-spesa': r = await M.creaSpesa(dati as Parameters<typeof M.creaSpesa>[0]); break;
       case 'crea-scadenza': r = await M.creaScadenza(dati as Parameters<typeof M.creaScadenza>[0]); break;
+      case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;
+      case 'aggiorna-contratto-gestione': r = await M.aggiornaContrattoGestione(id!, dati); break;
       case 'completa-scadenza': r = await M.completaScadenza(id!); break;
       case 'conferma-pulizia': r = await M.confermaPulizia(id!, sess.id); break;
       case 'anteprima-importi':

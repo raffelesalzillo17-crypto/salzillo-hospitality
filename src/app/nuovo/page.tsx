@@ -52,7 +52,7 @@ type Rendiconto = {
     feeGestione: string; utile: string; nettoProprietario: string }[];
   spese: { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string }[];
   totali: { lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
-    utile: number; nettoProprietario: number; totSpese: number; nettoFinale: number };
+    utile: number; nettoProprietario: number; totSpese: number; nettoFinale: number; impostaSoggiorno: number };
 };
 
 const eur = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
@@ -517,6 +517,7 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
               </tbody>
             </table>
           )}
+          {r.totali.impostaSoggiorno > 0 && <p className="sub">Imposta di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
           <div className="rendtot">
             <span>Spetta al proprietario</span>
             <b>{eur(r.totali.nettoFinale)}</b>

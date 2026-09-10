@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
   text(`Totale lordo: ${eur(tt.lordo)}`, M, 9, bold); nl(13);
   text(`Commissioni OTA: -${eur(tt.commissione)}    Cedolare secca: -${eur(tt.cedolare)}    Pulizie: -${eur(tt.costoPulizia)}    Fee gestione: -${eur(tt.feeGestione)}`, M, 8, font, muted); nl(16);
   text(`Netto dalle prenotazioni: ${eur(tt.nettoProprietario)}`, M, 10, bold); nl(14);
+  if (tt.impostaSoggiorno > 0) { text(`Imposta di soggiorno incassata dagli ospiti (da versare al comune): ${eur(tt.impostaSoggiorno)}`, M, 8, font, muted); nl(13); }
 
   if (r.spese.length > 0) {
     text('Spese del mese:', M, 9, bold); nl(13);
