@@ -78,6 +78,14 @@ function normalizzaData(v: string): string {
 }
 
 const sovrappone = (aS: string, aE: string, bS: string, bE: string) => aS < bE && bS < aE;
+const nottiTra = (s: string, e: string) => Math.round((Date.parse(e) - Date.parse(s)) / 864e5);
+// Airbnb/Booking esportano anche le chiusure di disponibilità come eventi lunghissimi
+// ("CLOSED - Not available", "Not available"): non sono prenotazioni, vanno ignorate nel confronto.
+const MAX_NOTTI_SOGGIORNO = 21;
+function eBlocco(b: Blocco): boolean {
+  if (nottiTra(b.start, b.end) > MAX_NOTTI_SOGGIORNO) return true;
+  return /not available|unavailable|non disponibile|blocked/i.test(b.summary) && nottiTra(b.start, b.end) > 10;
+}
 
 export type EsitoControllo = {
   alloggio: string; calendario: string;
@@ -94,6 +102,7 @@ export async function controllaCalendariAlloggio(alloggioId: string): Promise<Es
   if (cals.length === 0) return [];
 
   const oggi = new Date().toISOString().slice(0, 10);
+  const orizzonte = new Date(Date.now() + 300 * 864e5).toISOString().slice(0, 10); // ~10 mesi avanti
   const nostre = (await db.select({
     checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
     ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome,
@@ -108,8 +117,10 @@ export async function controllaCalendariAlloggio(alloggioId: string): Promise<Es
       const res = await fetch(c.url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blocchi = parseIcal(await res.text()).filter((b) => b.end >= oggi);
+      // prenotazioni vere: eventi brevi, non chiusure di disponibilità, entro l'orizzonte utile
+      const prenOta = blocchi.filter((b) => !eBlocco(b) && b.start <= orizzonte);
 
-      for (const b of blocchi) {
+      for (const b of prenOta) {
         if (!nostre.some((p) => sovrappone(p.checkin, p.checkout, b.start, b.end))) {
           esito.mancano.push({ start: b.start, end: b.end, summary: b.summary });
         }
