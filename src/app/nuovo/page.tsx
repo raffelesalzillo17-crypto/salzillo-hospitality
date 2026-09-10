@@ -73,6 +73,7 @@ type Rendiconto = {
 };
 
 const eur = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+const neg = (n: number) => (n > 0.005 ? '−' : '') + eur(n);
 const dataIt = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const CANALE_COLOR: Record<string, string> = {
   'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
@@ -843,16 +844,16 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
                   {r.righe.map((x) => (
                     <tr key={x.id}>
                       <td>{dataIt(x.checkin)}</td><td>{x.ospite}</td><td>{x.alloggio}</td><td>{x.canale}</td>
-                      <td className="num">{eur(Number(x.lordo))}</td><td className="num">−{eur(Number(x.commissione))}</td>
-                      <td className="num">−{eur(Number(x.cedolare))}</td><td className="num">−{eur(Number(x.costoPulizia))}</td>
-                      <td className="num">−{eur(Number(x.feeGestione))}</td><td className="num strong">{eur(Number(x.nettoProprietario))}</td>
+                      <td className="num">{eur(Number(x.lordo))}</td><td className="num">{neg(Number(x.commissione))}</td>
+                      <td className="num">{neg(Number(x.cedolare))}</td><td className="num">{neg(Number(x.costoPulizia))}</td>
+                      <td className="num">{neg(Number(x.feeGestione))}</td><td className="num strong">{eur(Number(x.nettoProprietario))}</td>
                     </tr>
                   ))}
                   <tr className="tot">
                     <td colSpan={4}>Totale prenotazioni ({r.righe.length})</td>
-                    <td className="num">{eur(r.totali.lordo)}</td><td className="num">−{eur(r.totali.commissione)}</td>
-                    <td className="num">−{eur(r.totali.cedolare)}</td><td className="num">−{eur(r.totali.costoPulizia)}</td>
-                    <td className="num">−{eur(r.totali.feeGestione)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td>
+                    <td className="num">{eur(r.totali.lordo)}</td><td className="num">{neg(r.totali.commissione)}</td>
+                    <td className="num">{neg(r.totali.cedolare)}</td><td className="num">{neg(r.totali.costoPulizia)}</td>
+                    <td className="num">{neg(r.totali.feeGestione)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -867,7 +868,7 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
               </tbody>
             </table>
           )}
-          <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: −{eur(r.totali.costoPulizia)} · Fee di gestione: −{eur(r.totali.feeGestione)}</p>
+          <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: {neg(r.totali.costoPulizia)} · Fee di gestione: {neg(r.totali.feeGestione)}</p>
           {r.totali.impostaSoggiorno > 0 && <p className="sub">Imposta di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
 
           <div className="previsione">
@@ -1165,10 +1166,10 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             {p.telefono && <p>📞 {p.telefono}</p>}
             <table className="tbl"><tbody>
               <tr><td>Lordo</td><td className="num">{eur(p.lordo)}</td></tr>
-              <tr><td>Commissione</td><td className="num">−{eur(p.commissione)}</td></tr>
-              <tr><td>Cedolare</td><td className="num">−{eur(p.cedolare)}</td></tr>
-              <tr><td>Pulizia</td><td className="num">−{eur(p.costoPulizia)}</td></tr>
-              <tr><td>Fee gestione</td><td className="num">−{eur(p.feeGestione)}</td></tr>
+              {p.commissione > 0 && <tr><td>Commissione</td><td className="num">{neg(p.commissione)}</td></tr>}
+              {p.cedolare > 0 && <tr><td>Cedolare</td><td className="num">{neg(p.cedolare)}</td></tr>}
+              <tr><td>Pulizia</td><td className="num">{neg(p.costoPulizia)}</td></tr>
+              {p.feeGestione > 0 && <tr><td>Fee gestione</td><td className="num">{neg(p.feeGestione)}</td></tr>}
               <tr className="tot"><td>Utile</td><td className="num strong">{eur(p.utile)}</td></tr>
               <tr><td>Netto proprietario</td><td className="num">{eur(p.nettoProprietario)}</td></tr>
             </tbody></table>
