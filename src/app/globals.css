@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FAF7F3;
+  --foreground: #1C1C1E;
+  --coral: #FF5A5F;
+  --border: #EFEAE3;
+  --text-secondary: #6E6E73;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), 'Inter', sans-serif;
+}
+
+input:focus,
+select:focus {
+  border-color: #FF5A5F !important;
+  box-shadow: 0 0 0 3px rgba(255, 90, 95, 0.15) !important;
+}
+
+.btn-dark:hover {
+  background: #E64A50 !important;
+}

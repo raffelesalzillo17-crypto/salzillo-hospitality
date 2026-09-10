@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000/api/test-sheets)",
+      "Bash(node *)",
+      "PowerShell(Set-Content *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(npx kill-port *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/prenotazione -H 'Content-Type: application/json' -d '{\"checkin\":\"2026-05-01\",\"checkout\":\"2026-05-04\",\"ospite\":\"Test Rossi\",\"stanza\":\"Tulipano\",\"canale\":\"Airbnb\",\"lordo\":300}')",
+      "mcp__claude_ai_Google_Drive__read_file_content",
+      "Bash(npm install *)",
+      "Bash(vercel)",
+      "Bash(vercel --version)",
+      "Bash(vercel link *)",
+      "Bash(vercel logs *)",
+      "Bash(vercel env *)",
+      "Bash(vercel --prod)",
+      "Bash(python -c \"import PIL; print\\('Pillow OK'\\)\")",
+      "Bash(python -c \"import cv2; print\\('OpenCV OK'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python3 *)",
+      "Bash(python *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\salzi\\\\OneDrive\\\\Desktop\\\\Raffaele\" | ForEach-Object { $_.Name })",
+      "PowerShell($env:PYTHONIOENCODING=\"utf-8\"; cd C:\\\\Users\\\\salzi; python make_collage.py)",
+      "PowerShell($env:PYTHONIOENCODING=\"utf-8\"; cd C:\\\\Users\\\\salzi; python make_collage.py 2>&1)",
+      "PowerShell($desktop = [Environment]::GetFolderPath\\(\"Desktop\"\\); Write-Host $desktop)",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "mcp__claude_ai_Google_Drive__get_file_metadata",
+      "Bash(gcloud auth *)",
+      "Bash(npm list *)",
+      "PowerShell(vercel *)",
+      "PowerShell($env:USERPROFILE; [System.Environment]::GetFolderPath\\('Desktop'\\))"
+    ]
+  }
+}
