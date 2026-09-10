@@ -12,7 +12,7 @@ type Prenotazione = {
   id: string; checkin: string; checkout: string; ospite: string; ospiteId: string; telefono: string;
   alloggio: string; immobile: string; proprietario: string; canale: string;
   lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
-  utile: number; nettoProprietario: number; stato: string; penaleImporto: number | null; note: string;
+  utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
 };
 type Alloggio = {
   id: string; nome: string; attivo: boolean; regimeFiscale: string; costoPulizia: string;
@@ -1094,14 +1094,14 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
   p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; onClose: () => void; onSalvato: () => void;
 }) {
   const [modifica, setModifica] = useState(false);
-  const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
+  const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   async function salva() {
     setBusy(true); setErr('');
     try {
-      await api('aggiorna-prenotazione', { id: p.id, dati: { checkin: f.checkin, checkout: f.checkout, canale: f.canale, lordo: Number(f.lordo), note: f.note, alloggioId: f.alloggioId } });
+      await api('aggiorna-prenotazione', { id: p.id, dati: { checkin: f.checkin, checkout: f.checkout, canale: f.canale, lordo: Number(f.lordo), numeroOspiti: Number(f.numeroOspiti) || 1, stato: f.stato, note: f.note, alloggioId: f.alloggioId } });
       onSalvato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
@@ -1140,12 +1140,15 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             <p style={{ marginTop: 10 }}>
               <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Conferma per l&apos;ospite</a>
             </p>
-            {puoModificare && p.stato === 'Attiva' && (
+            {puoModificare && (
               <div className="modalactions">
-                <button className="add" onClick={() => setModifica(true)}>Modifica</button>
-                <button className="danger" onClick={() => cancella(false)} disabled={busy}>Cancella</button>
-                <button className="danger" onClick={() => cancella(true)} disabled={busy}>Cancella con penale</button>
+                <button className="add" onClick={() => setModifica(true)}>✏️ Modifica</button>
+                {p.stato === 'Attiva' && <button className="danger" onClick={() => cancella(false)} disabled={busy}>Cancella</button>}
+                {p.stato === 'Attiva' && <button className="danger" onClick={() => cancella(true)} disabled={busy}>Cancella con penale</button>}
               </div>
+            )}
+            {p.origine === 'Foglio' && (
+              <p className="empty" style={{ marginTop: 8 }}>Questa prenotazione arriva dal Google Sheet. Finché i due sistemi girano in parallelo, modificala <b>sul foglio</b>: qui la modifica verrebbe sovrascritta dalla sincronizzazione notturna.</p>
             )}
           </>
         ) : (
@@ -1153,9 +1156,12 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
             <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
             <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
+            <label>Ospiti<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
             <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c}>{c}</option>)}</select></label>
             <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
+            <label>Stato<select value={f.stato} onChange={(e) => setF({ ...f, stato: e.target.value })}>{['Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show'].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+            {p.origine === 'Foglio' && <p className="empty">Attenzione: prenotazione dal foglio — la modifica qui dura solo fino al prossimo sync notturno. Meglio farla sul Google Sheet.</p>}
             <div className="modalactions">
               <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Salva'}</button>
               <button onClick={() => setModifica(false)}>Annulla</button>

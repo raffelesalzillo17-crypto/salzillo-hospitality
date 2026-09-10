@@ -44,6 +44,8 @@ export type PrenotazioneVista = {
   utile: number;
   nettoProprietario: number;
   stato: string;
+  numeroOspiti: number;
+  origine: string;
   penaleImporto: number | null;
   calendarEventId: string;
   note: string;
@@ -71,6 +73,8 @@ function mappaPrenotazione(r: Record<string, unknown>): PrenotazioneVista {
     utile: n(r.utile),
     nettoProprietario: n(r.netto_proprietario),
     stato: String(r.stato ?? ''),
+    numeroOspiti: n(r.numero_ospiti) || 1,
+    origine: String(r.origine ?? 'Database'),
     penaleImporto: r.penale_importo == null ? null : n(r.penale_importo),
     calendarEventId: String(r.calendar_event_id ?? ''),
     note: String(r.note ?? ''),
@@ -94,6 +98,8 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
       utile: prenotazioni.utile,
       netto_proprietario: prenotazioni.netto_proprietario,
       stato: prenotazioni.stato,
+      numero_ospiti: prenotazioni.numero_ospiti,
+      origine: prenotazioni.origine,
       penale_importo: prenotazioni.penale_importo,
       calendar_event_id: prenotazioni.calendar_event_id,
       note: prenotazioni.note,
