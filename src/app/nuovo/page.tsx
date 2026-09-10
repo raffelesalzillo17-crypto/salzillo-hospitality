@@ -330,7 +330,10 @@ function Rendiconti({ anagrafica, oggi, keyStr }: { anagrafica: Anagrafica; oggi
             <span>Spetta al proprietario</span>
             <b>{eur(r.totali.nettoFinale)}</b>
           </div>
-          <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia). Il PDF pronto da inviare arriverà nella prossima fase.</p>
+          <p style={{ marginTop: 12 }}>
+            <a className="sync" href={`/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}&k=${encodeURIComponent(keyStr)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
+          </p>
+          <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
         </>
       )}
     </div>
