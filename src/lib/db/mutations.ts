@@ -5,11 +5,11 @@
  * Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md.
  */
 
-import { and, eq, isNull, lte, gte, or } from 'drizzle-orm';
+import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze,
-  pulizie, contrattiGestione,
+  pulizie, contrattiGestione, preventivi,
 } from './schema';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 
@@ -213,6 +213,89 @@ export async function cancellaPrenotazione(id: string, conPenale: boolean, impor
     aggiornato_il: new Date(),
   }).where(eq(prenotazioni.id, id)).returning();
   return r;
+}
+
+// ── Preventivi ───────────────────────────────────────────────────────────────
+
+/** Calcolo economico di un preventivo: prezzo/notte o totale, meno lo sconto (€ o %). */
+export function calcolaPreventivo(d: { prezzo?: number; prezzoNotte?: number; notti: number; sconto?: number; scontoTipo?: string }) {
+  const prezzoNotte = d.prezzoNotte ?? (d.prezzo ? d.prezzo / d.notti : 0);
+  const totalePieno = d.prezzo ?? Math.round(prezzoNotte * d.notti * 100) / 100;
+  const sc = d.sconto && d.sconto > 0
+    ? (d.scontoTipo === 'percento' ? Math.round(totalePieno * d.sconto) / 100 : Math.round(d.sconto * 100) / 100)
+    : 0;
+  return {
+    prezzoNotte: Math.round(prezzoNotte * 100) / 100,
+    totalePieno: Math.round(totalePieno * 100) / 100,
+    sconto: sc,
+    totale: Math.round((totalePieno - sc) * 100) / 100,
+  };
+}
+
+async function prossimoCodicePreventivo(db: ReturnType<typeof getDb>): Promise<string> {
+  const [r] = await db.select({ max: sql<string | null>`max(${preventivi.codice})`.as('max') }).from(preventivi);
+  const n = r?.max ? parseInt(String(r.max).replace(/\D/g, ''), 10) + 1 : 1;
+  return `PR-${String(n).padStart(4, '0')}`;
+}
+
+export async function creaPreventivo(d: {
+  alloggioId: string; checkin: string; checkout: string; numeroOspiti?: number;
+  prezzo?: number; prezzoNotte?: number; sconto?: number; scontoTipo?: string; validoOre?: number;
+  ospiteId?: string; ospiteNome?: string; ospiteCognome?: string; ospiteTelefono?: string;
+  note?: string; creatoDa?: string;
+}) {
+  const db = getDb();
+  let ospiteId = d.ospiteId || undefined;
+  if (!ospiteId && (d.ospiteNome || d.ospiteCognome || d.ospiteTelefono)) {
+    const o = await creaOspite({
+      nome: (d.ospiteNome || '').trim() || '—',
+      cognome: (d.ospiteCognome || '').trim() || (d.ospiteNome ? '' : 'Da definire'),
+      telefono: d.ospiteTelefono,
+    });
+    ospiteId = o.id;
+  } else if (ospiteId && d.ospiteTelefono) {
+    await db.update(ospiti).set({ telefono: d.ospiteTelefono, aggiornato_il: new Date() })
+      .where(and(eq(ospiti.id, ospiteId), isNull(ospiti.telefono)));
+  }
+  const notti = nottiTra(d.checkin, d.checkout);
+  const c = calcolaPreventivo({ prezzo: d.prezzo, prezzoNotte: d.prezzoNotte, notti, sconto: d.sconto, scontoTipo: d.scontoTipo });
+  const codice = await prossimoCodicePreventivo(db);
+  const [r] = await db.insert(preventivi).values({
+    codice, ospite_id: ospiteId ?? null, alloggio_id: d.alloggioId,
+    checkin: d.checkin, checkout: d.checkout, numero_ospiti: d.numeroOspiti ?? 1,
+    prezzo_notte: s(c.prezzoNotte), totale_pieno: s(c.totalePieno), sconto: s(c.sconto),
+    sconto_tipo: d.scontoTipo === 'percento' ? 'percento' : 'euro', totale: s(c.totale),
+    valido_ore: d.validoOre && d.validoOre > 0 ? Math.round(d.validoOre) : 24,
+    note: d.note || null, stato: 'Bozza', creato_da: d.creatoDa || null,
+  }).returning();
+  return r;
+}
+
+export async function aggiornaStatoPreventivo(id: string, stato: string) {
+  const db = getDb();
+  const set: Record<string, unknown> = { stato: stato as 'Bozza', aggiornato_il: new Date() };
+  if (stato === 'Inviato') set.inviato_il = new Date();
+  const [r] = await db.update(preventivi).set(set).where(eq(preventivi.id, id)).returning();
+  return r;
+}
+
+/** "Segna accettato": crea la prenotazione vera (canale Diretto) e la lega al preventivo.
+ *  La prenotazione crea l'evento su Google Calendar e finisce nel feed iCal → blocca le OTA. */
+export async function accettaPreventivo(id: string, utenteId?: string) {
+  const db = getDb();
+  const [p] = await db.select().from(preventivi).where(eq(preventivi.id, id));
+  if (!p) throw new Error('Preventivo non trovato');
+  if (p.prenotazione_id) throw new Error('Questo preventivo è già stato accettato');
+  if (!p.ospite_id) throw new Error("Aggiungi nome e cognome dell'ospite prima di accettare");
+  const pren = await creaPrenotazione({
+    alloggioId: p.alloggio_id, ospiteId: p.ospite_id,
+    checkin: p.checkin, checkout: p.checkout, numeroOspiti: p.numero_ospiti,
+    canale: 'Diretto', lordo: Number(p.totale), note: `Da preventivo ${p.codice}`, creataDa: utenteId,
+  });
+  const [r] = await db.update(preventivi).set({
+    stato: 'Accettato', prenotazione_id: pren.id, accettato_il: new Date(), aggiornato_il: new Date(),
+  }).where(eq(preventivi.id, id)).returning();
+  return { preventivo: r, prenotazione: pren };
 }
 
 // ── Pagamenti ────────────────────────────────────────────────────────────────

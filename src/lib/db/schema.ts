@@ -32,6 +32,7 @@ export const statoPrenotazione = pgEnum('stato_prenotazione', [
 export const tipoPagamento = pgEnum('tipo_pagamento', ['Caparra', 'Saldo', 'Rimborso']);
 export const metodoPagamento = pgEnum('metodo_pagamento', ['Bonifico', 'Contanti', 'Carta', 'Piattaforma']);
 export const statoSchedina = pgEnum('stato_schedina', ['Da inviare', 'Inviata', 'Errore']);
+export const statoPreventivo = pgEnum('stato_preventivo', ['Bozza', 'Inviato', 'Accettato', 'Scaduto', 'Rifiutato']);
 export const tipoDocumento = pgEnum('tipo_documento', [
   'Documento identità', 'Contratto ospite', 'Ricevuta', 'Preventivo', 'Conferma prenotazione',
   'Contratto gestione', 'Rendiconto', 'Ricevuta Alloggiati', 'Altro',
@@ -329,6 +330,30 @@ export const rendiconti = pgTable('rendiconti', {
 }, (t) => ({
   unico: unique().on(t.proprietario_id, t.mese, t.anno),
 }));
+
+// Preventivi: la richiesta di disponibilità → offerta all'ospite. Quando è "Accettato"
+// diventa una prenotazione vera (prenotazione_id). Il PDF si rigenera al volo dai campi.
+export const preventivi = pgTable('preventivi', {
+  ...base,
+  codice: text('codice').notNull().unique(),          // "PR-0007", leggibile
+  ospite_id: uuid('ospite_id').references(() => ospiti.id),
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  checkin: date('checkin').notNull(),
+  checkout: date('checkout').notNull(),
+  numero_ospiti: integer('numero_ospiti').notNull().default(1),
+  prezzo_notte: numeric('prezzo_notte', { precision: 12, scale: 2 }),
+  totale_pieno: numeric('totale_pieno', { precision: 12, scale: 2 }).notNull().default('0'),
+  sconto: numeric('sconto', { precision: 12, scale: 2 }).notNull().default('0'),
+  sconto_tipo: text('sconto_tipo').notNull().default('euro'), // 'euro' | 'percento'
+  totale: numeric('totale', { precision: 12, scale: 2 }).notNull().default('0'),
+  valido_ore: integer('valido_ore').notNull().default(24),
+  note: text('note'),
+  stato: statoPreventivo('stato').notNull().default('Bozza'),
+  prenotazione_id: uuid('prenotazione_id').references(() => prenotazioni.id),
+  inviato_il: timestamp('inviato_il', { withTimezone: true }),
+  accettato_il: timestamp('accettato_il', { withTimezone: true }),
+  creato_da: uuid('creato_da').references(() => utenti.id),
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sistema (accessi, bot, notifiche)

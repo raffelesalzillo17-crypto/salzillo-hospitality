@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from './index';
 import { prenotazioni, ospiti, alloggi, immobili, proprietari, contrattiGestione } from './schema';
 import { LOGO_SALZILLO_PNG_BASE64 } from './logoSalzillo';
+import { preventivoPerPdf } from './queries';
 
 const CORAL = rgb(1, 0.353, 0.373);
 const INK = rgb(0.11, 0.11, 0.12);
@@ -117,7 +118,7 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
 export async function pdfPreventivo(opts: {
   alloggioId: string; checkin: string; checkout: string; numeroOspiti: number;
   prezzo?: number; prezzoNotte?: number; sconto?: number; scontoTipo?: 'euro' | 'percento';
-  nomeCliente?: string; telefonoCliente?: string; validoOre?: number; note?: string;
+  nomeCliente?: string; telefonoCliente?: string; validoOre?: number; note?: string; codice?: string;
 }): Promise<{ bytes: Uint8Array; nome: string } | null> {
   const db = getDb();
   const [a] = await db.select({ nome: alloggi.nome, immobile: immobili.nome, indirizzo: immobili.indirizzo, comune: immobili.comune })
@@ -138,7 +139,7 @@ export async function pdfPreventivo(opts: {
 
   const f = await Foglio.crea();
   f.intestazione('Preventivo');
-  f.t(`Data preventivo: ${dataOggiIt}`, 50, 9, false, MUTED); f.nl(15);
+  f.t(`${opts.codice ? opts.codice + '  -  ' : ''}Data preventivo: ${dataOggiIt}`, 50, 9, false, MUTED); f.nl(15);
   if (opts.nomeCliente || opts.telefonoCliente) {
     const chi = [opts.nomeCliente, opts.telefonoCliente].filter(Boolean).join('  -  ');
     f.t(`Per: ${chi}`, 50, 10, true); f.nl(18);
@@ -179,6 +180,21 @@ export async function pdfPreventivo(opts: {
   const dataFile = `${String(oggi.getDate()).padStart(2, '0')}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${oggi.getFullYear()}`;
   const chi = opts.nomeCliente ? `-${slug(opts.nomeCliente)}` : '';
   return { bytes: await f.salva(), nome: `preventivo-${slug(a.nome)}${chi}-${dataFile}.pdf` };
+}
+
+/** PDF di un preventivo salvato (dalla sezione Documenti). */
+export async function pdfPreventivoDaId(id: string): Promise<{ bytes: Uint8Array; nome: string } | null> {
+  const p = await preventivoPerPdf(id);
+  if (!p) return null;
+  const nome = `${p.ospiteNome ?? ''} ${p.ospiteCognome ?? ''}`.trim();
+  return pdfPreventivo({
+    alloggioId: p.alloggioId, checkin: p.checkin, checkout: p.checkout, numeroOspiti: p.numeroOspiti,
+    prezzoNotte: p.prezzoNotte ? Number(p.prezzoNotte) : undefined,
+    sconto: p.sconto ? Number(p.sconto) : undefined,
+    scontoTipo: p.scontoTipo === 'percento' ? 'percento' : 'euro',
+    validoOre: p.validoOre, note: p.note ?? undefined,
+    nomeCliente: nome || undefined, telefonoCliente: p.ospiteTelefono ?? undefined, codice: p.codice,
+  });
 }
 
 // ── Contratto di gestione (tra Salzillo Hospitality e il proprietario) ─────

@@ -12,7 +12,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
-  scadenze, pulizie, schedine, pagamenti,
+  scadenze, pulizie, schedine, pagamenti, preventivi,
 } from './schema';
 
 /** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
@@ -157,6 +157,45 @@ export async function leggiAnagraficaDb() {
       alloggi: allo.filter((a) => a.immobile_id === i.id),
     })),
   }));
+}
+
+/** Elenco preventivi (per la sezione Documenti). Più recenti prima. */
+export async function leggiPreventiviDb() {
+  const db = getDb();
+  return db
+    .select({
+      id: preventivi.id, codice: preventivi.codice, stato: preventivi.stato,
+      checkin: preventivi.checkin, checkout: preventivi.checkout, numeroOspiti: preventivi.numero_ospiti,
+      prezzoNotte: preventivi.prezzo_notte, totalePieno: preventivi.totale_pieno,
+      sconto: preventivi.sconto, scontoTipo: preventivi.sconto_tipo, totale: preventivi.totale,
+      validoOre: preventivi.valido_ore, note: preventivi.note,
+      creatoIl: preventivi.creato_il, inviatoIl: preventivi.inviato_il, accettatoIl: preventivi.accettato_il,
+      prenotazioneId: preventivi.prenotazione_id,
+      alloggioId: preventivi.alloggio_id, alloggio: alloggi.nome, immobile: immobili.nome,
+      ospiteId: preventivi.ospite_id, ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome, ospiteTelefono: ospiti.telefono,
+    })
+    .from(preventivi)
+    .innerJoin(alloggi, eq(alloggi.id, preventivi.alloggio_id))
+    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .leftJoin(ospiti, eq(ospiti.id, preventivi.ospite_id))
+    .orderBy(desc(preventivi.creato_il));
+}
+
+/** Un preventivo con i dati che servono al PDF. */
+export async function preventivoPerPdf(id: string) {
+  const db = getDb();
+  const [p] = await db
+    .select({
+      alloggioId: preventivi.alloggio_id, checkin: preventivi.checkin, checkout: preventivi.checkout,
+      numeroOspiti: preventivi.numero_ospiti, prezzoNotte: preventivi.prezzo_notte,
+      sconto: preventivi.sconto, scontoTipo: preventivi.sconto_tipo, validoOre: preventivi.valido_ore,
+      note: preventivi.note, codice: preventivi.codice,
+      ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome, ospiteTelefono: ospiti.telefono,
+    })
+    .from(preventivi)
+    .leftJoin(ospiti, eq(ospiti.id, preventivi.ospite_id))
+    .where(eq(preventivi.id, id));
+  return p ?? null;
 }
 
 /** Elenco alloggi con nome immobile — sostituisce la lista hardcoded di src/lib/strutture.ts. */
