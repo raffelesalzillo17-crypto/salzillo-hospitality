@@ -299,6 +299,22 @@ export const inviiRegione = pgTable('invii_regione', {
   note: text('note'),
 }, (t) => ({ unico: unique().on(t.immobile_id, t.anno, t.mese) }));
 
+// Calendari iCal esterni (Airbnb, Booking...) per ogni alloggio.
+//  - IMPORT: si scaricano periodicamente e si confrontano con le prenotazioni nostre → si
+//    segnalano i disallineamenti (una prenotazione OTA che non abbiamo, o viceversa).
+//  - EXPORT: /api/ical/<alloggio>.ics pubblica le nostre prenotazioni attive; incollando
+//    quell'URL in Airbnb/Booking le date vengono bloccate anche lì (evita il doppio
+//    booking quando si registra una prenotazione diretta / No Tax).
+export const calendariIcal = pgTable('calendari_ical', {
+  ...base,
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  nome: text('nome').notNull(), // "Airbnb", "Booking", ...
+  url: text('url').notNull(),
+  attivo: boolean('attivo').notNull().default(true),
+  ultimo_controllo: timestamp('ultimo_controllo', { withTimezone: true }),
+  ultimo_esito: text('ultimo_esito'), // "ok" oppure il testo del disallineamento
+}, (t) => ({ unico: unique().on(t.alloggio_id, t.nome) }));
+
 export const rendiconti = pgTable('rendiconti', {
   ...base,
   proprietario_id: uuid('proprietario_id').notNull().references(() => proprietari.id),

@@ -137,6 +137,7 @@ export default function Nuovo() {
   const [nuovaPren, setNuovaPren] = useState(false);
   const [preventivo, setPreventivo] = useState(false);
   const [sinfoniaImm, setSinfoniaImm] = useState<string | null>(null);
+  const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
 
   async function inviaModale(vals: Record<string, unknown>) {
@@ -441,6 +442,7 @@ export default function Nuovo() {
                       <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale}</span>
                       {a.imposta_soggiorno_comune && <small>tassa soggiorno {a.imposta_soggiorno_comune}</small>}
                       {!a.attivo && <small>non attivo</small>}
+                      {sess.ruolo === 'Titolare' && <button className="linklike" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); setCalAlloggio({ id: a.id, nome: a.nome }); }}>📅 calendari</button>}
                     </div>
                   ))}
                 </div>
@@ -496,6 +498,7 @@ export default function Nuovo() {
         onInvia={inviaModale} onClose={() => setModale(null)} />}
       {preventivo && <Preventivo alloggi={dati.alloggi} onClose={() => setPreventivo(false)} />}
       {sinfoniaImm && <SinfoniaBox immobileId={sinfoniaImm} oggi={oggi} onClose={() => setSinfoniaImm(null)} />}
+      {calAlloggio && <CalendariBox alloggio={calAlloggio} onClose={() => setCalAlloggio(null)} />}
     </div>
   );
 }
@@ -832,6 +835,73 @@ function Preventivo({ alloggi, onClose }: { alloggi: Alloggio[]; onClose: () => 
           {pronto ? <a className="add" href={url} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Genera PDF</a> : <button className="add" disabled>Compila i campi</button>}
           <button onClick={onClose}>Chiudi</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: string }; onClose: () => void }) {
+  const [cals, setCals] = useState<{ id: string; nome: string; url: string; attivo: boolean; ultimo_controllo: string | null; ultimo_esito: string | null }[]>([]);
+  const [nome, setNome] = useState('Airbnb');
+  const [url, setUrl] = useState('');
+  const [esiti, setEsiti] = useState<null | { alloggio: string; calendario: string; mancano: { start: string; end: string; summary: string }[]; inPiu: { start: string; end: string; ospite: string }[]; errore?: string }[]>(null);
+  const [busy, setBusy] = useState(false);
+  const exportUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/ical/${alloggio.id}.ics`;
+
+  async function carica() { const d = await (await fetch(`/api/nuovo/calendari?alloggio=${alloggio.id}`)).json(); if (d.ok) setCals(d.calendari.filter((c: { attivo: boolean }) => c.attivo)); }
+  useEffect(() => { carica(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function aggiungi() {
+    setBusy(true);
+    try { await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId: alloggio.id, nome, url }) }); setUrl(''); await carica(); }
+    finally { setBusy(false); }
+  }
+  async function rimuovi(id: string) { await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rimuovi: id }) }); await carica(); }
+  async function controlla() {
+    setBusy(true); setEsiti(null);
+    try { const d = await (await fetch(`/api/nuovo/calendari?alloggio=${alloggio.id}&controlla=1`)).json(); if (d.ok) setEsiti(d.esiti); await carica(); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={onClose}>✕</button>
+        <h2>Calendari · {alloggio.nome}</h2>
+
+        <h3 style={{ marginTop: 10 }}>Blocca queste date su Airbnb / Booking</h3>
+        <p className="sub">Copia questo link e incollalo su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari). Le prenotazioni dirette e No Tax registrate qui bloccheranno quelle date anche là.</p>
+        <div className="form"><label>Link da incollare
+          <input readOnly value={exportUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); navigator.clipboard?.writeText(exportUrl); }} />
+        </label></div>
+
+        <h3 style={{ marginTop: 16 }}>Controlla i calendari OTA (per sicurezza)</h3>
+        <p className="sub">Incolla qui i link iCal che Airbnb e Booking ti danno: ogni giorno il sistema controlla che le prenotazioni là e qui coincidano.</p>
+        {cals.map((c) => (
+          <div key={c.id} className="row">
+            <b>{c.nome}</b> <small style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{c.url}</small>
+            <span className="chip" style={{ background: c.ultimo_esito === 'ok' ? '#1FAA6E22' : c.ultimo_esito ? '#E5484D22' : '#8882', color: c.ultimo_esito === 'ok' ? '#1FAA6E' : c.ultimo_esito ? '#E5484D' : '#888' }}>{c.ultimo_esito || 'mai controllato'}</span>
+            <button className="linklike" onClick={() => rimuovi(c.id)}>rimuovi</button>
+          </div>
+        ))}
+        <div className="form">
+          <label>Piattaforma<select value={nome} onChange={(e) => setNome(e.target.value)}><option>Airbnb</option><option>Booking</option></select></label>
+          <label>Link iCal<input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." /></label>
+        </div>
+        <div className="modalactions">
+          <button className="add" onClick={aggiungi} disabled={busy || !/^https?:\/\//.test(url)}>Aggiungi</button>
+          <button className="add" onClick={controlla} disabled={busy || cals.length === 0}>{busy ? '…' : 'Controlla adesso'}</button>
+        </div>
+        {esiti && esiti.map((e, i) => (
+          <div key={i} style={{ marginTop: 8, fontSize: 13 }}>
+            <b>{e.calendario}:</b> {e.errore ? <span className="err">errore — {e.errore}</span>
+              : e.mancano.length === 0 && e.inPiu.length === 0 ? <span style={{ color: '#1FAA6E' }}>tutto coincide ✓</span>
+              : <>
+                {e.mancano.map((m, j) => <div key={'m' + j} className="err">📥 {dataIt(m.start)}→{dataIt(m.end)}: c&apos;è su {e.calendario}, non qui</div>)}
+                {e.inPiu.map((m, j) => <div key={'p' + j} className="err">📤 {dataIt(m.start)}→{dataIt(m.end)} ({m.ospite}): qui ma non su {e.calendario}</div>)}
+              </>}
+          </div>
+        ))}
       </div>
     </div>
   );
