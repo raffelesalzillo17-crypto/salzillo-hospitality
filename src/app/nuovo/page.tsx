@@ -311,14 +311,16 @@ export default function Nuovo() {
           </div>
           <div className="card">
             <h2>{meseNome} · per immobile</h2>
-            <table className="tbl">
-              <tbody>
-                {dati.riepilogoMese.map((r) => (
-                  <tr key={r.immobile}><td>{r.immobile}<small> · {r.proprietario}</small></td><td className="num">{r.prenotazioni}</td><td className="num">{eur(r.lordo)}</td><td className="num strong">{eur(r.utile)}</td></tr>
-                ))}
-                <tr className="tot"><td>Totale</td><td className="num">{totMese.n}</td><td className="num">{eur(totMese.lordo)}</td><td className="num strong">{eur(totMese.utile)}</td></tr>
-              </tbody>
-            </table>
+            <div className="tablescroll">
+              <table className="tbl">
+                <tbody>
+                  {dati.riepilogoMese.map((r) => (
+                    <tr key={r.immobile}><td>{r.immobile}<small> · {r.proprietario}</small></td><td className="num">{r.prenotazioni}</td><td className="num">{eur(r.lordo)}</td><td className="num strong">{eur(r.utile)}</td></tr>
+                  ))}
+                  <tr className="tot"><td>Totale</td><td className="num">{totMese.n}</td><td className="num">{eur(totMese.lordo)}</td><td className="num strong">{eur(totMese.utile)}</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="card">
             <h2>Occupazione adesso</h2>
@@ -827,14 +829,16 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
             <div className="kpi coral"><span>Spetta al proprietario</span><b>{eur(r.totali.nettoFinale)}</b></div>
           </div>
 
-          <table className="tbl" style={{ marginTop: 16 }}>
-            <thead><tr><th>Confronto</th><th className="num">Prenot.</th><th className="num">Lordo</th><th className="num">Netto propr.</th></tr></thead>
-            <tbody>
-              <tr><td><b><span style={{ textTransform: 'capitalize' }}>{meseNome}</span></b></td><td className="num strong">{r.totali.numPrenotazioni}</td><td className="num">{eur(r.totali.lordo)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td></tr>
-              <tr><td style={{ textTransform: 'capitalize' }}>Mese scorso ({meseBreve(r.confronti.meseScorso.anno, r.confronti.meseScorso.mese)})</td><td className="num">{r.confronti.meseScorso.prenotazioni}</td><td className="num">{eur(r.confronti.meseScorso.lordo)}</td><td className="num">{eur(r.confronti.meseScorso.nettoProprietario)}</td></tr>
-              <tr><td>Stesso mese {anno - 1}</td><td className="num">{r.confronti.annoScorso.prenotazioni}</td><td className="num">{eur(r.confronti.annoScorso.lordo)}</td><td className="num">{eur(r.confronti.annoScorso.nettoProprietario)}</td></tr>
-            </tbody>
-          </table>
+          <div className="tablescroll">
+            <table className="tbl" style={{ marginTop: 16 }}>
+              <thead><tr><th>Confronto</th><th className="num">Prenot.</th><th className="num">Lordo</th><th className="num">Netto propr.</th></tr></thead>
+              <tbody>
+                <tr><td><b><span style={{ textTransform: 'capitalize' }}>{meseNome}</span></b></td><td className="num strong">{r.totali.numPrenotazioni}</td><td className="num">{eur(r.totali.lordo)}</td><td className="num strong">{eur(r.totali.nettoProprietario)}</td></tr>
+                <tr><td style={{ textTransform: 'capitalize' }}>Mese scorso ({meseBreve(r.confronti.meseScorso.anno, r.confronti.meseScorso.mese)})</td><td className="num">{r.confronti.meseScorso.prenotazioni}</td><td className="num">{eur(r.confronti.meseScorso.lordo)}</td><td className="num">{eur(r.confronti.meseScorso.nettoProprietario)}</td></tr>
+                <tr><td>Stesso mese {anno - 1}</td><td className="num">{r.confronti.annoScorso.prenotazioni}</td><td className="num">{eur(r.confronti.annoScorso.lordo)}</td><td className="num">{eur(r.confronti.annoScorso.nettoProprietario)}</td></tr>
+              </tbody>
+            </table>
+          </div>
 
           {r.righe.length === 0 ? <p className="empty" style={{ marginTop: 12 }}>Nessuna prenotazione questo mese.</p> : (
             <div className="tablescroll">
@@ -860,13 +864,15 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
             </div>
           )}
           {r.spese.length > 0 && (
-            <table className="tbl" style={{ marginTop: 16 }}>
-              <thead><tr><th>Spese del mese</th><th></th><th className="num">Importo</th></tr></thead>
-              <tbody>
-                {r.spese.map((s) => <tr key={s.id}><td>{dataIt(s.data)} · {s.categoria}</td><td>{s.descrizione}</td><td className="num">−{eur(Number(s.importo))}</td></tr>)}
-                <tr className="tot"><td colSpan={2}>Totale spese</td><td className="num">−{eur(r.totali.totSpese)}</td></tr>
-              </tbody>
-            </table>
+            <div className="tablescroll">
+              <table className="tbl" style={{ marginTop: 16 }}>
+                <thead><tr><th>Spese del mese</th><th></th><th className="num">Importo</th></tr></thead>
+                <tbody>
+                  {r.spese.map((s) => <tr key={s.id}><td>{dataIt(s.data)} · {s.categoria}</td><td>{s.descrizione}</td><td className="num">−{eur(Number(s.importo))}</td></tr>)}
+                  <tr className="tot"><td colSpan={2}>Totale spese</td><td className="num">−{eur(r.totali.totSpese)}</td></tr>
+                </tbody>
+              </table>
+            </div>
           )}
           <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: {neg(r.totali.costoPulizia)} · Fee di gestione: {neg(r.totali.feeGestione)}</p>
           {r.totali.impostaSoggiorno > 0 && <p className="sub">Imposta di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
