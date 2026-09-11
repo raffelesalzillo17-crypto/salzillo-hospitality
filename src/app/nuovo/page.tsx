@@ -1542,7 +1542,11 @@ const CSS = `
 .gatecard input{width:100%;padding:11px 14px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin:12px 0;}
 .gatecard button,.gatecard input{font-family:inherit}
 button{cursor:pointer;font-family:inherit}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;min-width:0;}
+/* .grid è display:grid e .card un suo figlio: senza min-width:0 un figlio grid/flex non si
+   restringe mai sotto il min-content del contenuto interno (es. una tabella larga) — anche se
+   quella tabella ha già il suo .tablescroll con overflow-x:auto — e "gonfia" tutta la pagina. */
+.grid{min-width:0;}
 .card h2{font-size:14px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em;}
 .card h2 small,h3 small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted);}
 .topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
