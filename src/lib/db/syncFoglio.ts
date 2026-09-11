@@ -118,3 +118,103 @@ export async function aggiornaPrenotazioneSuFoglio(d: RigaPrenotazione): Promise
     console.error('[sync-foglio] aggiornamento prenotazione fallito (non bloccante):', e);
   }
 }
+
+// ── Spese ────────────────────────────────────────────────────────────────────
+// Tab SPESE (file "gestione"): A=Data B=Categoria C=Descrizione D=Importo E=Struttura.
+// A differenza di DATABASE la colonna A qui è dati veri (Data), quindi la prima riga
+// libera si può leggere da lì senza il problema visto sopra.
+
+export type RigaSpesa = {
+  data: string; // ISO
+  categoriaNome: string;
+  descrizione: string;
+  importo: number;
+  struttura?: string | null; // nome immobile (es. "Via Clanio 60") — coerente col parsing in importDaSheets.ts
+};
+
+/** Aggiunge una nuova spesa in fondo al tab SPESE. Solo creazione: non esiste ancora una
+ *  "modificaSpesa" nel nuovo sistema, quindi non serve una funzione di aggiornamento qui. */
+export async function scriviSpesaSuFoglio(d: RigaSpesa): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('SPESE'), range: 'SPESE!A:A' });
+    const row = (res.data.values?.length ?? 1) + 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('SPESE'),
+      range: `SPESE!A${row}:E${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[isoToIt(d.data), d.categoriaNome, d.descrizione, d.importo, d.struttura ?? '']] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura spesa fallita (non bloccante):', e);
+  }
+}
+
+// ── Scadenze ─────────────────────────────────────────────────────────────────
+// Tab SCADENZE (file "gestione"): A=ID (non usato da importDaSheets.ts, lasciato vuoto)
+// B=Titolo C=DataScadenza D=Ricorrenza E=Note F=UltimoCompletamento.
+// Il vecchio schema non ha un campo "ente" — viene ripiegato dentro Note per non perderlo.
+
+export type RigaScadenza = {
+  titolo: string;
+  dataScadenza: string; // ISO
+  ricorrenza: string;
+  ente?: string | null;
+  note?: string | null;
+  ultimoCompletamento?: string | null; // ISO
+};
+
+function noteConEnte(d: Pick<RigaScadenza, 'ente' | 'note'>): string {
+  return [d.ente ? `Ente: ${d.ente}` : null, d.note ?? null].filter(Boolean).join(' — ');
+}
+
+/** Prima riga libera del tab SCADENZE, basata sulla colonna B (Titolo) — la colonna A (ID)
+ *  non viene valorizzata da questo sync né da importDaSheets.ts. */
+async function primaRigaLiberaScadenze(sheets: ReturnType<typeof getSheetsClient>): Promise<number> {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('SCADENZE'), range: 'SCADENZE!B:B' });
+  return (res.data.values?.length ?? 1) + 1;
+}
+
+export async function scriviScadenzaSuFoglio(d: RigaScadenza): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const row = await primaRigaLiberaScadenze(sheets);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('SCADENZE'),
+      range: `SCADENZE!B${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[
+        d.titolo, isoToIt(d.dataScadenza), d.ricorrenza, noteConEnte(d),
+        d.ultimoCompletamento ? isoToIt(d.ultimoCompletamento) : '',
+      ]] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura scadenza fallita (non bloccante):', e);
+  }
+}
+
+/** Aggiorna data-scadenza e ultimo-completamento della riga trovata per titolo (colonna B).
+ *  Se non la trova (es. scadenza creata prima che questo sync esistesse), la aggiunge. */
+export async function aggiornaScadenzaSuFoglio(d: RigaScadenza): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('SCADENZE'), range: 'SCADENZE!B2:B100000' });
+    const righe = res.data.values ?? [];
+    const i = righe.findIndex((r) => String(r[0] ?? '') === d.titolo);
+    if (i === -1) {
+      await scriviScadenzaSuFoglio(d);
+      return;
+    }
+    const row = i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('SCADENZE'),
+      range: `SCADENZE!C${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[
+        isoToIt(d.dataScadenza), d.ricorrenza, noteConEnte(d), d.ultimoCompletamento ? isoToIt(d.ultimoCompletamento) : '',
+      ]] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] aggiornamento scadenza fallito (non bloccante):', e);
+  }
+}

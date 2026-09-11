@@ -8,11 +8,14 @@
 import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
-  proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze,
+  proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
   pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo,
 } from './schema';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
-import { scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio } from './syncFoglio';
+import {
+  scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
+  scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
+} from './syncFoglio';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 const oggiISO = () => new Date().toISOString().slice(0, 10);
@@ -391,6 +394,14 @@ export async function creaSpesa(d: { immobileId?: string; categoriaId: string; d
     metodo_pagamento: (d.metodoPagamento as 'Bonifico') || null,
     da_rimborsare_proprietario: d.daRimborsareProprietario ?? false, note: d.note || null,
   }).returning();
+
+  const [cat] = await db.select({ nome: categorieSpesa.nome }).from(categorieSpesa).where(eq(categorieSpesa.id, d.categoriaId));
+  let struttura: string | null = null;
+  if (d.immobileId) {
+    const [im] = await db.select({ nome: immobili.nome }).from(immobili).where(eq(immobili.id, d.immobileId));
+    struttura = im?.nome ?? null;
+  }
+  await scriviSpesaSuFoglio({ data: r.data, categoriaNome: cat?.nome ?? '', descrizione: r.descrizione, importo: Number(r.importo), struttura });
   return r;
 }
 
@@ -400,6 +411,8 @@ export async function creaScadenza(d: { immobileId?: string; titolo: string; ent
     origine: 'Database', immobile_id: d.immobileId || null, titolo: d.titolo.trim(), ente: d.ente || null,
     data_scadenza: d.dataScadenza, ricorrenza: (d.ricorrenza as 'Una tantum') || 'Una tantum', note: d.note || null,
   }).returning();
+
+  await scriviScadenzaSuFoglio({ titolo: r.titolo, dataScadenza: r.data_scadenza, ricorrenza: r.ricorrenza, ente: r.ente, note: r.note });
   return r;
 }
 
@@ -424,6 +437,7 @@ export async function seedScadenzeTipiche() {
       origine: 'Database', titolo: p.titolo, ente: p.ente, data_scadenza: p.dataScadenza,
       ricorrenza: p.ricorrenza as 'Annuale', note: p.note,
     });
+    await scriviScadenzaSuFoglio({ titolo: p.titolo, dataScadenza: p.dataScadenza, ricorrenza: p.ricorrenza, ente: p.ente, note: p.note });
   }
   return { aggiunte: daInserire.length };
 }
@@ -439,6 +453,10 @@ export async function completaScadenza(id: string) {
     nuova = d.toISOString().slice(0, 10);
   }
   const [r] = await db.update(scadenze).set({ ultimo_completamento: oggi, data_scadenza: nuova, aggiornato_il: new Date() }).where(eq(scadenze.id, id)).returning();
+
+  if (r.origine === 'Database') {
+    await aggiornaScadenzaSuFoglio({ titolo: r.titolo, dataScadenza: r.data_scadenza, ricorrenza: r.ricorrenza, ente: r.ente, note: r.note, ultimoCompletamento: r.ultimo_completamento });
+  }
   return r;
 }
 
