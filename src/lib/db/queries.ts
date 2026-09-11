@@ -49,11 +49,12 @@ export type PrenotazioneVista = {
   penaleImporto: number | null;
   calendarEventId: string;
   note: string;
+  pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
 };
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
 
-function mappaPrenotazione(r: Record<string, unknown>): PrenotazioneVista {
+function mappaPrenotazione(r: Record<string, unknown>, pagamentiRiga: PrenotazioneVista['pagamenti'] = []): PrenotazioneVista {
   return {
     id: String(r.id),
     checkin: String(r.checkin),
@@ -78,6 +79,7 @@ function mappaPrenotazione(r: Record<string, unknown>): PrenotazioneVista {
     penaleImporto: r.penale_importo == null ? null : n(r.penale_importo),
     calendarEventId: String(r.calendar_event_id ?? ''),
     note: String(r.note ?? ''),
+    pagamenti: pagamentiRiga,
   };
 }
 
@@ -117,7 +119,19 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
     .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
     .innerJoin(proprietari, eq(proprietari.id, immobili.proprietario_id))
     .orderBy(prenotazioni.checkin);
-  return righe.map((r) => mappaPrenotazione(r as Record<string, unknown>));
+
+  const righePag = await db.select({
+    id: pagamenti.id, prenotazione_id: pagamenti.prenotazione_id, tipo: pagamenti.tipo,
+    importo: pagamenti.importo, data: pagamenti.data, metodo: pagamenti.metodo,
+  }).from(pagamenti);
+  const pagamentiPerPren = new Map<string, PrenotazioneVista['pagamenti']>();
+  for (const p of righePag) {
+    const lista = pagamentiPerPren.get(p.prenotazione_id) ?? [];
+    lista.push({ id: p.id, tipo: p.tipo, importo: n(p.importo), data: p.data, metodo: p.metodo });
+    pagamentiPerPren.set(p.prenotazione_id, lista);
+  }
+
+  return righe.map((r) => mappaPrenotazione(r as Record<string, unknown>, pagamentiPerPren.get(String(r.id)) ?? []));
 }
 
 /** Prenotazioni con check-in o check-out tra due date (incluse) — per digest e promemoria. */

@@ -13,6 +13,7 @@ type Prenotazione = {
   alloggio: string; immobile: string; proprietario: string; canale: string;
   lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
   utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
+  pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
 };
 type Alloggio = {
   id: string; nome: string; attivo: boolean; regimeFiscale: string; costoPulizia: string;
@@ -1182,6 +1183,16 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }
             {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
             {p.note && <p className="sub">{p.note}</p>}
 
+            {p.pagamenti.length > 0 && (
+              <table className="tbl" style={{ marginTop: 10 }}><tbody>
+                <tr><td colSpan={2}><b style={{ fontSize: 13 }}>Pagamenti registrati</b></td></tr>
+                {p.pagamenti.map((pg) => (
+                  <tr key={pg.id}><td>{pg.tipo} · {dataIt(pg.data)}{pg.metodo ? ` · ${pg.metodo}` : ''}</td><td className="num">{eur(pg.importo)}</td></tr>
+                ))}
+                <tr className="tot"><td>Totale incassato</td><td className="num strong">{eur(p.pagamenti.reduce((s, pg) => s + pg.importo, 0))}</td></tr>
+              </tbody></table>
+            )}
+
             {puoModificare && (pag ? (
               <div className="form" style={{ marginTop: 10, padding: 12, background: 'var(--coral-soft)', borderRadius: 10 }}>
                 <b style={{ fontSize: 13 }}>Registra un pagamento</b>
@@ -1299,7 +1310,7 @@ function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <button onClick={onClose}>Annulla</button>
         </div>
         {err && <p className="err">{err}</p>}
-        <p className="empty" style={{ marginTop: 8 }}>Non crea l&apos;evento su Google Calendar (lo farà dopo il passaggio). Resta nel database anche dopo il sync col foglio.</p>
+        <p className="empty" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e si scrive sul vecchio foglio come riserva. Resta nel database anche dopo il sync dal foglio.</p>
       </div>
     </div>
   );
