@@ -447,6 +447,169 @@ export async function aggiornaEventoLocaleSuFoglio(prima: { titolo: string; dal:
   }
 }
 
+// ── Helper generici per le entità restanti ──────────────────────────────────
+// Tutte con lo stesso bisogno: crea il tab se manca, trova la riga per una chiave in
+// colonna A (o aggiungila se non c'è), scrivi l'intera riga.
+
+async function primaRigaLibera(sheets: ReturnType<typeof getSheetsClient>, tab: string): Promise<number> {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab(tab), range: `${tab}!A:A` });
+  return (res.data.values?.length ?? 1) + 1;
+}
+
+async function upsertRigaPerChiaveA(tab: string, headers: readonly string[], chiave: string, valori: (string | number)[]): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, tab, headers, 'sync-foglio');
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab(tab), range: `${tab}!A2:A100000` });
+    const righe = res.data.values ?? [];
+    const i = righe.findIndex((r) => String(r[0] ?? '') === chiave);
+    const lastCol = colLetter(headers.length - 1);
+    const row = i === -1 ? await primaRigaLibera(sheets, tab) : i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab(tab),
+      range: `${tab}!A${row}:${lastCol}${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [valori] },
+    });
+  } catch (e) {
+    console.error(`[sync-foglio] scrittura ${tab} fallita (non bloccante):`, e);
+  }
+}
+
+async function appendRiga(tab: string, headers: readonly string[], valori: (string | number)[]): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, tab, headers, 'sync-foglio');
+    const row = await primaRigaLibera(sheets, tab);
+    const lastCol = colLetter(headers.length - 1);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab(tab),
+      range: `${tab}!A${row}:${lastCol}${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [valori] },
+    });
+  } catch (e) {
+    console.error(`[sync-foglio] scrittura ${tab} fallita (non bloccante):`, e);
+  }
+}
+
+const colLetter = (idx: number): string => String.fromCharCode(65 + idx);
+
+// ── Anagrafica: proprietari, immobili, alloggi ──────────────────────────────
+// Non esisteva un tab dedicato nel vecchio sistema (l'anagrafica era hardcoded nel codice
+// dell'import) — creati qui al primo utilizzo, sempre nel file "gestione". Chiave = Nome,
+// che per queste tre entità è già unico nell'uso reale.
+
+const INTESTAZIONI_PROPRIETARI = ['Nome', 'Tipo', 'CF/PIVA', 'Email', 'Telefono', 'IBAN', 'Note'] as const;
+export async function scriviProprietarioSuFoglio(d: { nome: string; tipo: string; codiceFiscalePiva?: string | null; email?: string | null; telefono?: string | null; iban?: string | null; note?: string | null }): Promise<void> {
+  await upsertRigaPerChiaveA('PROPRIETARI', INTESTAZIONI_PROPRIETARI, d.nome, [
+    testo(d.nome), d.tipo, d.codiceFiscalePiva ?? '', d.email ?? '', testo(d.telefono ?? ''), d.iban ?? '', testo(d.note ?? ''),
+  ]);
+}
+
+const INTESTAZIONI_IMMOBILI = ['Nome', 'Proprietario', 'Indirizzo', 'Comune', 'Provincia', 'CIN', 'CIR', 'Note'] as const;
+export async function scriviImmobileSuFoglio(d: { nome: string; proprietarioNome: string; indirizzo: string; comune: string; provincia: string; cin?: string | null; cir?: string | null; note?: string | null }): Promise<void> {
+  await upsertRigaPerChiaveA('IMMOBILI', INTESTAZIONI_IMMOBILI, d.nome, [
+    testo(d.nome), testo(d.proprietarioNome), testo(d.indirizzo), d.comune, d.provincia, d.cin ?? '', d.cir ?? '', testo(d.note ?? ''),
+  ]);
+}
+
+const INTESTAZIONI_ALLOGGI = ['Nome', 'Immobile', 'Regime fiscale', 'Costo pulizia', 'Attivo', 'WiFi SSID', 'Trasmette alloggiati', 'Comune imposta soggiorno', 'Importo imposta soggiorno'] as const;
+export async function scriviAlloggioSuFoglio(d: { nome: string; immobileNome: string; regimeFiscale: string; costoPulizia: number; attivo: boolean; wifiSsid?: string | null; trasmetteAlloggiati: boolean; impostaSoggiornoComune?: string | null; impostaSoggiornoImporto: number }): Promise<void> {
+  await upsertRigaPerChiaveA('ALLOGGI', INTESTAZIONI_ALLOGGI, d.nome, [
+    testo(d.nome), testo(d.immobileNome), d.regimeFiscale, d.costoPulizia, d.attivo ? 'Sì' : 'No',
+    testo(d.wifiSsid ?? ''), d.trasmetteAlloggiati ? 'Sì' : 'No', d.impostaSoggiornoComune ?? '', d.impostaSoggiornoImporto,
+  ]);
+}
+
+// ── Contratti di gestione ────────────────────────────────────────────────────
+// Nessuna colonna univoca: un proprietario ha in pratica un solo contratto attivo alla
+// volta, quindi proprietario+data inizio è una chiave stabile in pratica.
+
+const INTESTAZIONI_CONTRATTI_GESTIONE = ['Proprietario', 'Dal', 'Al', '% Fee', 'Direzione incasso', 'Condizioni'] as const;
+export type RigaContrattoGestione = { proprietarioNome: string; dal: string; al?: string | null; percentualeFee: number; direzioneIncasso: string; condizioni?: string | null };
+
+function rigaContrattoGestioneToValues(d: RigaContrattoGestione): (string | number)[] {
+  return [testo(d.proprietarioNome), isoToIt(d.dal), d.al ? isoToIt(d.al) : '', d.percentualeFee, d.direzioneIncasso, testo(d.condizioni ?? '')];
+}
+
+export async function scriviContrattoGestioneSuFoglio(d: RigaContrattoGestione): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'CONTRATTI_GESTIONE', INTESTAZIONI_CONTRATTI_GESTIONE, 'sync-foglio');
+    const row = await primaRigaLibera(sheets, 'CONTRATTI_GESTIONE');
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('CONTRATTI_GESTIONE'), range: `CONTRATTI_GESTIONE!A${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED', requestBody: { values: [rigaContrattoGestioneToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura contratto gestione fallita (non bloccante):', e);
+  }
+}
+
+export async function aggiornaContrattoGestioneSuFoglio(prima: { proprietarioNome: string; dal: string }, d: RigaContrattoGestione): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'CONTRATTI_GESTIONE', INTESTAZIONI_CONTRATTI_GESTIONE, 'sync-foglio');
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('CONTRATTI_GESTIONE'), range: 'CONTRATTI_GESTIONE!A2:B100000' });
+    const righe = res.data.values ?? [];
+    const i = righe.findIndex((r) => String(r[0] ?? '') === prima.proprietarioNome && String(r[1] ?? '') === isoToIt(prima.dal));
+    if (i === -1) { await scriviContrattoGestioneSuFoglio(d); return; }
+    const row = i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('CONTRATTI_GESTIONE'), range: `CONTRATTI_GESTIONE!A${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED', requestBody: { values: [rigaContrattoGestioneToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] aggiornamento contratto gestione fallito (non bloccante):', e);
+  }
+}
+
+// ── Prezzi per periodo ───────────────────────────────────────────────────────
+// Solo creazione e cancellazione nel nuovo sistema (nessuna modifica) — niente ricerca per
+// aggiornare, solo append e, alla cancellazione, ricerca per righe esatte da eliminare.
+
+const INTESTAZIONI_PREZZI_PERIODO = ['Alloggio', 'Dal', 'Al', 'Prezzo/notte', 'Note'] as const;
+export type RigaPrezzoPeriodo = { alloggioNome: string; dal: string; al: string; prezzoNotte: number; note?: string | null };
+
+export async function scriviPrezzoPeriodoSuFoglio(d: RigaPrezzoPeriodo): Promise<void> {
+  const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
+  await appendRiga('PREZZI_PERIODO', INTESTAZIONI_PREZZI_PERIODO, [stanza || 'Tutti gli alloggi', isoToIt(d.dal), isoToIt(d.al), d.prezzoNotte, testo(d.note ?? '')]);
+}
+
+export async function eliminaPrezzoPeriodoSuFoglio(d: RigaPrezzoPeriodo): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('PREZZI_PERIODO'), range: 'PREZZI_PERIODO!A2:D100000' });
+    const righe = res.data.values ?? [];
+    const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome ?? 'Tutti gli alloggi';
+    const i = righe.findIndex((r) => String(r[0] ?? '') === (stanza || 'Tutti gli alloggi') && String(r[1] ?? '') === isoToIt(d.dal) && String(r[2] ?? '') === isoToIt(d.al));
+    if (i === -1) return;
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: fileIdForTab('PREZZI_PERIODO'), fields: 'sheets.properties' });
+    const sheetId = meta.data.sheets?.find((s) => s.properties?.title === 'PREZZI_PERIODO')?.properties?.sheetId;
+    if (sheetId == null) return;
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: fileIdForTab('PREZZI_PERIODO'),
+      requestBody: { requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 } } }] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] eliminazione prezzo periodo fallita (non bloccante):', e);
+  }
+}
+
+// ── Pagamenti ────────────────────────────────────────────────────────────────
+// Solo creazione (nessuna modifica/cancellazione nel nuovo sistema). Nel file
+// "prenotazioni", perché legati a una prenotazione specifica — identificata qui per
+// ospite+check-in dato che il tab non condivide un ID con la tabella pagamenti.
+
+const INTESTAZIONI_PAGAMENTI = ['Ospite', 'Check-in prenotazione', 'Alloggio', 'Tipo', 'Data', 'Importo', 'Metodo', 'Note'] as const;
+export async function scriviPagamentoSuFoglio(d: { ospiteNomeCompleto: string; checkinPrenotazione: string; alloggioNome: string; tipo: string; data: string; importo: number; metodo?: string | null; note?: string | null }): Promise<void> {
+  const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
+  await appendRiga('PAGAMENTI', INTESTAZIONI_PAGAMENTI, [
+    testo(d.ospiteNomeCompleto), isoToIt(d.checkinPrenotazione), stanza, d.tipo, isoToIt(d.data), d.importo, d.metodo ?? '', testo(d.note ?? ''),
+  ]);
+}
+
 export async function eliminaEventoLocaleSuFoglio(titolo: string, dal: string): Promise<void> {
   try {
     const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);

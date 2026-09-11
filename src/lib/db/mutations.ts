@@ -18,6 +18,9 @@ import {
   scriviOspiteSuFoglio, aggiornaOspiteSuFoglio, confermaPuliziaSuFoglio,
   scriviPreventivoSuFoglio, aggiornaPreventivoSuFoglio,
   scriviEventoLocaleSuFoglio, aggiornaEventoLocaleSuFoglio, eliminaEventoLocaleSuFoglio,
+  scriviProprietarioSuFoglio, scriviImmobileSuFoglio, scriviAlloggioSuFoglio,
+  scriviContrattoGestioneSuFoglio, aggiornaContrattoGestioneSuFoglio,
+  scriviPrezzoPeriodoSuFoglio, eliminaPrezzoPeriodoSuFoglio, scriviPagamentoSuFoglio,
 } from './syncFoglio';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
@@ -58,6 +61,10 @@ export async function calcolaImportiPrenotazione(opts: {
 
 // ── Anagrafica ───────────────────────────────────────────────────────────────
 
+function rigaProprietarioDa(p: typeof proprietari.$inferSelect) {
+  return { nome: p.nome, tipo: p.tipo, codiceFiscalePiva: p.codice_fiscale_piva, email: p.email, telefono: p.telefono, iban: p.iban, note: p.note };
+}
+
 export async function creaProprietario(d: { nome: string; tipo?: string; codiceFiscalePiva?: string; email?: string; telefono?: string; iban?: string; note?: string }) {
   const db = getDb();
   const [r] = await db.insert(proprietari).values({
@@ -65,6 +72,7 @@ export async function creaProprietario(d: { nome: string; tipo?: string; codiceF
     codice_fiscale_piva: d.codiceFiscalePiva || null, email: d.email || null,
     telefono: d.telefono || null, iban: d.iban || null, note: d.note || null,
   }).returning();
+  await scriviProprietarioSuFoglio(rigaProprietarioDa(r));
   return r;
 }
 export async function aggiornaProprietario(id: string, d: Record<string, unknown>) {
@@ -72,7 +80,17 @@ export async function aggiornaProprietario(id: string, d: Record<string, unknown
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries({ nome: d.nome, tipo: d.tipo, codice_fiscale_piva: d.codiceFiscalePiva, email: d.email, telefono: d.telefono, iban: d.iban, note: d.note })) if (v !== undefined) set[k] = v || null;
   const [r] = await db.update(proprietari).set(set).where(eq(proprietari.id, id)).returning();
+  await scriviProprietarioSuFoglio(rigaProprietarioDa(r));
   return r;
+}
+
+async function proprietarioNomePerFoglio(id: string): Promise<string> {
+  const [p] = await getDb().select({ nome: proprietari.nome }).from(proprietari).where(eq(proprietari.id, id));
+  return p?.nome ?? '';
+}
+async function scriviImmobileSuFoglioDa(r: typeof immobili.$inferSelect) {
+  const proprietarioNome = await proprietarioNomePerFoglio(r.proprietario_id);
+  await scriviImmobileSuFoglio({ nome: r.nome, proprietarioNome, indirizzo: r.indirizzo, comune: r.comune, provincia: r.provincia, cin: r.cin, cir: r.cir, note: r.note });
 }
 
 export async function creaImmobile(d: { proprietarioId: string; nome: string; indirizzo: string; comune: string; provincia: string; cin?: string; cir?: string; note?: string }) {
@@ -82,6 +100,7 @@ export async function creaImmobile(d: { proprietarioId: string; nome: string; in
     comune: d.comune.trim(), provincia: d.provincia.trim().toUpperCase(),
     cin: d.cin || null, cir: d.cir || null, note: d.note || null,
   }).returning();
+  await scriviImmobileSuFoglioDa(r);
   return r;
 }
 export async function aggiornaImmobile(id: string, d: Record<string, unknown>) {
@@ -89,7 +108,21 @@ export async function aggiornaImmobile(id: string, d: Record<string, unknown>) {
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries({ nome: d.nome, indirizzo: d.indirizzo, comune: d.comune, provincia: d.provincia, cin: d.cin, cir: d.cir, note: d.note, proprietario_id: d.proprietarioId })) if (v !== undefined) set[k] = v || null;
   const [r] = await db.update(immobili).set(set).where(eq(immobili.id, id)).returning();
+  await scriviImmobileSuFoglioDa(r);
   return r;
+}
+
+async function immobileNomePerFoglio(id: string): Promise<string> {
+  const [i] = await getDb().select({ nome: immobili.nome }).from(immobili).where(eq(immobili.id, id));
+  return i?.nome ?? '';
+}
+async function scriviAlloggioSuFoglioDa(r: typeof alloggi.$inferSelect) {
+  const immobileNome = await immobileNomePerFoglio(r.immobile_id);
+  await scriviAlloggioSuFoglio({
+    nome: r.nome, immobileNome, regimeFiscale: r.regime_fiscale, costoPulizia: Number(r.costo_pulizia), attivo: r.attivo,
+    wifiSsid: r.wifi_ssid, trasmetteAlloggiati: r.trasmette_alloggiati, impostaSoggiornoComune: r.imposta_soggiorno_comune,
+    impostaSoggiornoImporto: Number(r.imposta_soggiorno_importo),
+  });
 }
 
 export async function creaAlloggio(d: { immobileId: string; nome: string; regimeFiscale?: string; costoPulizia?: number; emoji?: string; wifiSsid?: string; wifiPassword?: string; haSelfCheckin?: boolean; trasmetteAlloggiati?: boolean; trasmetteRegione?: boolean; impostaSoggiornoComune?: string; impostaSoggiornoImporto?: number }) {
@@ -104,6 +137,7 @@ export async function creaAlloggio(d: { immobileId: string; nome: string; regime
     imposta_soggiorno_comune: d.impostaSoggiornoComune || null,
     imposta_soggiorno_importo: s(d.impostaSoggiornoImporto ?? 0),
   }).returning();
+  await scriviAlloggioSuFoglioDa(r);
   return r;
 }
 export async function aggiornaAlloggio(id: string, d: Record<string, unknown>) {
@@ -119,6 +153,7 @@ export async function aggiornaAlloggio(id: string, d: Record<string, unknown>) {
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries(map)) if (v !== undefined) set[k] = v === '' ? null : v;
   const [r] = await db.update(alloggi).set(set).where(eq(alloggi.id, id)).returning();
+  await scriviAlloggioSuFoglioDa(r);
   return r;
 }
 
@@ -410,15 +445,28 @@ export async function cancellaEventoLocale(id: string) {
 }
 
 export async function creaPrezzoPeriodo(d: { alloggioId?: string; dal: string; al: string; prezzoNotte: number; note?: string }) {
-  const [r] = await getDb().insert(prezziPeriodo).values({
+  const db = getDb();
+  const [r] = await db.insert(prezziPeriodo).values({
     alloggio_id: d.alloggioId || null, dal: d.dal, al: d.al || d.dal,
     prezzo_notte: s(d.prezzoNotte), note: d.note || null,
   }).returning();
+  const alloggioNome = r.alloggio_id ? await immobileOAlloggioNomePerFoglio(r.alloggio_id) : '';
+  await scriviPrezzoPeriodoSuFoglio({ alloggioNome, dal: r.dal, al: r.al, prezzoNotte: Number(r.prezzo_notte), note: r.note });
   return r;
 }
 export async function cancellaPrezzoPeriodo(id: string) {
-  await getDb().delete(prezziPeriodo).where(eq(prezziPeriodo.id, id));
+  const db = getDb();
+  const [r] = await db.select().from(prezziPeriodo).where(eq(prezziPeriodo.id, id));
+  await db.delete(prezziPeriodo).where(eq(prezziPeriodo.id, id));
+  if (r) {
+    const alloggioNome = r.alloggio_id ? await immobileOAlloggioNomePerFoglio(r.alloggio_id) : '';
+    await eliminaPrezzoPeriodoSuFoglio({ alloggioNome, dal: r.dal, al: r.al, prezzoNotte: Number(r.prezzo_notte) });
+  }
   return { ok: true };
+}
+async function immobileOAlloggioNomePerFoglio(alloggioId: string): Promise<string> {
+  const [a] = await getDb().select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, alloggioId));
+  return a?.nome ?? '';
 }
 
 // ── Pagamenti ────────────────────────────────────────────────────────────────
@@ -429,6 +477,16 @@ export async function aggiungiPagamento(d: { prenotazioneId: string; tipo: strin
     prenotazione_id: d.prenotazioneId, tipo: d.tipo as 'Caparra', importo: s(d.importo),
     data: d.data || oggiISO(), metodo: (d.metodo as 'Bonifico') || null, note: d.note || null,
   }).returning();
+
+  const [pren] = await db.select({ checkin: prenotazioni.checkin, alloggio_id: prenotazioni.alloggio_id, ospite_id: prenotazioni.ospite_id }).from(prenotazioni).where(eq(prenotazioni.id, d.prenotazioneId));
+  if (pren) {
+    const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, pren.alloggio_id));
+    const [ospite] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome }).from(ospiti).where(eq(ospiti.id, pren.ospite_id));
+    await scriviPagamentoSuFoglio({
+      ospiteNomeCompleto: `${ospite?.nome ?? ''} ${ospite?.cognome ?? ''}`.trim(), checkinPrenotazione: pren.checkin,
+      alloggioNome: alloggio?.nome ?? '', tipo: r.tipo, data: r.data, importo: Number(r.importo), metodo: r.metodo, note: r.note,
+    });
+  }
   return r;
 }
 
@@ -524,6 +582,11 @@ export async function confermaPulizia(id: string, addettoId?: string) {
 
 // ── Contratto di gestione ───────────────────────────────────────────────────
 
+async function rigaContrattoGestioneDa(r: typeof contrattiGestione.$inferSelect) {
+  const proprietarioNome = await proprietarioNomePerFoglio(r.proprietario_id);
+  return { proprietarioNome, dal: r.dal, al: r.al, percentualeFee: Number(r.percentuale_fee), direzioneIncasso: r.direzione_incasso, condizioni: r.condizioni };
+}
+
 export async function creaContrattoGestione(d: { proprietarioId: string; dal: string; al?: string; percentualeFee?: number; direzioneIncasso?: string; condizioni?: string }) {
   const db = getDb();
   const [r] = await db.insert(contrattiGestione).values({
@@ -532,16 +595,22 @@ export async function creaContrattoGestione(d: { proprietarioId: string; dal: st
     direzione_incasso: d.direzioneIncasso === 'Proprietario' ? 'Proprietario' : 'Gestore',
     condizioni: d.condizioni || null,
   }).returning();
+  await scriviContrattoGestioneSuFoglio(await rigaContrattoGestioneDa(r));
   return r;
 }
 export async function aggiornaContrattoGestione(id: string, d: Record<string, unknown>) {
   const db = getDb();
+  const [prima] = await db.select().from(contrattiGestione).where(eq(contrattiGestione.id, id));
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries({
     dal: d.dal, al: d.al, condizioni: d.condizioni, direzione_incasso: d.direzioneIncasso,
     percentuale_fee: d.percentualeFee != null ? s(Number(d.percentualeFee)) : undefined,
   })) if (v !== undefined) set[k] = v === '' ? null : v;
   const [r] = await db.update(contrattiGestione).set(set).where(eq(contrattiGestione.id, id)).returning();
+  if (prima) {
+    const proprietarioNomePrima = await proprietarioNomePerFoglio(prima.proprietario_id);
+    await aggiornaContrattoGestioneSuFoglio({ proprietarioNome: proprietarioNomePrima, dal: prima.dal }, await rigaContrattoGestioneDa(r));
+  }
   return r;
 }
 
