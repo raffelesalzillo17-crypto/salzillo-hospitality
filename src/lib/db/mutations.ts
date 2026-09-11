@@ -12,6 +12,7 @@ import {
   pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo,
 } from './schema';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
+import { scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio } from './syncFoglio';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 const oggiISO = () => new Date().toISOString().slice(0, 10);
@@ -169,7 +170,25 @@ export async function creaPrenotazione(d: {
     netto_proprietario: s(imp.nettoProprietario), calendar_event_id: eventId,
     stato: (d.stato as 'Attiva') || 'Attiva', note: d.note || null, creata_da: d.creataDa || null,
   }).returning();
+
+  await scriviNuovaPrenotazioneSuFoglio({
+    alloggioNome: ctx?.alloggio ?? '', checkin: d.checkin, checkout: d.checkout,
+    ospiteNomeCompleto: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim(), canale: d.canale, lordo: d.lordo,
+    stato: r.stato, eventId, telefono: ctx?.telefono,
+  });
   return r;
+}
+
+/** Alloggio, ospite e importi di una prenotazione — serve a syncFoglio.ts per scrivere/
+ *  aggiornare la riga corrispondente sul vecchio foglio dopo una modifica o cancellazione. */
+async function contestoPrenotazionePerFoglio(p: typeof prenotazioni.$inferSelect) {
+  const db = getDb();
+  const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, p.alloggio_id));
+  const [ospite] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome, telefono: ospiti.telefono }).from(ospiti).where(eq(ospiti.id, p.ospite_id));
+  return {
+    alloggioNome: alloggio?.nome ?? '', ospiteNomeCompleto: `${ospite?.nome ?? ''} ${ospite?.cognome ?? ''}`.trim(),
+    telefono: ospite?.telefono ?? null,
+  };
 }
 
 export async function aggiornaPrenotazione(id: string, d: Record<string, unknown>) {
@@ -196,15 +215,26 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
     });
   }
   const [r] = await db.update(prenotazioni).set(set).where(eq(prenotazioni.id, id)).returning();
+
+  if (r.origine === 'Database') {
+    const ctx = await contestoPrenotazionePerFoglio(attuale);
+    await aggiornaPrenotazioneSuFoglio({
+      alloggioNome: ctx.alloggioNome, checkin: attuale.checkin, checkout: r.checkout,
+      ospiteNomeCompleto: ctx.ospiteNomeCompleto, canale: r.canale, lordo: Number(r.lordo),
+      stato: r.stato, penale: r.penale_importo != null ? Number(r.penale_importo) : null,
+      eventId: r.calendar_event_id, telefono: ctx.telefono,
+    });
+  }
   return r;
 }
 
 export async function cancellaPrenotazione(id: string, conPenale: boolean, importoPenale?: number) {
   const db = getDb();
-  const [attuale] = await db.select({ eventId: prenotazioni.calendar_event_id, alloggioId: prenotazioni.alloggio_id }).from(prenotazioni).where(eq(prenotazioni.id, id));
-  if (attuale?.eventId) {
-    const [im] = await db.select({ calendarId: immobili.calendar_id }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id)).where(eq(alloggi.id, attuale.alloggioId));
-    await eliminaEventoPrenotazione(im?.calendarId ?? null, attuale.eventId);
+  const [attuale] = await db.select().from(prenotazioni).where(eq(prenotazioni.id, id));
+  if (!attuale) throw new Error('Prenotazione non trovata');
+  if (attuale.calendar_event_id) {
+    const [im] = await db.select({ calendarId: immobili.calendar_id }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id)).where(eq(alloggi.id, attuale.alloggio_id));
+    await eliminaEventoPrenotazione(im?.calendarId ?? null, attuale.calendar_event_id);
   }
   const [r] = await db.update(prenotazioni).set({
     stato: conPenale ? 'Cancellata con penale' : 'Cancellata',
@@ -212,6 +242,16 @@ export async function cancellaPrenotazione(id: string, conPenale: boolean, impor
     calendar_event_id: null,
     aggiornato_il: new Date(),
   }).where(eq(prenotazioni.id, id)).returning();
+
+  if (r.origine === 'Database') {
+    const ctx = await contestoPrenotazionePerFoglio(attuale);
+    await aggiornaPrenotazioneSuFoglio({
+      alloggioNome: ctx.alloggioNome, checkin: attuale.checkin, checkout: attuale.checkout,
+      ospiteNomeCompleto: ctx.ospiteNomeCompleto, canale: attuale.canale, lordo: Number(attuale.lordo),
+      stato: r.stato, penale: r.penale_importo != null ? Number(r.penale_importo) : null,
+      eventId: attuale.calendar_event_id, telefono: ctx.telefono,
+    });
+  }
   return r;
 }
 
