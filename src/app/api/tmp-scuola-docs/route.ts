@@ -16,7 +16,6 @@ export async function GET() {
   try {
     const auth = client();
     const drive = google.drive({ version: 'v3', auth });
-    const docs = google.docs({ version: 'v1', auth });
 
     // cartella "Appunti Lezioni" per tenere i due file insieme
     const cartellaEsistente = await drive.files.list({
@@ -29,6 +28,16 @@ export async function GET() {
       folderId = f.data.id!;
     }
 
+    const testoIniziale = (classe: string) =>
+      `Appunti — ${classe}\n\n` +
+      `Scrivi qui gli appunti della lezione del giorno. Un titolo di sezione per ogni lezione ` +
+      `(es. "11/09 — Le frazioni"), sotto gli appunti così come li prendi. Da qui l'AI legge, ` +
+      `semplifica e prepara la pagina per gli studenti.\n\n` +
+      `───────────────────\n\n`;
+
+    // Creazione via Drive (senza l'API Google Docs, non ancora abilitata sul progetto):
+    // caricando testo semplice con mimeType di destinazione "document", Drive lo converte
+    // automaticamente in un vero Google Doc modificabile.
     const risultati: Record<string, unknown>[] = [];
     for (const nome of ['Appunti 2ª SAS', 'Appunti 4ª SAS']) {
       const esiste = await drive.files.list({
@@ -39,11 +48,12 @@ export async function GET() {
         risultati.push({ nome, giaEsistente: true, id: esiste.data.files[0].id, link: esiste.data.files[0].webViewLink });
         continue;
       }
-      const doc = await docs.documents.create({ requestBody: { title: nome } });
-      const id = doc.data.documentId!;
-      await drive.files.update({ fileId: id, addParents: folderId, fields: 'id' });
-      const meta = await drive.files.get({ fileId: id, fields: 'webViewLink' });
-      risultati.push({ nome, id, link: meta.data.webViewLink });
+      const f = await drive.files.create({
+        requestBody: { name: nome, mimeType: 'application/vnd.google-apps.document', parents: [folderId] },
+        media: { mimeType: 'text/plain', body: testoIniziale(nome) },
+        fields: 'id,webViewLink',
+      });
+      risultati.push({ nome, id: f.data.id, link: f.data.webViewLink });
     }
 
     return NextResponse.json({ ok: true, cartella: folderId, file: risultati });
