@@ -14,7 +14,7 @@
  * calendario configurato.
  */
 
-import { getSheetsClient, fileIdForTab } from '../sheets';
+import { getSheetsClient, fileIdForTab, ensureSheetWithHeaders } from '../sheets';
 
 const ALLOGGIO_FOGLIO: Record<string, string> = {
   'Il Tulipano': 'Tulipano',
@@ -305,5 +305,161 @@ export async function confermaPuliziaSuFoglio(d: RigaPuliziaConferma): Promise<v
     });
   } catch (e) {
     console.error('[sync-foglio] conferma pulizia fallita (non bloccante):', e);
+  }
+}
+
+// ── Preventivi ───────────────────────────────────────────────────────────────
+// Tab PREVENTIVI (file "prenotazioni") — non esisteva nel vecchio sistema (concetto nuovo
+// di /nuovo): lo creiamo qui al primo utilizzo, con intestazioni proprie.
+// A=Codice B=Check-in C=Check-out D=Ospite E=Alloggio F=Prezzo/notte G=Totale H=Sconto
+// I=Stato J=Valido ore K=Note. Il codice (es. "PR-0007") è univoco e stabile: chiave di
+// corrispondenza affidabile, a differenza delle prenotazioni.
+
+const INTESTAZIONI_PREVENTIVI = ['Codice', 'Check-in', 'Check-out', 'Ospite', 'Alloggio', 'Prezzo/notte', 'Totale', 'Sconto', 'Stato', 'Valido ore', 'Note'] as const;
+
+export type RigaPreventivo = {
+  codice: string;
+  checkin: string; // ISO
+  checkout: string; // ISO
+  ospiteNomeCompleto: string;
+  alloggioNome: string;
+  prezzoNotte?: number | null;
+  totale: number;
+  sconto: number;
+  stato: string;
+  validoOre: number;
+  note?: string | null;
+};
+
+function rigaPreventivoToValues(d: RigaPreventivo): (string | number)[] {
+  const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
+  return [
+    d.codice, isoToIt(d.checkin), isoToIt(d.checkout), testo(d.ospiteNomeCompleto), stanza,
+    d.prezzoNotte ?? '', d.totale, d.sconto, d.stato, d.validoOre, testo(d.note ?? ''),
+  ];
+}
+
+export async function scriviPreventivoSuFoglio(d: RigaPreventivo): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'PREVENTIVI', INTESTAZIONI_PREVENTIVI, 'sync-foglio');
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('PREVENTIVI'), range: 'PREVENTIVI!A:A' });
+    const row = (res.data.values?.length ?? 1) + 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('PREVENTIVI'),
+      range: `PREVENTIVI!A${row}:K${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [rigaPreventivoToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura preventivo fallita (non bloccante):', e);
+  }
+}
+
+/** Aggiorna la riga trovata per codice (colonna A, univoco). Se non la trova, la aggiunge. */
+export async function aggiornaPreventivoSuFoglio(d: RigaPreventivo): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'PREVENTIVI', INTESTAZIONI_PREVENTIVI, 'sync-foglio');
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('PREVENTIVI'), range: 'PREVENTIVI!A2:A100000' });
+    const righe = res.data.values ?? [];
+    const i = righe.findIndex((r) => String(r[0] ?? '') === d.codice);
+    if (i === -1) {
+      await scriviPreventivoSuFoglio(d);
+      return;
+    }
+    const row = i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('PREVENTIVI'),
+      range: `PREVENTIVI!A${row}:K${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [rigaPreventivoToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] aggiornamento preventivo fallito (non bloccante):', e);
+  }
+}
+
+// ── Eventi locali ────────────────────────────────────────────────────────────
+// Tab EVENTI_LOCALI (file "gestione") — anche questo nuovo, creato al primo utilizzo.
+// A=Titolo B=Dal C=Al D=Comune E=Impatto F=Note. Nessun codice univoco qui: la
+// corrispondenza cade su titolo+dal (ragionevole perché un evento è un caso d'uso a bassa
+// frequenza, non una riga scritta ogni giorno come le prenotazioni).
+
+const INTESTAZIONI_EVENTI_LOCALI = ['Titolo', 'Dal', 'Al', 'Comune', 'Impatto', 'Note'] as const;
+
+export type RigaEventoLocale = {
+  titolo: string;
+  dal: string; // ISO
+  al: string; // ISO
+  comune?: string | null;
+  impatto: string;
+  note?: string | null;
+};
+
+function rigaEventoLocaleToValues(d: RigaEventoLocale): string[] {
+  return [testo(d.titolo), isoToIt(d.dal), isoToIt(d.al), d.comune ?? '', d.impatto, testo(d.note ?? '')];
+}
+
+async function trovaRigaEventoLocale(sheets: ReturnType<typeof getSheetsClient>, titolo: string, dal: string): Promise<number | null> {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('EVENTI_LOCALI'), range: 'EVENTI_LOCALI!A2:B100000' });
+  const righe = res.data.values ?? [];
+  const i = righe.findIndex((r) => String(r[0] ?? '') === titolo && String(r[1] ?? '') === isoToIt(dal));
+  return i === -1 ? null : i + 2;
+}
+
+export async function scriviEventoLocaleSuFoglio(d: RigaEventoLocale): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'EVENTI_LOCALI', INTESTAZIONI_EVENTI_LOCALI, 'sync-foglio');
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('EVENTI_LOCALI'), range: 'EVENTI_LOCALI!A:A' });
+    const row = (res.data.values?.length ?? 1) + 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('EVENTI_LOCALI'),
+      range: `EVENTI_LOCALI!A${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [rigaEventoLocaleToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura evento locale fallita (non bloccante):', e);
+  }
+}
+
+/** Aggiorna la riga trovata per titolo+dal (le uniche chiavi stabili prima della modifica —
+ *  vanno passate come "prima" se titolo/dal cambiano insieme al resto). */
+export async function aggiornaEventoLocaleSuFoglio(prima: { titolo: string; dal: string }, d: RigaEventoLocale): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    await ensureSheetWithHeaders(sheets, 'EVENTI_LOCALI', INTESTAZIONI_EVENTI_LOCALI, 'sync-foglio');
+    const row = await trovaRigaEventoLocale(sheets, prima.titolo, prima.dal);
+    if (row == null) {
+      await scriviEventoLocaleSuFoglio(d);
+      return;
+    }
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('EVENTI_LOCALI'),
+      range: `EVENTI_LOCALI!A${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [rigaEventoLocaleToValues(d)] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] aggiornamento evento locale fallito (non bloccante):', e);
+  }
+}
+
+export async function eliminaEventoLocaleSuFoglio(titolo: string, dal: string): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const row = await trovaRigaEventoLocale(sheets, titolo, dal);
+    if (row == null) return;
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: fileIdForTab('EVENTI_LOCALI'), fields: 'sheets.properties' });
+    const sheetId = meta.data.sheets?.find((s) => s.properties?.title === 'EVENTI_LOCALI')?.properties?.sheetId;
+    if (sheetId == null) return;
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: fileIdForTab('EVENTI_LOCALI'),
+      requestBody: { requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] eliminazione evento locale fallita (non bloccante):', e);
   }
 }

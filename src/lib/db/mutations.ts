@@ -16,6 +16,8 @@ import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
   scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
   scriviOspiteSuFoglio, aggiornaOspiteSuFoglio, confermaPuliziaSuFoglio,
+  scriviPreventivoSuFoglio, aggiornaPreventivoSuFoglio,
+  scriviEventoLocaleSuFoglio, aggiornaEventoLocaleSuFoglio, eliminaEventoLocaleSuFoglio,
 } from './syncFoglio';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
@@ -314,7 +316,33 @@ export async function creaPreventivo(d: {
     valido_ore: d.validoOre && d.validoOre > 0 ? Math.round(d.validoOre) : 24,
     note: d.note || null, stato: 'Bozza', creato_da: d.creatoDa || null,
   }).returning();
+
+  const ctx = await contestoPreventivoPerFoglio(r);
+  await scriviPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
   return r;
+}
+
+/** Alloggio e ospite di un preventivo — serve a syncFoglio.ts per scrivere/aggiornare la
+ *  riga corrispondente sul tab PREVENTIVI del vecchio foglio. */
+async function contestoPreventivoPerFoglio(p: typeof preventivi.$inferSelect) {
+  const db = getDb();
+  const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, p.alloggio_id));
+  let ospiteNomeCompleto = '';
+  if (p.ospite_id) {
+    const [ospite] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome }).from(ospiti).where(eq(ospiti.id, p.ospite_id));
+    ospiteNomeCompleto = `${ospite?.nome ?? ''} ${ospite?.cognome ?? ''}`.trim();
+  }
+  return { alloggioNome: alloggio?.nome ?? '', ospiteNomeCompleto };
+}
+
+function rigaPreventivoDa(p: typeof preventivi.$inferSelect, ctx: { alloggioNome: string; ospiteNomeCompleto: string }) {
+  return {
+    codice: p.codice, checkin: p.checkin, checkout: p.checkout,
+    ospiteNomeCompleto: ctx.ospiteNomeCompleto, alloggioNome: ctx.alloggioNome,
+    prezzoNotte: p.prezzo_notte != null ? Number(p.prezzo_notte) : null,
+    totale: Number(p.totale), sconto: Number(p.sconto), stato: p.stato,
+    validoOre: p.valido_ore, note: p.note,
+  };
 }
 
 export async function aggiornaStatoPreventivo(id: string, stato: string) {
@@ -322,6 +350,9 @@ export async function aggiornaStatoPreventivo(id: string, stato: string) {
   const set: Record<string, unknown> = { stato: stato as 'Bozza', aggiornato_il: new Date() };
   if (stato === 'Inviato') set.inviato_il = new Date();
   const [r] = await db.update(preventivi).set(set).where(eq(preventivi.id, id)).returning();
+
+  const ctx = await contestoPreventivoPerFoglio(r);
+  await aggiornaPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
   return r;
 }
 
@@ -341,26 +372,40 @@ export async function accettaPreventivo(id: string, utenteId?: string) {
   const [r] = await db.update(preventivi).set({
     stato: 'Accettato', prenotazione_id: pren.id, accettato_il: new Date(), aggiornato_il: new Date(),
   }).where(eq(preventivi.id, id)).returning();
+
+  const ctx = await contestoPreventivoPerFoglio(r);
+  await aggiornaPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
   return { preventivo: r, prenotazione: pren };
 }
 
 // ── Eventi locali / Prezzi per periodo ──────────────────────────────────────
+
+function rigaEventoLocaleDa(e: typeof eventiLocali.$inferSelect) {
+  return { titolo: e.titolo, dal: e.dal, al: e.al, comune: e.comune, impatto: e.impatto, note: e.note };
+}
 
 export async function creaEventoLocale(d: { titolo: string; dal: string; al: string; comune?: string; impatto?: string; note?: string }) {
   const [r] = await getDb().insert(eventiLocali).values({
     titolo: d.titolo.trim(), dal: d.dal, al: d.al || d.dal, comune: d.comune || null,
     impatto: (d.impatto as 'Medio') || 'Medio', note: d.note || null,
   }).returning();
+  await scriviEventoLocaleSuFoglio(rigaEventoLocaleDa(r));
   return r;
 }
 export async function aggiornaEventoLocale(id: string, d: Record<string, unknown>) {
+  const db = getDb();
+  const [prima] = await db.select().from(eventiLocali).where(eq(eventiLocali.id, id));
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries({ titolo: d.titolo, dal: d.dal, al: d.al, comune: d.comune, impatto: d.impatto, note: d.note })) if (v !== undefined) set[k] = v || null;
-  const [r] = await getDb().update(eventiLocali).set(set).where(eq(eventiLocali.id, id)).returning();
+  const [r] = await db.update(eventiLocali).set(set).where(eq(eventiLocali.id, id)).returning();
+  if (prima) await aggiornaEventoLocaleSuFoglio({ titolo: prima.titolo, dal: prima.dal }, rigaEventoLocaleDa(r));
   return r;
 }
 export async function cancellaEventoLocale(id: string) {
-  await getDb().delete(eventiLocali).where(eq(eventiLocali.id, id));
+  const db = getDb();
+  const [e] = await db.select().from(eventiLocali).where(eq(eventiLocali.id, id));
+  await db.delete(eventiLocali).where(eq(eventiLocali.id, id));
+  if (e) await eliminaEventoLocaleSuFoglio(e.titolo, e.dal);
   return { ok: true };
 }
 
