@@ -1536,7 +1536,10 @@ const CSS = `
   --bg:#161513; --surface:#211F1C; --ink:#F2EEE8; --ink-muted:#A8A29A; --line:#332F2A; --coral:#FF7A73; --coral-soft:#3A2420; } }
 :root[data-theme="dark"]{ --bg:#161513; --surface:#211F1C; --ink:#F2EEE8; --ink-muted:#A8A29A; --line:#332F2A; --coral:#FF7A73; --coral-soft:#3A2420; }
 *{box-sizing:border-box}
-.wrap{min-height:100vh;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:20px;max-width:1200px;margin:0 auto;}
+/* <body> del layout ha le classi Tailwind "flex flex-col": .wrap, suo figlio diretto, è quindi
+   un flex item e senza min-width:0 non si restringe mai sotto il min-content del contenuto —
+   da qui il "blowout" su schermi stretti (vedi anche .card/.grid sotto). */
+.wrap{min-height:100vh;width:100%;min-width:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:20px;max-width:1200px;margin:0 auto;}
 .gate{display:flex;align-items:center;justify-content:center;}
 .gatecard{max-width:340px;text-align:center;}
 .gatecard input{width:100%;padding:11px 14px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin:12px 0;}
