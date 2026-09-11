@@ -29,6 +29,11 @@ const isoToIt = (iso: string): string => {
   return `${d}/${m}/${y}`;
 };
 
+/** Con valueInputOption USER_ENTERED, Sheets prova a interpretare "+39..." come l'inizio di
+ *  una formula/numero e perde il "+". L'apostrofo iniziale forza il testo letterale — stesso
+ *  trucco usato quando si digita un numero di telefono a mano in un foglio. */
+const testo = (s: string): string => (s && /^[+=]/.test(s) ? `'${s}` : s);
+
 export type RigaPrenotazione = {
   alloggioNome: string;
   checkin: string; // ISO
@@ -45,8 +50,8 @@ export type RigaPrenotazione = {
 function rigaToValues(d: RigaPrenotazione): (string | number)[] {
   const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
   return [
-    isoToIt(d.checkin), isoToIt(d.checkout), d.ospiteNomeCompleto, stanza, d.canale, d.lordo,
-    d.stato, d.penale ?? '', d.eventId ?? '', d.telefono ?? '',
+    isoToIt(d.checkin), isoToIt(d.checkout), testo(d.ospiteNomeCompleto), stanza, d.canale, d.lordo,
+    d.stato, d.penale ?? '', d.eventId ?? '', testo(d.telefono ?? ''),
   ];
 }
 
@@ -143,7 +148,7 @@ export async function scriviSpesaSuFoglio(d: RigaSpesa): Promise<void> {
       spreadsheetId: fileIdForTab('SPESE'),
       range: `SPESE!A${row}:E${row}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[isoToIt(d.data), d.categoriaNome, d.descrizione, d.importo, d.struttura ?? '']] },
+      requestBody: { values: [[isoToIt(d.data), d.categoriaNome, testo(d.descrizione), d.importo, d.struttura ?? '']] },
     });
   } catch (e) {
     console.error('[sync-foglio] scrittura spesa fallita (non bloccante):', e);
@@ -184,7 +189,7 @@ export async function scriviScadenzaSuFoglio(d: RigaScadenza): Promise<void> {
       range: `SCADENZE!B${row}:F${row}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[
-        d.titolo, isoToIt(d.dataScadenza), d.ricorrenza, noteConEnte(d),
+        testo(d.titolo), isoToIt(d.dataScadenza), d.ricorrenza, testo(noteConEnte(d)),
         d.ultimoCompletamento ? isoToIt(d.ultimoCompletamento) : '',
       ]] },
     });
@@ -211,10 +216,94 @@ export async function aggiornaScadenzaSuFoglio(d: RigaScadenza): Promise<void> {
       range: `SCADENZE!C${row}:F${row}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[
-        isoToIt(d.dataScadenza), d.ricorrenza, noteConEnte(d), d.ultimoCompletamento ? isoToIt(d.ultimoCompletamento) : '',
+        isoToIt(d.dataScadenza), d.ricorrenza, testo(noteConEnte(d)), d.ultimoCompletamento ? isoToIt(d.ultimoCompletamento) : '',
       ]] },
     });
   } catch (e) {
     console.error('[sync-foglio] aggiornamento scadenza fallito (non bloccante):', e);
+  }
+}
+
+// ── Ospiti ───────────────────────────────────────────────────────────────────
+// Tab OSPITI (file "prenotazioni"): A=OspiteId B=Nome(completo) C=Telefono D=CodiceFiscale
+// E=Note F=CreatoIl. La colonna A è cosmetica (importDaSheets.ts non la usa per abbinare,
+// cerca per nome) — ci scriviamo l'id del nuovo sistema, comodo per debug incrociato.
+
+export type RigaOspite = {
+  id: string;
+  nomeCompleto: string;
+  telefono?: string | null;
+  codiceFiscale?: string | null;
+  note?: string | null;
+};
+
+export async function scriviOspiteSuFoglio(d: RigaOspite): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('OSPITI'), range: 'OSPITI!A:A' });
+    const row = (res.data.values?.length ?? 1) + 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('OSPITI'),
+      range: `OSPITI!A${row}:F${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[d.id, testo(d.nomeCompleto), testo(d.telefono ?? ''), d.codiceFiscale ?? '', testo(d.note ?? ''), new Date().toISOString()]] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] scrittura ospite fallita (non bloccante):', e);
+  }
+}
+
+/** Aggiorna la riga trovata per nome completo (colonna B). Se non la trova, la aggiunge. */
+export async function aggiornaOspiteSuFoglio(d: RigaOspite): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('OSPITI'), range: 'OSPITI!B2:B100000' });
+    const righe = res.data.values ?? [];
+    const i = righe.findIndex((r) => String(r[0] ?? '') === d.nomeCompleto);
+    if (i === -1) {
+      await scriviOspiteSuFoglio(d);
+      return;
+    }
+    const row = i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('OSPITI'),
+      range: `OSPITI!C${row}:E${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[testo(d.telefono ?? ''), d.codiceFiscale ?? '', testo(d.note ?? '')]] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] aggiornamento ospite fallito (non bloccante):', e);
+  }
+}
+
+// ── Pulizie ──────────────────────────────────────────────────────────────────
+// Tab PULIZIE (file "gestione"): A=Data B=Stanza ... K=Operatore L=CompletatoIl M=Note.
+// Nessuna creazione da qui: le righe pulizie arrivano tutte dall'import (una per check-out),
+// solo la conferma (confermaPulizia) va rispecchiata sul foglio.
+
+export type RigaPuliziaConferma = {
+  data: string; // ISO
+  alloggioNome: string;
+  operatore?: string | null;
+};
+
+export async function confermaPuliziaSuFoglio(d: RigaPuliziaConferma): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('PULIZIE'), range: 'PULIZIE!A2:B100000' });
+    const righe = res.data.values ?? [];
+    const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
+    const dataIt = isoToIt(d.data);
+    const i = righe.findIndex((r) => String(r[0] ?? '') === dataIt && String(r[1] ?? '') === stanza);
+    if (i === -1) return; // nessuna riga corrispondente sul foglio (es. pulizia creata solo nel nuovo sistema) — niente da aggiornare
+    const row = i + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileIdForTab('PULIZIE'),
+      range: `PULIZIE!K${row}:L${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[d.operatore ?? '', isoToIt(new Date().toISOString().slice(0, 10))]] },
+    });
+  } catch (e) {
+    console.error('[sync-foglio] conferma pulizia fallita (non bloccante):', e);
   }
 }

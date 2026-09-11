@@ -9,12 +9,13 @@ import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
-  pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo,
+  pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti,
 } from './schema';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
   scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
+  scriviOspiteSuFoglio, aggiornaOspiteSuFoglio, confermaPuliziaSuFoglio,
 } from './syncFoglio';
 
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
@@ -127,6 +128,7 @@ export async function creaOspite(d: { nome: string; cognome: string; telefono?: 
     nome: d.nome.trim(), cognome: d.cognome.trim(), telefono: d.telefono || null, email: d.email || null,
     codice_fiscale: d.codiceFiscale || null, valutazione: (d.valutazione as 'Neutro') || 'Neutro', note: d.note || null,
   }).returning();
+  await scriviOspiteSuFoglio({ id: r.id, nomeCompleto: `${r.nome} ${r.cognome}`.trim(), telefono: r.telefono, codiceFiscale: r.codice_fiscale, note: r.note });
   return r;
 }
 export async function aggiornaOspite(id: string, d: Record<string, unknown>) {
@@ -134,6 +136,7 @@ export async function aggiornaOspite(id: string, d: Record<string, unknown>) {
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries({ nome: d.nome, cognome: d.cognome, telefono: d.telefono, email: d.email, codice_fiscale: d.codiceFiscale, valutazione: d.valutazione, note: d.note })) if (v !== undefined) set[k] = v || null;
   const [r] = await db.update(ospiti).set(set).where(eq(ospiti.id, id)).returning();
+  await aggiornaOspiteSuFoglio({ id: r.id, nomeCompleto: `${r.nome} ${r.cognome}`.trim(), telefono: r.telefono, codiceFiscale: r.codice_fiscale, note: r.note });
   return r;
 }
 
@@ -463,6 +466,14 @@ export async function completaScadenza(id: string) {
 export async function confermaPulizia(id: string, addettoId?: string) {
   const db = getDb();
   const [r] = await db.update(pulizie).set({ confermata_il: new Date(), addetto_id: addettoId || null, aggiornato_il: new Date() }).where(eq(pulizie.id, id)).returning();
+
+  const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, r.alloggio_id));
+  let operatore: string | null = null;
+  if (addettoId) {
+    const [u] = await db.select({ nome: utenti.nome }).from(utenti).where(eq(utenti.id, addettoId));
+    operatore = u?.nome ?? null;
+  }
+  await confermaPuliziaSuFoglio({ data: r.data, alloggioNome: alloggio?.nome ?? '', operatore });
   return r;
 }
 
