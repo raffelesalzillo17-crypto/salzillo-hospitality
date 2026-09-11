@@ -1051,6 +1051,12 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
 
   const primoGiorno = giorni[0], ultimoGiorno = giorni[giorni.length - 1];
 
+  // La colonna dei nomi stanza vive FUORI dal contenitore che scorre orizzontalmente
+  // (invece di provare a tenerla "sticky" dentro la griglia CSS): con CSS Grid, un
+  // figlio in position:sticky si àncora alla propria cella di colonna, che scorre insieme
+  // al resto — quindi la colonna finiva per sparire scrollando, non per restare ferma.
+  // Separandola davvero, resta visibile per costruzione, senza bisogno di sticky.
+  const alloggiAttivi = alloggi.filter((a) => a.attivo);
   return (
     <div className="card calwrap">
       <div className="calhead">
@@ -1059,32 +1065,37 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
         <button onClick={() => setMeseOffset((m) => m + 1)}>›</button>
         {meseOffset !== 0 && <button className="oggi" onClick={() => setMeseOffset(0)}>oggi</button>}
       </div>
-      <div className="tablescroll">
-        <div className="cal" style={{ ['--cell' as string]: `${CELL}px`, gridTemplateColumns: `160px repeat(${giorni.length}, var(--cell))` }}>
+      <div className="cal2col">
+        <div className="cal-fixed">
           <div className="cal-corner" />
-          {giorni.map((g) => {
-            const d = new Date(g);
-            const we = d.getDay() === 0 || d.getDay() === 6;
-            const ev = eventi.find((e) => e.dal <= g && e.al >= g);
-            return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
-              <span>{d.getDate()}</span><small>{ev ? '🎉' : d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
-            </div>;
-          })}
-          {prezzi.length > 0 && <>
-            <div className="cal-room cal-prezzo">💶 €/notte</div>
-            <div className="cal-track" style={{ gridColumn: `2 / span ${giorni.length}`, height: 22 }}>
-              {giorni.map((g) => {
-                const glob = prezzi.filter((p) => !p.alloggioId && p.dal <= g && p.al >= g).pop();
-                return <div key={g} className="cal-cell cal-prz" style={{ width: CELL }}>{glob ? Math.round(Number(glob.prezzoNotte)) : ''}</div>;
-              })}
-            </div>
-          </>}
-          {alloggi.filter((a) => a.attivo).map((a) => (
-            <CalRow key={a.id} alloggio={a} giorni={giorni} cell={CELL}
-              prenotazioni={prenotazioni.filter((p) => p.alloggio === a.nome && p.checkout > primoGiorno && p.checkin <= ultimoGiorno)}
-              prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
-              onSel={onSel} />
-          ))}
+          {prezzi.length > 0 && <div className="cal-room cal-prezzo">💶 €/notte</div>}
+          {alloggiAttivi.map((a) => <div key={a.id} className="cal-room">{a.emoji} {a.nome}</div>)}
+        </div>
+        <div className="tablescroll">
+          <div className="cal" style={{ ['--cell' as string]: `${CELL}px`, gridTemplateColumns: `repeat(${giorni.length}, var(--cell))` }}>
+            {giorni.map((g) => {
+              const d = new Date(g);
+              const we = d.getDay() === 0 || d.getDay() === 6;
+              const ev = eventi.find((e) => e.dal <= g && e.al >= g);
+              return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
+                <span>{d.getDate()}</span><small>{ev ? '🎉' : d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
+              </div>;
+            })}
+            {prezzi.length > 0 && (
+              <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}`, height: 22 }}>
+                {giorni.map((g) => {
+                  const glob = prezzi.filter((p) => !p.alloggioId && p.dal <= g && p.al >= g).pop();
+                  return <div key={g} className="cal-cell cal-prz" style={{ width: CELL }}>{glob ? Math.round(Number(glob.prezzoNotte)) : ''}</div>;
+                })}
+              </div>
+            )}
+            {alloggiAttivi.map((a) => (
+              <CalRow key={a.id} giorni={giorni} cell={CELL}
+                prenotazioni={prenotazioni.filter((p) => p.alloggio === a.nome && p.checkout > primoGiorno && p.checkin <= ultimoGiorno)}
+                prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
+                onSel={onSel} />
+            ))}
+          </div>
         </div>
       </div>
       <div className="callegend">
@@ -1094,34 +1105,31 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
   );
 }
 
-function CalRow({ alloggio, giorni, cell, prenotazioni, prezzi = [], onSel }: {
-  alloggio: Alloggio; giorni: string[]; cell: number; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[]; onSel: (p: Prenotazione) => void;
+function CalRow({ giorni, cell, prenotazioni, prezzi = [], onSel }: {
+  giorni: string[]; cell: number; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[]; onSel: (p: Prenotazione) => void;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
   return (
-    <>
-      <div className="cal-room">{alloggio.emoji} {alloggio.nome}</div>
-      <div className="cal-track" style={{ gridColumn: `2 / span ${giorni.length}` }}>
-        {giorni.map((g) => {
-          const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
-          return <div key={g} className="cal-cell" style={{ width: cell }}>{pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}</div>;
-        })}
-        {prenotazioni.map((p) => {
-          const start = Math.max(0, idx(p.checkin));
-          const end = Math.min(giorni.length, idx(p.checkout));
-          if (end <= start) return null;
-          const c = CANALE_COLOR[p.canale] || '#888';
-          return (
-            <button key={p.id} className="cal-bar" onClick={() => onSel(p)}
-              style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}
-              title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}`}>
-              <span>{p.ospite}</span>
-            </button>
-          );
-        })}
-      </div>
-    </>
+    <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}` }}>
+      {giorni.map((g) => {
+        const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
+        return <div key={g} className="cal-cell" style={{ width: cell }}>{pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}</div>;
+      })}
+      {prenotazioni.map((p) => {
+        const start = Math.max(0, idx(p.checkin));
+        const end = Math.min(giorni.length, idx(p.checkout));
+        if (end <= start) return null;
+        const c = CANALE_COLOR[p.canale] || '#888';
+        return (
+          <button key={p.id} className="cal-bar" onClick={() => onSel(p)}
+            style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}
+            title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}`}>
+            <span>{p.ospite}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1599,14 +1607,16 @@ button{cursor:pointer;font-family:inherit}
 .calhead h2{margin:0;text-transform:capitalize;}
 .calhead button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:16px;}
 .calhead button.oggi{width:auto;padding:0 12px;font-size:12px;font-weight:700;}
+.cal2col{display:flex;align-items:flex-start;min-width:0;}
+.cal-fixed{flex:none;width:160px;}
 .cal{display:grid;position:relative;font-size:12px;}
-.cal-corner{position:sticky;left:0;z-index:3;background:var(--surface);border-bottom:1px solid var(--line);}
-.cal-day{text-align:center;padding:4px 0;border-bottom:1px solid var(--line);border-left:1px solid var(--line);display:flex;flex-direction:column;line-height:1.1;}
+.cal-corner{height:38px;background:var(--surface);border-bottom:1px solid var(--line);border-right:1px solid var(--line);}
+.cal-day{text-align:center;padding:4px 0;height:38px;box-sizing:border-box;border-bottom:1px solid var(--line);border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;line-height:1.1;}
 .cal-day.we{background:var(--coral-soft);}
 .cal-day.today{background:var(--coral);color:#fff;font-weight:800;border-radius:6px 6px 0 0;}
 .cal-day small{font-size:9px;color:var(--ink-muted);text-transform:uppercase;}
 .cal-day.today small{color:#fff;}
-.cal-room{position:sticky;left:0;z-index:2;background:var(--surface);font-weight:700;font-size:12px;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line);height:46px;}
+.cal-room{background:var(--surface);font-weight:700;font-size:12px;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line);height:46px;}
 .cal-track{position:relative;height:46px;border-bottom:1px solid var(--line);display:flex;}
 .cal-cell{border-left:1px solid var(--line);height:100%;flex:none;position:relative;}
 .cal-bar{position:absolute;top:7px;height:32px;border-radius:8px;border:none;color:#fff;font-size:11px;font-weight:700;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.2);}
