@@ -6,10 +6,14 @@ import { alertCronFailure } from '@/lib/cronAlert';
 import { getDb } from '@/lib/db/index';
 import { sql } from 'drizzle-orm';
 
-// Invia a Raffaele su Telegram, una volta, il report del lavoro notturno sul nuovo sistema.
-// Il testo sta in data/report-notturno.md (versionato). Schedulato alle 5:30 in vercel.json.
+// Invia a Raffaele su Telegram il report del lavoro notturno sul nuovo sistema (11/09/2026).
+// Il testo sta in data/report-notturno.md (versionato). NON è più schedulato in vercel.json
+// (era un cron alle "5:30" ma Vercel valuta i cron in UTC, non locale, quindi sarebbe scattato
+// alle 7:30 CEST — e comunque un cron giornaliero avrebbe rimandato lo stesso file ogni
+// mattina). Il report è già stato inviato (dedup in tabella invii_report, per giorno). Endpoint
+// lasciato per un eventuale riuso futuro dello stesso schema (nuovo testo + nuovo invio manuale).
 //  - Vercel Cron: header Authorization: Bearer $CRON_SECRET  (via isAuthorizedCron)
-//  - test manuale: ?key=$REPORT_KEY   |   ?dry=1 restituisce il testo senza inviare
+//  - invio manuale: ?key=$REPORT_KEY   |   ?dry=1 restituisce il testo senza inviare
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
