@@ -198,6 +198,13 @@ export async function POST(req: NextRequest) {
     if (!prenotazioneRow || !String(prenotazioneRow).trim()) {
       const trovata = await trovaPrenotazioneRow(sheets, String(stanza).trim(), String(dataArrivo).trim());
       if ('errore' in trovata) {
+        // L'ospite resta bloccato senza poter proseguire — avvisa subito Raffaele invece di
+        // scoprirlo solo a guaio fatto (vedi wiki/log.md 10/09/2026, Serafina Posillipo).
+        const { alertOspiteBloccato } = await import('@/lib/cronAlert');
+        await alertOspiteBloccato({
+          stanza: String(stanza).trim(), dataArrivo: String(dataArrivo).trim(),
+          ospite: `${String(nome).trim()} ${String(cognome).trim()}`, motivo: trovata.errore,
+        });
         return NextResponse.json({ error: trovata.errore }, { status: 404 });
       }
       prenotazioneRow = String(trovata.row);

@@ -1,9 +1,13 @@
-/* ⚠️ SCOLLEGATO il 10/09/2026 — il tag <script> che caricava questo file è stato tolto da
-   tutte e 5 le pagine di check-in dopo una brutta esperienza con un'ospite reale (il modulo
-   le richiedeva gli stessi campi in loop, "prima figuraccia"). Le pagine info (WiFi, regole)
-   ora si aprono direttamente senza modulo. La raccolta documenti ospiti va rifatta bene nel
-   nuovo sistema a database — vedi wiki/sintesi/discovery-nuovo-sistema-salzillo-hospitality.md
-   (sez. 7). Questo file resta come riferimento, non è più caricato da nessuna pagina.
+/* RIATTIVATO il 14/09/2026, per ora SOLO su tulipano.html (le altre 4 pagine restano senza
+   modulo). Era stato scollegato il 10/09/2026 da tutte e 5 le pagine dopo una brutta esperienza
+   con un'ospite reale (Serafina Posillipo, Stanza Rosa — le etichette dei campi restavano vuote
+   per il secondo ospite aggiunto, sembrava rotto). Causa trovata e corretta (applyLang() non
+   veniva richiamata sulle card aggiunte dopo la prima — vedi commento in aggiungiOspite() più
+   sotto). Aggiunto anche un avviso Telegram immediato a Raffaele se un ospite resta bloccato
+   perché il sistema non trova la sua prenotazione sul foglio (src/lib/cronAlert.ts,
+   alertOspiteBloccato — chiamato da src/app/api/schedine/route.ts), così se succede ancora lo
+   sa lo stesso giorno invece di scoprirlo dall'ospite. Prossimo passo, dopo un giro di verifica
+   sul Tulipano: riattivare anche sulle altre 4 pagine.
 
    Gate di check-in — raccoglie i dati degli ospiti PRIMA di sbloccare la pagina informativa
    (WiFi, regole della casa...). Proposto da Raffaele (09/09/2026), poi allineato da lui stesso

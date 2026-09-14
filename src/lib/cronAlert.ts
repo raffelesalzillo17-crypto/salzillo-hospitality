@@ -24,3 +24,33 @@ export async function alertCronFailure(cronName: string, err: unknown): Promise<
     // Nessun fallback ulteriore: se Telegram stesso è irraggiungibile non c'è molto altro da fare.
   }
 }
+
+/**
+ * Un ospite si è bloccato compilando la scheda di check-in online (checkin-gate.js) perché il
+ * sistema non trova/riconosce in modo univoco la sua prenotazione sul foglio. Avvisa subito
+ * Raffaele via Telegram con i dati che l'ospite ha già inserito, così può intervenire lo stesso
+ * giorno invece di scoprirlo solo quando l'ospite si lamenta di persona. Vedi
+ * wiki/log.md 10/09/2026 (Serafina Posillipo) per il precedente che ha motivato questo alert.
+ * Best-effort, come alertCronFailure: non deve mai far fallire la route che lo chiama.
+ */
+export async function alertOspiteBloccato(dettagli: {
+  stanza: string; dataArrivo: string; ospite: string; motivo: string;
+}): Promise<void> {
+  const chatId = process.env.ALLOWED_CHAT_ID;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!chatId || !token) return;
+
+  const text = `🧍‍♂️ *Ospite bloccato al check-in online*\n\n` +
+    `${dettagli.ospite} — ${dettagli.stanza}, arrivo ${dettagli.dataArrivo}\n` +
+    `Motivo: ${dettagli.motivo}\n\n` +
+    `Probabilmente la prenotazione sul foglio non combacia (data diversa o ambigua). Contattalo tu direttamente per non lasciarlo bloccato.`;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+  } catch {
+    // Nessun fallback ulteriore.
+  }
+}
