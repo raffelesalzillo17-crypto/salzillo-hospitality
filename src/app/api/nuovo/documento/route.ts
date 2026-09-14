@@ -7,11 +7,20 @@ import { pdfConfermaPrenotazione, pdfPreventivo, pdfPreventivoDaId, pdfContratto
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const check = await richiediSessione(req);
-  if ('risposta' in check) return check.risposta;
-
   const q = req.nextUrl.searchParams;
   const tipo = q.get('tipo');
+
+  // Un preventivo già salvato (tipo=preventivo&id=...) o la conferma di una prenotazione
+  // (tipo=conferma&prenotazione=...) sono pensati per essere condivisi con l'ospite via
+  // WhatsApp — niente sessione richiesta, l'unico "segreto" è l'id/prenotazione (uuid, non
+  // enumerabile), stesso modello di un link di condivisione. Il contratto di gestione (tra
+  // Raffaele e il proprietario, non per l'ospite) e l'anteprima live di un preventivo non
+  // ancora salvato restano dietro login, come prima.
+  const condivisibile = (tipo === 'preventivo' && !!q.get('id')) || (tipo === 'conferma' && !!q.get('prenotazione'));
+  if (!condivisibile) {
+    const check = await richiediSessione(req);
+    if ('risposta' in check) return check.risposta;
+  }
   try {
     let out: { bytes: Uint8Array; nome: string } | null = null;
     if (tipo === 'conferma') {
@@ -35,8 +44,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'tipo non valido' }, { status: 400 });
     }
     if (!out) return NextResponse.json({ ok: false, error: 'Dati non trovati' }, { status: 404 });
+    // "inline" apre il PDF navigando la scheda — dentro l'app installata come PWA (standalone,
+    // senza barra del browser) questo intrappola chi la usa senza un modo per tornare indietro
+    // (bug reale segnalato da Raffaele il 14/09/2026). Resta "inline" di default (serve
+    // all'anteprima nell'iframe, e va bene per l'ospite che apre il link da WhatsApp nel suo
+    // browser); i link cliccabili dentro /nuovo passano sempre ?download=1 per forzare invece
+    // il download, che non naviga via dall'app.
+    const scarica = q.get('download') === '1';
     return new NextResponse(Buffer.from(out.bytes), {
-      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${out.nome}"` },
+      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `${scarica ? 'attachment' : 'inline'}; filename="${out.nome}"` },
     });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });

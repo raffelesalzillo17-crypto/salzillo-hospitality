@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
   if (!proprietarioId || !anno || !mese) return NextResponse.json({ ok: false, error: 'Parametri mancanti' }, { status: 400 });
 
   if (sess.ruolo === 'Proprietario' && sess.proprietarioId !== proprietarioId) return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 403 });
+  const scarica = req.nextUrl.searchParams.get('download') === '1';
   const immobileId = req.nextUrl.searchParams.get('immobile') || undefined;
   const alloggioId = req.nextUrl.searchParams.get('alloggio') || undefined;
   const ambito = alloggioId ? { alloggioId } : immobileId ? { immobileId } : undefined;
@@ -186,7 +187,12 @@ export async function GET(req: NextRequest) {
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="rendiconto-${slug(r.proprietario)}${suff}-${anno}-${String(mese).padStart(2, '0')}.pdf"`,
+      // "inline" apre il PDF navigando la scheda — dentro l'app installata come PWA
+      // (standalone, senza barra del browser) questo intrappola chi la usa senza un modo per
+      // tornare indietro (bug reale segnalato da Raffaele il 14/09/2026). Con ?download=1 (i
+      // link cliccabili nell'app lo passano sempre) forziamo invece il download: il file si
+      // salva e l'app resta aperta dov'era.
+      'Content-Disposition': `${scarica ? 'attachment' : 'inline'}; filename="rendiconto-${slug(r.proprietario)}${suff}-${anno}-${String(mese).padStart(2, '0')}.pdf"`,
     },
   });
 }

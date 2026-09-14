@@ -967,13 +967,15 @@ function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambi
   function msgWa(p: Preventivo) {
     const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
     const primo = (p.ospiteNome ?? '').trim();
+    const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=preventivo&id=${p.id}`;
     return [
       `${saluto}${primo ? ' ' + primo : ''}, sono Raffaele di Salzillo Hospitality.`,
       `Ecco il preventivo ${p.codice} per ${p.alloggio}:`,
       `Check-in ${dataIt(p.checkin)} · Check-out ${dataIt(p.checkout)} (${p.numeroOspiti} ospiti)`,
       `Totale ${eur(Number(p.totale))}${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
       `Per bloccare le date puoi confermare entro ${p.validoOre} ore: fino ad allora l'alloggio resta riservato a te.`,
-      `Cancellazione gratuita fino a 48h prima del check-in. Ti allego il PDF.`,
+      `Cancellazione gratuita fino a 48h prima del check-in.`,
+      `Qui il PDF con tutti i dettagli: ${pdfUrl}`,
     ].join('\n');
   }
   function waUrl(p: Preventivo) {
@@ -1020,7 +1022,7 @@ function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambi
                   {scaduto && <span className="pill pill-Scaduto">tempo scaduto</span>}
                   <span className="azioni">
                     <button className="mini" onClick={() => setApri(apri === p.id ? null : p.id)}>{apri === p.id ? 'chiudi' : '👁 anteprima'}</button>
-                    <a className="mini" href={url} target="_blank" rel="noopener">PDF</a>
+                    <a className="mini" href={`${url}&download=1`} target="_blank" rel="noopener">PDF</a>
                     {p.ospiteTelefono && <a className="mini coral" href={waUrl(p)} target="_blank" rel="noopener">💬 WhatsApp</a>}
                     {puoModificare && p.stato === 'Bozza' && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Inviato')}>→ Inviato</button>}
                     {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini coral" disabled={busy === p.id} onClick={() => { if (confirm(`Accettare ${p.codice}? Creo la prenotazione e blocco le date.`)) azione(p.id, 'accetta-preventivo'); }}>✓ Accettato</button>}
@@ -1159,7 +1161,7 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
             <b>{eur(r.totali.nettoFinale)}</b>
           </div>
           <p style={{ marginTop: 12 }}>
-            <a className="sync" href={pdfHref} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
+            <a className="sync" href={`${pdfHref}&download=1`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
           </p>
           <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
         </>
@@ -1487,7 +1489,22 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
               </div>
             ) : (
               <p style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Conferma per l&apos;ospite</a>
+                <a className="sync" href={`/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}&download=1`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📄 Conferma per l&apos;ospite</a>
+                {p.telefono && (() => {
+                  const t = p.telefono.replace(/[^\d]/g, '');
+                  const num = t.length === 10 ? '39' + t : t;
+                  const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
+                  const primo = p.ospite.trim().split(/\s+/)[0];
+                  const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`;
+                  const msg = [
+                    `${saluto} ${primo}, sono Raffaele di Salzillo Hospitality.`,
+                    `Ecco la conferma della tua prenotazione per ${p.alloggio}:`,
+                    `Check-in ${dataIt(p.checkin)} · Check-out ${dataIt(p.checkout)}`,
+                    `Qui il PDF con tutti i dettagli: ${pdfUrl}`,
+                    `Per qualsiasi dubbio scrivimi pure qui.`,
+                  ].join('\n');
+                  return <a className="sync" href={`https://wa.me/${num}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 Manda conferma su WhatsApp</a>;
+                })()}
                 {p.origine !== 'Foglio' && <button className="sync" onClick={() => setPag({ tipo: 'Caparra', importo: '', metodo: 'Bonifico' })}>💰 Registra pagamento</button>}
               </p>
             ))}
@@ -1637,16 +1654,24 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
   const telPulito = f.tel.replace(/[^\d]/g, '');
   const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
   const primoNome = f.cliente ? f.cliente.trim().split(/\s+/)[0] : '';
-  const msgWa = [
-    `${saluto}${primoNome ? ' ' + primoNome : ''}, sono Raffaele di Salzillo Hospitality.`,
-    `Ecco il preventivo per ${nomeAlloggio}:`,
-    `Check-in ${f.checkin ? dataIt(f.checkin) : '—'} · Check-out ${f.checkout ? dataIt(f.checkout) : '—'} (${nnotti} notti, ${f.ospiti} ospiti)`,
-    `Totale ${eur(totFinale)}${scontoEuro > 0 ? ` (sconto −${eur(scontoEuro)})` : ''}`,
-    `Per bloccare le date puoi confermare entro ${f.ore || '24'} ore: fino ad allora l'alloggio resta riservato a te, dopodiché torna disponibile.`,
-    `Cancellazione gratuita fino a 48h prima del check-in.`,
-    `Ti allego il PDF con tutti i dettagli. Per qualsiasi dubbio scrivimi pure qui.`,
-  ].join('\n');
-  const waUrl = `https://wa.me/${telPulito.length >= 9 ? (telPulito.length === 10 ? '39' + telPulito : telPulito) : ''}?text=${encodeURIComponent(msgWa)}`;
+  // WhatsApp (link wa.me gratuito) non permette di allegare un file: l'unico modo di far
+  // arrivare il PDF insieme al messaggio è mettere il link diretto nel testo — l'ospite lo apre
+  // con un tap, Raffaele non deve allegare nulla a mano. Un vero allegato nativo richiederebbe
+  // le API Business di WhatsApp (a pagamento, verifica aziendale Meta) — vedi
+  // wiki/decisioni/infrastruttura-free-first.md.
+  function buildMsgWa(pdfUrl?: string) {
+    return [
+      `${saluto}${primoNome ? ' ' + primoNome : ''}, sono Raffaele di Salzillo Hospitality.`,
+      `Ecco il preventivo per ${nomeAlloggio}:`,
+      `Check-in ${f.checkin ? dataIt(f.checkin) : '—'} · Check-out ${f.checkout ? dataIt(f.checkout) : '—'} (${nnotti} notti, ${f.ospiti} ospiti)`,
+      `Totale ${eur(totFinale)}${scontoEuro > 0 ? ` (sconto −${eur(scontoEuro)})` : ''}`,
+      `Per bloccare le date puoi confermare entro ${f.ore || '24'} ore: fino ad allora l'alloggio resta riservato a te, dopodiché torna disponibile.`,
+      `Cancellazione gratuita fino a 48h prima del check-in.`,
+      pdfUrl ? `Qui il PDF con tutti i dettagli: ${pdfUrl}` : `Ti mando il PDF con tutti i dettagli a parte.`,
+      `Per qualsiasi dubbio scrivimi pure qui.`,
+    ].join('\n');
+  }
+  const waUrl = `https://wa.me/${telPulito.length >= 9 ? (telPulito.length === 10 ? '39' + telPulito : telPulito) : ''}?text=${encodeURIComponent(buildMsgWa())}`;
 
   async function salva() {
     setBusy(true); setErr('');
@@ -1656,19 +1681,22 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
     const tabWa = telPulito.length >= 9 ? window.open('', '_blank', 'noopener') : null;
     try {
       const [nome, ...resto] = f.cliente.trim().split(/\s+/);
-      await api('crea-preventivo', { dati: {
+      const creato = await api('crea-preventivo', { dati: {
         alloggioId: f.alloggioId, checkin: f.checkin, checkout: f.checkout, numeroOspiti: Number(f.ospiti) || 1,
         ...(f.prezzo ? { prezzo: Number(f.prezzo) } : {}), ...(f.prezzoNotte ? { prezzoNotte: Number(f.prezzoNotte) } : {}),
         ...(scontoNum > 0 ? { sconto: scontoNum, scontoTipo: f.scontoTipo } : {}),
         validoOre: Number(f.ore) || 24, note: f.note || undefined,
         ...(f.ospiteId ? { ospiteId: f.ospiteId } : { ospiteNome: nome || undefined, ospiteCognome: resto.join(' ') || undefined, ospiteTelefono: f.tel || undefined }),
-      } });
-      // Appena salvato, apro subito WhatsApp con il messaggio già pronto — un solo click invece
-      // di due (prima bisognava premere "Salva" e poi separatamente "WhatsApp"). Resta comunque
-      // un tap manuale per il "Invia" dentro WhatsApp: un invio del tutto senza tocchi richiede
-      // le API Business di WhatsApp (a pagamento, verifica aziendale Meta), non il link wa.me
-      // gratuito usato qui — vedi wiki/decisioni/infrastruttura-free-first.md.
-      if (tabWa) tabWa.location.href = waUrl;
+      } }) as { id: string };
+      // Appena salvato, apro subito WhatsApp col messaggio già pronto e il link diretto al PDF
+      // — un solo click invece di due, e niente allegato da cercare a mano. Resta comunque un
+      // tap manuale per il "Invia" dentro WhatsApp: un invio del tutto senza tocchi richiede le
+      // API Business di WhatsApp, non il link wa.me gratuito usato qui.
+      if (tabWa) {
+        const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=preventivo&id=${creato.id}`;
+        const urlConPdf = `https://wa.me/${telPulito.length === 10 ? '39' + telPulito : telPulito}?text=${encodeURIComponent(buildMsgWa(pdfUrl))}`;
+        tabWa.location.href = urlConPdf;
+      }
       await onSalvato();
     } catch (e) {
       if (tabWa) tabWa.close();
@@ -1726,7 +1754,7 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
         {pronto && (
           <p className="empty" style={{ marginTop: 6 }}>
             {telPulito.length >= 9
-              ? 'Salvando si apre subito WhatsApp col messaggio già scritto: ti resta solo da premere Invia. Lo trovi anche dopo nella scheda Documenti.'
+              ? 'Salvando si apre subito WhatsApp col messaggio già scritto e il link al PDF già dentro: ti resta solo da premere Invia. Lo trovi anche dopo nella scheda Documenti.'
               : 'Salvando lo trovi nella scheda Documenti, con anteprima e "segna accettato". Aggiungi il telefono per aprire WhatsApp in automatico.'}
           </p>
         )}
