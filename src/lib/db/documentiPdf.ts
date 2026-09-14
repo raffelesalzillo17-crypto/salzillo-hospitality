@@ -4,7 +4,7 @@
  * Il rendiconto proprietario ha il suo file a parte (/api/nuovo/rendiconto/pdf).
  */
 
-import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, PDFImage, PDFName, PDFPage, PDFString, StandardFonts, rgb } from 'pdf-lib';
 import { eq } from 'drizzle-orm';
 import { getDb } from './index';
 import { prenotazioni, ospiti, alloggi, immobili, proprietari, contrattiGestione } from './schema';
@@ -47,6 +47,22 @@ class Foglio {
   t(s: string, x = 50, size = 10, grassetto = false, color = INK) {
     this.page.drawText(pulisci(s), { x, y: this.y, size, font: grassetto ? this.bold : this.font, color });
   }
+  /** Come t(), ma il testo è un vero link cliccabile nel PDF (annotazione /Link, non solo testo
+   *  colorato — un lettore PDF non fa mai diventare cliccabile del testo blu per magia). */
+  link(url: string, x = 50, size = 10, color = CORAL) {
+    const testo = pulisci(url);
+    this.page.drawText(testo, { x, y: this.y, size, font: this.font, color });
+    const larghezza = this.font.widthOfTextAtSize(testo, size);
+    const annot = this.pdf.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [x, this.y - 2, x + larghezza, this.y + size + 1],
+      Border: [0, 0, 0],
+      A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+    });
+    const ref = this.pdf.context.register(annot);
+    const annots = this.page.node.Annots();
+    if (annots) annots.push(ref);
+    else this.page.node.set(PDFName.of('Annots'), this.pdf.context.obj([ref]));
+  }
   nl(n = 15) { this.y -= n; if (this.y < 60) { this.page = this.pdf.addPage([595.28, 841.89]); this.y = 790; } }
   riga(y?: number) { const yy = y ?? this.y; this.page.drawLine({ start: { x: 50, y: yy }, end: { x: 545, y: yy }, thickness: 0.7, color: MUTED }); }
   intestazione(titolo: string) {
@@ -75,7 +91,7 @@ async function datiPrenotazione(prenotazioneId: string) {
     numeroOspiti: prenotazioni.numero_ospiti, lordo: prenotazioni.lordo, note: prenotazioni.note,
     codiceConferma: prenotazioni.codice_conferma_canale,
     ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome, ospiteTelefono: ospiti.telefono, ospiteEmail: ospiti.email,
-    alloggio: alloggi.nome, wifiSsid: alloggi.wifi_ssid, wifiPassword: alloggi.wifi_password,
+    alloggio: alloggi.nome,
     checkinGuideUrl: alloggi.checkin_guide_url, immobile: immobili.nome, indirizzo: immobili.indirizzo, comune: immobili.comune,
   }).from(prenotazioni)
     .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
@@ -106,8 +122,9 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
   if (p.codiceConferma) righe.push(['Codice prenotazione', p.codiceConferma]);
   for (const [k, v] of righe) { f.t(k, 50, 9, true); f.t(v, 200, 9); f.nl(15); }
   f.nl(6); f.riga(); f.nl(16);
-  if (p.wifiSsid) { f.t('WiFi', 50, 9, true); f.t(`rete "${p.wifiSsid}"${p.wifiPassword ? ` · password "${p.wifiPassword}"` : ''}`, 200, 9); f.nl(15); }
-  if (p.checkinGuideUrl) { f.t('Guida completa', 50, 9, true); f.t(p.checkinGuideUrl, 200, 8, false, CORAL); f.nl(15); }
+  // Il WiFi non si ripete qui: è già nella pagina guida linkata sotto — un dato solo, non due
+  // copie da tenere allineate (e da aggiornare in due posti se la password cambia).
+  if (p.checkinGuideUrl) { f.t('Guida completa (WiFi, ingresso, regole)', 50, 9, true); f.link(p.checkinGuideUrl, 200, 8); f.nl(15); }
   f.nl(10);
   f.t('Per qualsiasi necessità ci trova su WhatsApp. La aspettiamo!', 50, 10, false, MUTED);
   f.piede();
