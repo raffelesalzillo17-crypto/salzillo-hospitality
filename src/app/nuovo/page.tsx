@@ -1650,6 +1650,10 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
 
   async function salva() {
     setBusy(true); setErr('');
+    // Apro subito una tab vuota, sincrona dentro il click — se aspettassi il salvataggio (un
+    // await) prima di aprirla, i browser la trattano come popup non richiesto e la bloccano.
+    // La reindirizzo su WhatsApp solo se il salvataggio va a buon fine; altrimenti la chiudo.
+    const tabWa = telPulito.length >= 9 ? window.open('', '_blank', 'noopener') : null;
     try {
       const [nome, ...resto] = f.cliente.trim().split(/\s+/);
       await api('crea-preventivo', { dati: {
@@ -1659,8 +1663,17 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
         validoOre: Number(f.ore) || 24, note: f.note || undefined,
         ...(f.ospiteId ? { ospiteId: f.ospiteId } : { ospiteNome: nome || undefined, ospiteCognome: resto.join(' ') || undefined, ospiteTelefono: f.tel || undefined }),
       } });
+      // Appena salvato, apro subito WhatsApp con il messaggio già pronto — un solo click invece
+      // di due (prima bisognava premere "Salva" e poi separatamente "WhatsApp"). Resta comunque
+      // un tap manuale per il "Invia" dentro WhatsApp: un invio del tutto senza tocchi richiede
+      // le API Business di WhatsApp (a pagamento, verifica aziendale Meta), non il link wa.me
+      // gratuito usato qui — vedi wiki/decisioni/infrastruttura-free-first.md.
+      if (tabWa) tabWa.location.href = waUrl;
       await onSalvato();
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
+    } catch (e) {
+      if (tabWa) tabWa.close();
+      setErr(e instanceof Error ? e.message : String(e)); setBusy(false);
+    }
   }
 
   return (
@@ -1706,11 +1719,17 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
           {pronto
             ? <button className="add" onClick={() => setVediAnteprima((v) => !v)}>{vediAnteprima ? 'Nascondi anteprima' : '👁 Anteprima'}</button>
             : <button className="add" disabled>Compila i campi</button>}
-          {pronto && <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : '💾 Salva nei documenti'}</button>}
-          {pronto && telPulito.length >= 9 && <a className="sync" href={waUrl} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 WhatsApp</a>}
+          {pronto && <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : telPulito.length >= 9 ? '💾 Salva e apri WhatsApp' : '💾 Salva nei documenti'}</button>}
+          {pronto && telPulito.length >= 9 && <a className="sync" href={waUrl} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 Riapri WhatsApp</a>}
           <button onClick={onClose}>Chiudi</button>
         </div>
-        {pronto && <p className="empty" style={{ marginTop: 6 }}>Salvando lo trovi nella scheda <b>Documenti</b>, con anteprima, WhatsApp e &quot;segna accettato&quot;.</p>}
+        {pronto && (
+          <p className="empty" style={{ marginTop: 6 }}>
+            {telPulito.length >= 9
+              ? 'Salvando si apre subito WhatsApp col messaggio già scritto: ti resta solo da premere Invia. Lo trovi anche dopo nella scheda Documenti.'
+              : 'Salvando lo trovi nella scheda Documenti, con anteprima e "segna accettato". Aggiungi il telefono per aprire WhatsApp in automatico.'}
+          </p>
+        )}
       </div>
     </div>
   );
