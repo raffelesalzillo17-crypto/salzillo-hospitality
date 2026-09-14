@@ -99,7 +99,18 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   await db.execute(sql`DELETE FROM notifiche WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
   await db.execute(sql`UPDATE preventivi SET prenotazione_id = NULL WHERE prenotazione_id IN (SELECT id FROM prenotazioni WHERE origine = 'Foglio')`);
   await db.execute(sql`DELETE FROM prenotazioni WHERE origine = 'Foglio'`);
-  await db.execute(sql`DELETE FROM ospiti WHERE origine = 'Foglio' AND id NOT IN (SELECT ospite_id FROM prenotazioni UNION SELECT ospite_id FROM ospiti_prenotazione)`);
+  // NON basta proteggere gli ospiti agganciati a una prenotazione: un ospite può esistere
+  // SOLO per un preventivo (non ha ancora prenotato) o per un documento caricato a mano — se
+  // origine='Foglio' e la sync lo cancella comunque, il preventivo/documento resta con un
+  // ospite_id orfano e il prossimo salvataggio fallisce con un errore di foreign key (bug
+  // reale, 14/09/2026: preventivo PR-0002 di Raffaele, ospite creato dal foglio poi cancellato
+  // da un "aggiorna dal foglio" prima che il preventivo venisse salvato).
+  await db.execute(sql`DELETE FROM ospiti WHERE origine = 'Foglio' AND id NOT IN (
+    SELECT ospite_id FROM prenotazioni
+    UNION SELECT ospite_id FROM ospiti_prenotazione
+    UNION SELECT ospite_id FROM preventivi WHERE ospite_id IS NOT NULL
+    UNION SELECT ospite_id FROM documenti WHERE ospite_id IS NOT NULL
+  )`);
   await db.execute(sql`DELETE FROM spese WHERE origine = 'Foglio'`);
   await db.execute(sql`DELETE FROM scadenze WHERE origine = 'Foglio'`);
   await db.execute(sql`DELETE FROM pulizie WHERE origine = 'Foglio'`);

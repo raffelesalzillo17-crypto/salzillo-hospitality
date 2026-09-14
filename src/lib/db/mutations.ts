@@ -348,6 +348,13 @@ export async function creaPreventivo(d: {
 }) {
   const db = getDb();
   let ospiteId = d.ospiteId || undefined;
+  if (ospiteId) {
+    // Se l'ospite scelto in una pagina rimasta aperta a lungo non esiste più (es. cancellato
+    // da un "aggiorna dal foglio" nel frattempo), meglio un errore chiaro che un errore SQL
+    // grezzo — vedi il fix del 14/09/2026 in importDaSheets.ts per la causa reale.
+    const [esiste] = await db.select({ id: ospiti.id }).from(ospiti).where(eq(ospiti.id, ospiteId));
+    if (!esiste) throw new Error('Questo ospite non esiste più — ricarica la pagina e riprova a scegliere/creare l\'ospite.');
+  }
   if (!ospiteId && (d.ospiteNome || d.ospiteCognome || d.ospiteTelefono)) {
     const o = await creaOspite({
       nome: (d.ospiteNome || '').trim() || '—',
