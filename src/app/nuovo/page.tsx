@@ -13,8 +13,17 @@ type Prenotazione = {
   alloggio: string; immobile: string; proprietario: string; canale: string;
   lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
   utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
+  checkinConfermatoIl: string | null; waCheckinNumero: string | null; waCheckinMessaggio: string | null;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
 };
+type Pulizia = {
+  id: string; data: string; alloggioId: string; alloggio: string; confermataIl: string | null; note: string | null;
+  origine: string; addettoNome: string | null; prenotazioneId: string | null; pagata: boolean; importo: string | null;
+};
+type Operatore = { id: string; nome: string };
+type DocumentoCaricato = { id: string; tipo: string; nome: string; ospiteId: string | null; prenotazioneId: string | null; driveUrl: string | null; caricatoIl: string };
+type UtenteAdmin = { id: string; nome: string; ruolo: string; username: string | null; codiceInvito: string | null; attivo: boolean; proprietarioId: string | null };
+type Permesso = { utente_id: string; immobile_id: string; puo_vedere: boolean; puo_modificare: boolean; puo_vedere_finanziario: boolean };
 type Alloggio = {
   id: string; nome: string; attivo: boolean; regimeFiscale: string; costoPulizia: string;
   emoji: string | null; wifiSsid: string | null; immobile: string; indirizzo: string;
@@ -40,6 +49,10 @@ type CosaManca = {
   pulizieDaFare: { id: string; data: string; alloggio: string }[];
   pagamentiInSospeso: { id: string; ospite: string; checkin: string; lordo: string; alloggio: string }[];
 };
+type SchedinaAlloggiati = {
+  id: string; cognome: string; nome: string; ospiteNomeCompleto: string;
+  alloggioNome: string; prenotazioneId: string; checkin: string; checkout: string; canale: string;
+};
 type Preventivo = {
   id: string; codice: string; stato: 'Bozza' | 'Inviato' | 'Accettato' | 'Scaduto' | 'Rifiutato';
   checkin: string; checkout: string; numeroOspiti: number;
@@ -52,7 +65,9 @@ type Preventivo = {
 type Dati = {
   ok: boolean; oggi: string; prenotazioni: Prenotazione[]; ospiti: Ospite[];
   anagrafica: Anagrafica; alloggi: Alloggio[]; spese: Spesa[]; scadenze: Scadenza[];
-  riepilogoMese: RigaMese[]; cosaManca: CosaManca; preventivi?: Preventivo[];
+  riepilogoMese: RigaMese[]; cosaManca: CosaManca; preventivi?: Preventivo[]; pulizie?: Pulizia[];
+  operatoriPulizie?: Operatore[]; utenti?: UtenteAdmin[]; permessi?: Permesso[]; documenti?: DocumentoCaricato[];
+  schedineAlloggiati?: SchedinaAlloggiati[];
   categorieSpesa?: { id: string; nome: string }[];
   eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
@@ -176,10 +191,14 @@ export default function Nuovo() {
   const [sess, setSess] = useState<{ nome: string; ruolo: string; vedeFinanziario: boolean; puoModificare: boolean } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [u, setU] = useState(''); const [p, setP] = useState('');
+  const [primoAccesso, setPrimoAccesso] = useState(false);
+  const [pa, setPa] = useState({ codice: '', username: '', password: '' });
+  const [paOk, setPaOk] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'rendiconti' | 'guida'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'alloggiati' | 'rendiconti' | 'guida'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
+  const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [nuovaPren, setNuovaPren] = useState(false);
   const [preventivo, setPreventivo] = useState(false);
@@ -213,6 +232,13 @@ export default function Nuovo() {
     const d = await r.json();
     if (d.ok) { setP(''); await carica(); } else setErrore(d.error || 'Errore');
   }
+
+  async function inviaPrimoAccesso(e: React.FormEvent) {
+    e.preventDefault(); setErrore('');
+    const r = await fetch('/api/nuovo/primo-accesso', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codiceInvito: pa.codice, username: pa.username, password: pa.password }) });
+    const d = await r.json();
+    if (d.ok) { setPaOk(true); setPa({ codice: '', username: '', password: '' }); } else setErrore(d.error || 'Errore');
+  }
   async function logout() { await fetch('/api/nuovo/logout', { method: 'POST' }); setSess(null); setDati(null); }
 
   async function aggiorna() {
@@ -231,11 +257,36 @@ export default function Nuovo() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><TemaToggle /></div>
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Nuovo sistema</h1>
-          <form onSubmit={login}>
-            <input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" />
-            <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" />
-            <button type="submit">Entra</button>
-          </form>
+          {!primoAccesso ? (
+            <>
+              <form onSubmit={login}>
+                <input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" />
+                <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" />
+                <button type="submit">Entra</button>
+              </form>
+              <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
+                Hai un codice invito? <button type="button" className="linklike" onClick={() => { setPrimoAccesso(true); setErrore(''); setPaOk(false); }}>Primo accesso</button>
+              </p>
+            </>
+          ) : paOk ? (
+            <>
+              <p className="empty" style={{ textAlign: 'center' }}>Account creato — ora puoi entrare con lo username e la password che hai scelto.</p>
+              <button className="add" onClick={() => { setPrimoAccesso(false); setPaOk(false); }}>Torna al login</button>
+            </>
+          ) : (
+            <>
+              <p className="sub">Inserisci il codice invito che ti ha dato Raffaele, poi scegli tu username e password — nessun altro li conoscerà.</p>
+              <form onSubmit={inviaPrimoAccesso}>
+                <input value={pa.codice} onChange={(e) => setPa({ ...pa, codice: e.target.value.toUpperCase() })} placeholder="codice invito" autoFocus />
+                <input value={pa.username} onChange={(e) => setPa({ ...pa, username: e.target.value })} placeholder="scegli uno username" autoComplete="username" />
+                <input type="password" value={pa.password} onChange={(e) => setPa({ ...pa, password: e.target.value })} placeholder="scegli una password (min. 8 caratteri)" autoComplete="new-password" />
+                <button type="submit">Crea il mio accesso</button>
+              </form>
+              <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
+                <button type="button" className="linklike" onClick={() => { setPrimoAccesso(false); setErrore(''); }}>Torna al login</button>
+              </p>
+            </>
+          )}
           {errore && <p className="err">{errore}</p>}
         </div>
       </div>
@@ -274,11 +325,13 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'rendiconti', 'guida'] as const).map((t) => (
-          <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
-          </button>
-        ))}
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'alloggiati', 'rendiconti', 'guida'] as const)
+          .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .map((t) => (
+            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+              {t === 'alloggiati' ? 'Alloggiati Web' : t[0].toUpperCase() + t.slice(1)}
+            </button>
+          ))}
       </nav>
 
       {tab === 'dashboard' && (
@@ -296,8 +349,28 @@ export default function Nuovo() {
             <h2>Arrivi · prossimi 7 giorni</h2>
             {arrivi.length === 0 ? <p className="empty">Nessun arrivo.</p> : arrivi.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
-                <b>{dataIt(p.checkin)}</b> <span>{p.ospite}</span>
+                {p.checkin === oggi
+                  ? <span className="chip-oggi">OGGI</span>
+                  : <b>{dataIt(p.checkin)}</b>}
+                <span>{p.ospite}</span>
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+                {sess.puoModificare && (
+                  <span style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                    {p.waCheckinNumero && p.waCheckinMessaggio && (
+                      <a className="mini" title="Invia le info di check-in su WhatsApp"
+                        href={`https://wa.me/${p.waCheckinNumero}?text=${encodeURIComponent(p.waCheckinMessaggio)}`}
+                        target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>💬</a>
+                    )}
+                    <button className="mini" title={p.checkinConfermatoIl ? `Arrivato — clicca per annullare` : 'Segna come arrivato'}
+                      style={p.checkinConfermatoIl ? { background: '#1FAA6E22', color: '#1FAA6E', borderColor: '#1FAA6E55' } : undefined}
+                      onClick={async (e) => { e.stopPropagation(); await api('conferma-checkin-prenotazione', { id: p.id }); await carica(); }}>
+                      {p.checkinConfermatoIl ? '✓ arrivato' : '○ arrivato?'}
+                    </button>
+                    {p.origine !== 'Foglio' && (
+                      <button className="mini" title="Registra il pagamento" onClick={(e) => { e.stopPropagation(); setPrenSel(p); setPrenSelAzione('pagamento'); }}>💰</button>
+                    )}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -305,7 +378,10 @@ export default function Nuovo() {
             <h2>Partenze · prossimi 7 giorni</h2>
             {partenze.length === 0 ? <p className="empty">Nessuna partenza.</p> : partenze.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
-                <b>{dataIt(p.checkout)}</b> <span>{p.ospite}</span>
+                {p.checkout === oggi
+                  ? <span className="chip-oggi">OGGI</span>
+                  : <b>{dataIt(p.checkout)}</b>}
+                <span>{p.ospite}</span>
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
               </div>
             ))}
@@ -355,7 +431,7 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -388,6 +464,8 @@ export default function Nuovo() {
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono e si modificano</li>
               <li><b>Spese</b> — i costi. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
+              <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti e permessi)</li>
+              <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare</li>
             </ul>
             <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
@@ -397,13 +475,18 @@ export default function Nuovo() {
             <p className="sub">Su Google Drive, cartella <b>&quot;Archivio — Salzillo Hospitality&quot;</b>:</p>
             <div className="tree">
               <div className="tn tn0">📁 Archivio — Salzillo Hospitality
-                <div className="tn tn1">📊 SH · Prenotazioni &amp; Ospiti <span>(il vecchio foglio, ancora la fonte viva)</span></div>
+                <div className="tn tn1">📊 SH · Prenotazioni &amp; Ospiti</div>
                 <div className="tn tn1">📊 SH · Struttura &amp; Spese</div>
                 <div className="tn tn1">📊 SH · Sistema</div>
                 <div className="tn tn1">📁 Documenti Salzillo Hospitality <span>— una cartella per ospite, coi PDF</span></div>
               </div>
             </div>
-            <p className="empty" style={{ marginTop: 12 }}>Quando il nuovo sistema sarà la fonte principale, i 3 fogli diventeranno un backup automatico settimanale e non si toccheranno più a mano.</p>
+            <p className="empty" style={{ marginTop: 12 }}>
+              Dall&apos;11/09/2026 questo sito (il &quot;nuovo sistema&quot;) è la fonte di verità: ogni prenotazione, spesa, scadenza, ospite, pulizia, preventivo, evento locale, contratto di gestione o prezzo per periodo che crei o modifichi qui si scrive automaticamente anche sui 3 fogli sopra. Il foglio resta quindi sempre una riserva completa e aggiornata — utile se questo sito fosse mai irraggiungibile — ma non va più modificato a mano: qualsiasi modifica fatta lì non torna indietro nel nuovo sistema.
+            </p>
+            <p className="empty" style={{ marginTop: 8 }}>
+              Esiste anche un link di sola visualizzazione, senza login, da condividere con chi deve solo vedere il calendario (es. la famiglia): mostra chi arriva/parte e i dettagli di ogni prenotazione, senza poter modificare nulla. Chiedi a Raffaele il link se ti serve.
+            </p>
           </div>
         </div>
       )}
@@ -655,8 +738,57 @@ export default function Nuovo() {
         );
       })()}
 
+      {tab === 'pulizie' && (() => {
+        const tutte = dati.pulizie ?? [];
+        const operatori = dati.operatoriPulizie ?? [];
+        const puoGestire = sess.ruolo !== 'Proprietario';
+        const daFare = tutte.filter((pu) => !pu.confermataIl).sort((a, b) => a.data.localeCompare(b.data));
+        const fatte = tutte.filter((pu) => pu.confermataIl).slice(0, 20);
+        return (
+          <>
+          <div className="card">
+            <div className="cardhead">
+              <h2>Pulizie <small>({daFare.length} da fare)</small></h2>
+              {puoGestire && <button className="add" onClick={() => setModale({
+                titolo: 'Pulizia extra', azione: 'crea-pulizia',
+                iniziali: { alloggioId: dati.alloggi.find((a) => a.attivo)?.id },
+                campi: [
+                  { k: 'alloggioId', label: 'Alloggio', tipo: 'select', req: true, opzioni: dati.alloggi.filter((a) => a.attivo).map((a) => ({ v: a.id, t: a.nome })) },
+                  { k: 'data', label: 'Data', tipo: 'date', req: true },
+                  { k: 'note', label: 'Note (facoltativa)' },
+                  { k: 'pagata', label: 'Richiesta a pagamento dall’ospite', tipo: 'checkbox' },
+                  { k: 'importo', label: 'Importo € (se a pagamento)', tipo: 'number' },
+                ],
+              })}>＋ Pulizia extra</button>}
+            </div>
+            <p className="sub">Quelle di check-out si aggiungono da sole quando registri una prenotazione. Usa &quot;Pulizia extra&quot; solo per richieste in più durante il soggiorno (a pagamento) o pulizie fuori da un soggiorno.</p>
+            {daFare.length === 0 ? <p className="empty">Nessuna pulizia da fare.</p> : daFare.map((pu) => (
+              <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} onCambiato={carica} />
+            ))}
+            <h3 style={{ marginTop: 16 }}><span>Fatte di recente</span></h3>
+            {fatte.length === 0 ? <p className="empty">Nessuna pulizia ancora confermata.</p> : fatte.map((pu) => (
+              <div key={pu.id} className="docrow">
+                <span className="pill pill-Accettato">{dataIt(pu.data)}</span>
+                <b>{pu.alloggio}</b>
+                <span className="empty">{pu.addettoNome ? `fatta da ${pu.addettoNome}` : 'fatta'} il {new Date(pu.confermataIl!).toLocaleDateString('it-IT')}</span>
+                {pu.pagata && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>pagata{pu.importo ? ` · ${eur(Number(pu.importo))}` : ''}</span>}
+                {pu.note && <span className="empty" style={{ flexBasis: '100%' }}>{pu.note}</span>}
+              </div>
+            ))}
+          </div>
+          {sess.ruolo === 'Titolare' && <CollaboratoriBox utenti={dati.utenti ?? []} anagrafica={dati.anagrafica} permessi={dati.permessi ?? []} onCambiato={carica} />}
+          </>
+        );
+      })()}
+
+      {tab === 'alloggiati' && sess.ruolo === 'Titolare' && (
+        <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} onCambiato={carica} />
+      )}
+
       {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
-        onClose={() => setPrenSel(null)} onSalvato={async () => { setPrenSel(null); await carica(); }} />}
+        apriPagamentoSubito={prenSelAzione === 'pagamento'}
+        onClose={() => { setPrenSel(null); setPrenSelAzione(null); }}
+        onSalvato={async () => { setPrenSel(null); setPrenSelAzione(null); await carica(); }} />}
       {nuovaPren && <FormPrenotazione alloggi={dati.alloggi} ospiti={dati.ospiti}
         onClose={() => setNuovaPren(false)} onSalvato={async () => { setNuovaPren(false); await carica(); }} />}
       {modale && <FormModale titolo={modale.titolo} campi={modale.campi} iniziali={modale.iniziali}
@@ -668,9 +800,130 @@ export default function Nuovo() {
   );
 }
 
+// ── Pulizie ──────────────────────────────────────────────────────────────────
+function RigaPulizia({ pu, operatori, oggi, puoGestire, onCambiato }: {
+  pu: Pulizia; operatori: Operatore[]; oggi: string; puoGestire: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [addettoId, setAddettoId] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="docrow">
+      <span className={`pill ${pu.data < oggi ? 'pill-Scaduto' : 'pill-Bozza'}`}>{dataIt(pu.data)}</span>
+      <b>{pu.alloggio}</b>
+      {pu.pagata && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>pagata{pu.importo ? ` · ${eur(Number(pu.importo))}` : ''}</span>}
+      {pu.note && <span className="empty" style={{ flexBasis: '100%' }}>{pu.note}</span>}
+      {puoGestire && <span className="azioni">
+        {operatori.length > 0 && (
+          <select value={addettoId} onChange={(e) => setAddettoId(e.target.value)} style={{ maxWidth: 140 }}>
+            <option value="">chi ha pulito?</option>
+            {operatori.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+          </select>
+        )}
+        <button className="mini" disabled={busy} onClick={async () => {
+          setBusy(true);
+          try { await api('conferma-pulizia', { id: pu.id, dati: { addettoId: addettoId || undefined } }); await onCambiato(); }
+          finally { setBusy(false); }
+        }}>{busy ? '…' : '✓ fatto'}</button>
+        {pu.origine !== 'Foglio' && <button className="danger" onClick={async () => { if (confirm('Eliminare questa pulizia?')) { await api('elimina-pulizia', { id: pu.id }); await onCambiato(); } }}>elimina</button>}
+      </span>}
+    </div>
+  );
+}
+
+// ── Collaboratori (accessi al sistema) ────────────────────────────────────────
+function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
+  utenti: UtenteAdmin[]; anagrafica: Anagrafica; permessi: Permesso[]; onCambiato: () => Promise<void>;
+}) {
+  const [nuovo, setNuovo] = useState<{ nome: string; ruolo: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [invito, setInvito] = useState<{ nome: string; codice: string } | null>(null);
+  const [espanso, setEspanso] = useState<string | null>(null);
+  const tuttiImmobili = anagrafica.flatMap((p) => p.immobili.map((im) => ({ ...im, proprietario: p.nome })));
+
+  async function crea() {
+    if (!nuovo?.nome.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api('invita-collaboratore', { dati: { nome: nuovo.nome.trim(), ruolo: nuovo.ruolo } });
+      setInvito({ nome: nuovo.nome.trim(), codice: (r as { codice_invito: string }).codice_invito });
+      setNuovo(null); await onCambiato();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="cardhead">
+        <h2>Chi ha accesso al sistema <small>({utenti.length})</small></h2>
+        <button className="add" onClick={() => setNuovo({ nome: '', ruolo: 'Collaboratore' })}>＋ Persona</button>
+      </div>
+      <p className="sub">Tu crei la scheda (nome e ruolo), la persona sceglie DA SÉ username e password al primo accesso, usando il codice che le dai tu.</p>
+      {invito && (
+        <div className="form" style={{ padding: 12, background: 'var(--coral-soft)', borderRadius: 10, marginBottom: 10 }}>
+          <b>Codice invito per {invito.nome}: <span style={{ fontSize: 20, letterSpacing: 2 }}>{invito.codice}</span></b>
+          <p className="sub">Daglielo di persona o a voce. La persona deve andare su <b>salzillo-hospitality.vercel.app/nuovo</b>, cliccare &quot;Primo accesso&quot; sotto al modulo di login, inserire questo codice e scegliere da sé username e password.</p>
+          <button onClick={() => setInvito(null)}>Ho capito</button>
+        </div>
+      )}
+      {nuovo && (
+        <div className="form" style={{ marginBottom: 10 }}>
+          <label>Nome<input value={nuovo.nome} onChange={(e) => setNuovo({ ...nuovo, nome: e.target.value })} autoFocus /></label>
+          <label>Ruolo<select value={nuovo.ruolo} onChange={(e) => setNuovo({ ...nuovo, ruolo: e.target.value })}>
+            {['Collaboratore', 'Pulizie', 'Proprietario'].map((r) => <option key={r}>{r}</option>)}
+          </select></label>
+          <div className="modalactions">
+            <button className="add" onClick={crea} disabled={busy || !nuovo.nome.trim()}>{busy ? '…' : 'Crea e genera codice'}</button>
+            <button onClick={() => setNuovo(null)}>Annulla</button>
+          </div>
+        </div>
+      )}
+      {utenti.map((u) => (
+        <div key={u.id} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="pill pill-Bozza">{u.ruolo}</span>
+            <b>{u.nome}</b>
+            {u.username ? <span className="empty">@{u.username}</span> : u.codiceInvito ? <span className="empty">invito in attesa: <b>{u.codiceInvito}</b></span> : null}
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {u.ruolo !== 'Titolare' && (u.ruolo === 'Collaboratore' || u.ruolo === 'Proprietario') && (
+                <button className="linklike" onClick={() => setEspanso(espanso === u.id ? null : u.id)}>permessi</button>
+              )}
+              {u.ruolo !== 'Titolare' && (
+                <button className="mini" onClick={async () => { await api('attiva-utente', { id: u.id, dati: { attivo: !u.attivo } }); await onCambiato(); }}>{u.attivo ? 'disattiva' : 'riattiva'}</button>
+              )}
+            </span>
+          </div>
+          {espanso === u.id && (
+            <div style={{ marginTop: 8, paddingLeft: 8, borderLeft: '2px solid var(--line)' }}>
+              {tuttiImmobili.map((im) => {
+                const perm = permessi.find((p) => p.utente_id === u.id && p.immobile_id === im.id);
+                const set = async (patch: Partial<{ puoVedere: boolean; puoModificare: boolean; puoVedereFinanziario: boolean }>) => {
+                  await api('imposta-permesso', { dati: {
+                    utenteId: u.id, immobileId: im.id,
+                    puoVedere: patch.puoVedere ?? perm?.puo_vedere ?? false,
+                    puoModificare: patch.puoModificare ?? perm?.puo_modificare ?? false,
+                    puoVedereFinanziario: patch.puoVedereFinanziario ?? perm?.puo_vedere_finanziario ?? false,
+                  } });
+                  await onCambiato();
+                };
+                return (
+                  <label key={im.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '4px 0' }}>
+                    <span style={{ minWidth: 140 }}>{im.nome}</span>
+                    <span><input type="checkbox" checked={!!perm?.puo_vedere} onChange={(e) => set({ puoVedere: e.target.checked })} /> vede</span>
+                    <span><input type="checkbox" checked={!!perm?.puo_modificare} onChange={(e) => set({ puoModificare: e.target.checked })} /> modifica</span>
+                    <span><input type="checkbox" checked={!!perm?.puo_vedere_finanziario} onChange={(e) => set({ puoVedereFinanziario: e.target.checked })} /> vede €</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
-  preventivi: Preventivo[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
+function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambiato }: {
+  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
 }) {
   const [q, setQ] = useState('');
   const [statoF, setStatoF] = useState('');
@@ -692,15 +945,24 @@ function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
     if (statoF && p.stato !== statoF) return false;
     return true;
   });
-  // raggruppa per ospite ("cartella")
-  const gruppi = new Map<string, { nome: string; tel: string | null; righe: Preventivo[] }>();
+  // raggruppa per ospite ("cartella") — preventivi e documenti veri (Drive) insieme
+  const gruppi = new Map<string, { nome: string; tel: string | null; righe: Preventivo[]; file: DocumentoCaricato[] }>();
   for (const p of filtr) {
     const nome = `${p.ospiteCognome ?? ''} ${p.ospiteNome ?? ''}`.trim() || 'Senza nome';
     const k = (p.ospiteId ?? nome);
-    if (!gruppi.has(k)) gruppi.set(k, { nome, tel: p.ospiteTelefono, righe: [] });
+    if (!gruppi.has(k)) gruppi.set(k, { nome, tel: p.ospiteTelefono, righe: [], file: [] });
     gruppi.get(k)!.righe.push(p);
   }
-  const cartelle = [...gruppi.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+  const dql = q.trim().toLowerCase();
+  for (const d of documenti) {
+    if (!d.ospiteId) continue;
+    const o = ospiti.find((x) => x.id === d.ospiteId);
+    const nome = o ? `${o.cognome} ${o.nome}`.trim() : 'Senza nome';
+    if (dql && !`${nome} ${d.tipo} ${d.nome}`.toLowerCase().includes(dql)) continue;
+    if (!gruppi.has(d.ospiteId)) gruppi.set(d.ospiteId, { nome, tel: o?.telefono ?? null, righe: [], file: [] });
+    gruppi.get(d.ospiteId)!.file.push(d);
+  }
+  const cartelle = [...gruppi.values()].filter((c) => c.righe.length || c.file.length).sort((a, b) => a.nome.localeCompare(b.nome));
 
   function msgWa(p: Preventivo) {
     const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
@@ -723,9 +985,9 @@ function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
   return (
     <div className="card">
       <div className="cardhead">
-        <h2>Documenti <small>· {preventivi.length} preventivi</small></h2>
+        <h2>Documenti <small>· {preventivi.length} preventivi · {documenti.length} file su Drive</small></h2>
       </div>
-      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Il preventivo si crea dalla scheda Prenotazioni → 📄 Preventivo, poi lo salvi.</p>
+      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Il preventivo si crea dalla scheda Prenotazioni → 📄 Preventivo, poi lo salvi. Contratti e ricevute generati da qui in poi si aggiungono da soli.</p>
       <div className="filtri">
         <input className="cerca" placeholder="Cerca ospite, codice, alloggio…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={statoF} onChange={(e) => setStatoF(e.target.value)}>
@@ -734,10 +996,18 @@ function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
         </select>
       </div>
       {err && <p className="err">{err}</p>}
-      {cartelle.length === 0 && <p className="empty">Nessun preventivo{q || statoF ? ' con questi filtri' : ' ancora'}.</p>}
+      {cartelle.length === 0 && <p className="empty">Nessun documento{q || statoF ? ' con questi filtri' : ' ancora'}.</p>}
       {cartelle.map((c) => (
         <div key={c.nome} className="docgroup">
-          <h3><span>📁 {c.nome}</span><span className="empty">{c.righe.length} doc.{c.tel ? ` · ${c.tel}` : ''}</span></h3>
+          <h3><span>📁 {c.nome}</span><span className="empty">{c.righe.length + c.file.length} doc.{c.tel ? ` · ${c.tel}` : ''}</span></h3>
+          {c.file.map((d) => (
+            <div key={d.id} className="docrow">
+              <span className="pill pill-Bozza">{d.tipo}</span>
+              <span>{d.nome}</span>
+              <small className="empty">{dataIt(d.caricatoIl.slice(0, 10))}</small>
+              {d.driveUrl && <span className="azioni"><a className="mini" href={d.driveUrl} target="_blank" rel="noopener">📎 apri su Drive</a></span>}
+            </div>
+          ))}
           {c.righe.map((p) => {
             const url = `/api/nuovo/documento?tipo=preventivo&id=${p.id}`;
             const scaduto = p.stato === 'Inviato' && p.inviatoIl && (Date.now() - Date.parse(p.inviatoIl)) > p.validoOre * 3600e3;
@@ -763,7 +1033,7 @@ function Documenti({ preventivi, oggi, puoModificare, onCambiato }: {
           })}
         </div>
       ))}
-      <p className="empty" style={{ marginTop: 10 }}>Quando ci sarà il collegamento a Google Drive, ogni cartella verrà rispecchiata lì (preventivo, conferma, documento, ricevuta). {oggi && ''}</p>
+      <p className="empty" style={{ marginTop: 10 }}>Contratti e ricevute generati dalle rispettive schede si salvano da soli su Drive e compaiono qui. I documenti creati prima del 13/09/2026 restano solo su Drive, non ancora in questo elenco.</p>
     </div>
   );
 }
@@ -1133,14 +1403,17 @@ function CalRow({ giorni, cell, prenotazioni, prezzi = [], onSel }: {
   );
 }
 
-function DettaglioPrenotazione({ p, alloggi, puoModificare, onClose, onSalvato }: {
-  p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; onClose: () => void; onSalvato: () => void;
+function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito, onClose, onSalvato }: {
+  p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; apriPagamentoSubito?: boolean; onClose: () => void; onSalvato: () => void;
 }) {
   const [modifica, setModifica] = useState(false);
   const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [pag, setPag] = useState<null | { tipo: string; importo: string; metodo: string }>(null);
+  const residuo = Math.max(0, Math.round((p.lordo - p.pagamenti.reduce((s, pg) => s + pg.importo, 0)) * 100) / 100);
+  const [pag, setPag] = useState<null | { tipo: string; importo: string; metodo: string }>(
+    apriPagamentoSubito && p.origine !== 'Foglio' ? { tipo: 'Saldo', importo: residuo ? String(residuo) : '', metodo: 'Contanti' } : null,
+  );
 
   async function salvaPagamento() {
     if (!pag) return;
@@ -1451,6 +1724,25 @@ function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: str
   const [busy, setBusy] = useState(false);
   const exportUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/ical/${alloggio.id}.ics`;
 
+  const [blocchi, setBlocchi] = useState<{ id: string; checkin: string; checkout: string; nota: string | null }[]>([]);
+  const [bCheckin, setBCheckin] = useState('');
+  const [bCheckout, setBCheckout] = useState('');
+  const [bNota, setBNota] = useState('');
+  const [bBusy, setBBusy] = useState(false);
+
+  async function caricaBlocchi() { const d = await (await fetch(`/api/nuovo/blocchi?alloggio=${alloggio.id}`)).json(); if (d.ok) setBlocchi(d.blocchi); }
+  useEffect(() => { caricaBlocchi(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function aggiungiBlocco() {
+    setBBusy(true);
+    try {
+      const d = await (await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId: alloggio.id, checkin: bCheckin, checkout: bCheckout, nota: bNota }) })).json();
+      if (!d.ok) { alert(d.error || 'Errore'); return; }
+      setBCheckin(''); setBCheckout(''); setBNota(''); await caricaBlocchi();
+    } finally { setBBusy(false); }
+  }
+  async function rimuoviBlocco(id: string) { await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rimuovi: id }) }); await caricaBlocchi(); }
+
   async function carica() { const d = await (await fetch(`/api/nuovo/calendari?alloggio=${alloggio.id}`)).json(); if (d.ok) setCals(d.calendari.filter((c: { attivo: boolean }) => c.attivo)); }
   useEffect(() => { carica(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1477,6 +1769,23 @@ function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: str
         <div className="form"><label>Link da incollare
           <input readOnly value={exportUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); navigator.clipboard?.writeText(exportUrl); }} />
         </label></div>
+
+        <h3 style={{ marginTop: 16 }}>Blocca date senza prenotazione</h3>
+        <p className="sub">Per uso personale, manutenzione, ecc. — niente ospite, niente importi: entra solo nel link qui sopra, quindi blocca le date anche su Airbnb/Booking come una prenotazione.</p>
+        {blocchi.map((b) => (
+          <div key={b.id} className="row">
+            <b>{dataIt(b.checkin)} → {dataIt(b.checkout)}</b> <small style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{b.nota}</small>
+            <button className="linklike" onClick={() => rimuoviBlocco(b.id)}>rimuovi</button>
+          </div>
+        ))}
+        <div className="form">
+          <label>Check-in<input type="date" value={bCheckin} onChange={(e) => setBCheckin(e.target.value)} /></label>
+          <label>Check-out<input type="date" value={bCheckout} onChange={(e) => setBCheckout(e.target.value)} /></label>
+          <label>Nota (facoltativa)<input value={bNota} onChange={(e) => setBNota(e.target.value)} placeholder="es. manutenzione caldaia" /></label>
+        </div>
+        <div className="modalactions">
+          <button className="add" onClick={aggiungiBlocco} disabled={bBusy || !bCheckin || !bCheckout}>{bBusy ? '…' : 'Blocca queste date'}</button>
+        </div>
 
         <h3 style={{ marginTop: 16 }}>Controlla i calendari OTA (per sicurezza)</h3>
         <p className="sub">Incolla qui i link iCal che Airbnb e Booking ti danno: ogni giorno il sistema controlla che le prenotazioni là e qui coincidano.</p>
@@ -1506,6 +1815,51 @@ function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: str
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggiati[]; onCambiato: () => Promise<void> }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [esiti, setEsiti] = useState<Record<string, { ok: boolean; messaggio: string }>>({});
+
+  async function invia(s: SchedinaAlloggiati) {
+    if (!confirm(
+      `Invio VERO e DEFINITIVO alla Polizia di Stato (Alloggiati Web) per ${s.ospiteNomeCompleto} — ${s.alloggioNome}, arrivo ${dataIt(s.checkin)}.\n\n` +
+      'Non è annullabile una volta accettato dal sistema. Il sistema valida di nuovo i dati prima di inviare (Test) e invia solo se il test passa. Procedo?'
+    )) return;
+    setBusy(s.id);
+    try {
+      const r = await fetch('/api/nuovo/alloggiati/invia', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedinaId: s.id }),
+      });
+      const d = await r.json();
+      setEsiti((e) => ({ ...e, [s.id]: { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviata.' : 'Errore sconosciuto.') } }));
+      if (d.ok) await onCambiato();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="cardhead"><h2>Alloggiati Web <small>({schedine.length} da inviare)</small></h2></div>
+      <p className="sub">
+        Invio vero e diretto al portale della Polizia di Stato — un click alla volta, mai automatico. Compaiono qui solo le
+        schedine di prenotazioni <b>Il Tulipano</b> con canale <b>Airbnb, Booking o Diretto</b> (regola confermata da Raffaele
+        — le prenotazioni No Tax e le altre strutture non vengono mai inviate). Prima di ogni invio il sistema rivalida i dati
+        col servizio reale (Test) e invia solo se il test passa.
+      </p>
+      {schedine.length === 0 ? <p className="empty">Nessuna schedina da inviare al momento.</p> : schedine.map((s) => (
+        <div key={s.id} className="docrow">
+          <b>{s.ospiteNomeCompleto}</b>
+          <span className="empty">{s.alloggioNome} · arrivo {dataIt(s.checkin)} · {s.canale}</span>
+          <button className="mini coral" disabled={busy === s.id} style={{ marginLeft: 'auto' }} onClick={() => invia(s)}>
+            {busy === s.id ? 'invio…' : '📨 invia adesso'}
+          </button>
+          {esiti[s.id] && <p className={esiti[s.id].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[s.id].messaggio}</p>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1587,6 +1941,7 @@ button{cursor:pointer;font-family:inherit}
 .row:first-of-type{border-top:none;}
 .row small{color:var(--ink-muted);}
 .chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;}
+.chip-oggi{font-size:11px;font-weight:800;padding:2px 10px;border-radius:100px;background:var(--coral);color:#fff;letter-spacing:.03em;}
 .empty,.sub{color:var(--ink-muted);font-size:13px;}
 .big{font-size:28px;font-weight:800;margin:4px 0 12px;}
 .big small{font-size:13px;font-weight:400;color:var(--ink-muted);}

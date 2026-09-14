@@ -9,8 +9,10 @@ import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
-  pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti,
+  pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti, blocchiCalendario,
+  permessiImmobile,
 } from './schema';
+import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
@@ -219,6 +221,10 @@ export async function creaPrenotazione(d: {
     ospiteNomeCompleto: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim(), canale: d.canale, lordo: d.lordo,
     stato: r.stato, eventId, telefono: ctx?.telefono,
   });
+
+  // Pulizia agganciata al check-out — creata in automatico, non deve essere aggiunta a mano.
+  await db.insert(pulizie).values({ alloggio_id: d.alloggioId, prenotazione_id: r.id, data: r.checkout });
+
   return r;
 }
 
@@ -268,6 +274,17 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
       eventId: r.calendar_event_id, telefono: ctx.telefono,
     });
   }
+
+  // Cambio check-out o alloggio → sposta la pulizia agganciata, se non è già stata fatta.
+  // Cancellazione → la pulizia agganciata non serve più.
+  if (r.checkout !== attuale.checkout || r.alloggio_id !== attuale.alloggio_id || (d.stato && r.stato !== 'Attiva')) {
+    if (d.stato && r.stato !== 'Attiva') {
+      await db.delete(pulizie).where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
+    } else {
+      await db.update(pulizie).set({ data: r.checkout, alloggio_id: r.alloggio_id, aggiornato_il: new Date() })
+        .where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
+    }
+  }
   return r;
 }
 
@@ -295,6 +312,8 @@ export async function cancellaPrenotazione(id: string, conPenale: boolean, impor
       eventId: attuale.calendar_event_id, telefono: ctx.telefono,
     });
   }
+  // La pulizia agganciata al check-out non serve più se non è già stata fatta.
+  await db.delete(pulizie).where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
   return r;
 }
 
@@ -612,6 +631,122 @@ export async function aggiornaContrattoGestione(id: string, d: Record<string, un
     await aggiornaContrattoGestioneSuFoglio({ proprietarioNome: proprietarioNomePrima, dal: prima.dal }, await rigaContrattoGestioneDa(r));
   }
   return r;
+}
+
+// ── Collaboratori (utenti) — invito + primo accesso ─────────────────────────────────────────
+// Il Titolare crea solo nome/ruolo/permessi. Username e password li sceglie la persona stessa
+// al primo accesso, usando il codice invito — mai decisi da Raffaele o da Claude per lei.
+
+function generaCodiceInvito(): string {
+  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // niente 0/O/1/I, facile da leggere/dettare
+  let c = '';
+  for (let i = 0; i < 6; i++) c += alfabeto[Math.floor(Math.random() * alfabeto.length)];
+  return c;
+}
+
+export async function invitaCollaboratore(d: { nome: string; ruolo: string; proprietarioId?: string }) {
+  const db = getDb();
+  const codice = generaCodiceInvito();
+  const [r] = await db.insert(utenti).values({
+    nome: d.nome, ruolo: d.ruolo as 'Collaboratore', proprietario_id: d.proprietarioId || null, codice_invito: codice,
+  }).returning();
+  return r;
+}
+
+export async function completaPrimoAccesso(d: { codiceInvito: string; username: string; password: string }) {
+  const db = getDb();
+  const codice = d.codiceInvito.trim().toUpperCase();
+  const username = d.username.trim().toLowerCase();
+  if (!username || d.password.length < 8) throw new Error('Username obbligatorio, password di almeno 8 caratteri');
+  const [u] = await db.select().from(utenti).where(eq(utenti.codice_invito, codice));
+  if (!u) throw new Error('Codice invito non valido o già usato');
+  const [giaEsiste] = await db.select({ id: utenti.id }).from(utenti).where(eq(utenti.username, username));
+  if (giaEsiste) throw new Error('Username già in uso, scegline un altro');
+  const [r] = await db.update(utenti).set({
+    username, password_hash: hashPassword(d.password), codice_invito: null, aggiornato_il: new Date(),
+  }).where(eq(utenti.id, u.id)).returning();
+  return r;
+}
+
+export async function leggiUtentiDb() {
+  const db = getDb();
+  return db.select({
+    id: utenti.id, nome: utenti.nome, ruolo: utenti.ruolo, username: utenti.username,
+    codiceInvito: utenti.codice_invito, attivo: utenti.attivo, proprietarioId: utenti.proprietario_id,
+  }).from(utenti).orderBy(utenti.nome);
+}
+
+export async function impostaAttivoUtente(id: string, attivo: boolean) {
+  const db = getDb();
+  const [r] = await db.update(utenti).set({ attivo, aggiornato_il: new Date() }).where(eq(utenti.id, id)).returning();
+  return r;
+}
+
+export async function impostaPermessoImmobile(d: { utenteId: string; immobileId: string; puoVedere: boolean; puoModificare: boolean; puoVedereFinanziario: boolean }) {
+  const db = getDb();
+  await db.insert(permessiImmobile).values({
+    utente_id: d.utenteId, immobile_id: d.immobileId,
+    puo_vedere: d.puoVedere, puo_modificare: d.puoModificare, puo_vedere_finanziario: d.puoVedereFinanziario,
+  }).onConflictDoUpdate({
+    target: [permessiImmobile.utente_id, permessiImmobile.immobile_id],
+    set: { puo_vedere: d.puoVedere, puo_modificare: d.puoModificare, puo_vedere_finanziario: d.puoVedereFinanziario, aggiornato_il: new Date() },
+  });
+}
+
+export async function leggiPermessiDb() {
+  const db = getDb();
+  return db.select().from(permessiImmobile);
+}
+
+// ── Check-in ospite (solo dashboard, non sincronizzato col foglio) ─────────────────────────
+
+/** Segna/toglie "ospite arrivato" per una prenotazione — un click, nessun dato aggiuntivo. */
+export async function confermaCheckinPrenotazione(id: string) {
+  const db = getDb();
+  const [attuale] = await db.select({ checkinConfermatoIl: prenotazioni.checkin_confermato_il }).from(prenotazioni).where(eq(prenotazioni.id, id));
+  if (!attuale) throw new Error('Prenotazione non trovata');
+  const [r] = await db.update(prenotazioni)
+    .set({ checkin_confermato_il: attuale.checkinConfermatoIl ? null : new Date(), aggiornato_il: new Date() })
+    .where(eq(prenotazioni.id, id)).returning();
+  return r;
+}
+
+// ── Pulizie (ad-hoc, oltre a quelle importate dal foglio) ──────────────────────────────────
+
+export async function creaPulizia(d: { alloggioId: string; data: string; note?: string; pagata?: boolean; importo?: number }) {
+  const db = getDb();
+  const [r] = await db.insert(pulizie).values({
+    alloggio_id: d.alloggioId, data: d.data, note: d.note || null,
+    pagata: !!d.pagata, importo: d.pagata && d.importo ? s(d.importo) : null,
+  }).returning();
+  return r;
+}
+
+export async function eliminaPulizia(id: string) {
+  const db = getDb();
+  await db.delete(pulizie).where(eq(pulizie.id, id));
+}
+
+// ── Blocchi calendario (uso personale/manutenzione, niente ospite/importi) ─────────────────
+
+export async function creaBloccoCalendario(d: { alloggioId: string; checkin: string; checkout: string; nota?: string }) {
+  const db = getDb();
+  const [r] = await db.insert(blocchiCalendario).values({
+    alloggio_id: d.alloggioId, checkin: d.checkin, checkout: d.checkout, nota: d.nota || null,
+  }).returning();
+  return r;
+}
+
+export async function leggiBlocchiCalendario(alloggioId: string) {
+  const db = getDb();
+  return db.select().from(blocchiCalendario)
+    .where(and(eq(blocchiCalendario.alloggio_id, alloggioId), gte(blocchiCalendario.checkout, oggiISO())))
+    .orderBy(blocchiCalendario.checkin);
+}
+
+export async function eliminaBloccoCalendario(id: string) {
+  const db = getDb();
+  await db.delete(blocchiCalendario).where(eq(blocchiCalendario.id, id));
 }
 
 export { nottiTra };

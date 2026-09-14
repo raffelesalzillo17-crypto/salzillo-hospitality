@@ -9,17 +9,25 @@ import * as M from '@/lib/db/mutations';
 
 export const dynamic = 'force-dynamic';
 
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente']);
+
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
   if ('risposta' in check) return check.risposta;
   const sess = check.sessione;
-  if (sess.ruolo !== 'Titolare' && sess.ruolo !== 'Collaboratore') {
-    return NextResponse.json({ ok: false, error: 'Il tuo ruolo non può modificare i dati' }, { status: 403 });
-  }
 
   let body: { azione?: string; id?: string; dati?: Record<string, unknown> };
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: 'Body non valido' }, { status: 400 }); }
   const { azione, id, dati = {} } = body;
+
+  const puoScrivere = sess.ruolo === 'Titolare' || sess.ruolo === 'Collaboratore'
+    || (sess.ruolo === 'Pulizie' && azione === 'conferma-pulizia');
+  if (!puoScrivere) {
+    return NextResponse.json({ ok: false, error: 'Il tuo ruolo non può modificare i dati' }, { status: 403 });
+  }
+  if (azione && SOLO_TITOLARE.has(azione) && sess.ruolo !== 'Titolare') {
+    return NextResponse.json({ ok: false, error: 'Solo il Titolare può farlo' }, { status: 403 });
+  }
 
   try {
     let r: unknown;
@@ -50,7 +58,13 @@ export async function POST(req: NextRequest) {
       case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;
       case 'aggiorna-contratto-gestione': r = await M.aggiornaContrattoGestione(id!, dati); break;
       case 'completa-scadenza': r = await M.completaScadenza(id!); break;
-      case 'conferma-pulizia': r = await M.confermaPulizia(id!, sess.id); break;
+      case 'conferma-pulizia': r = await M.confermaPulizia(id!, (dati.addettoId as string) || sess.id); break;
+      case 'crea-pulizia': r = await M.creaPulizia(dati as Parameters<typeof M.creaPulizia>[0]); break;
+      case 'elimina-pulizia': r = await M.eliminaPulizia(id!); break;
+      case 'conferma-checkin-prenotazione': r = await M.confermaCheckinPrenotazione(id!); break;
+      case 'invita-collaboratore': r = await M.invitaCollaboratore(dati as Parameters<typeof M.invitaCollaboratore>[0]); break;
+      case 'attiva-utente': r = await M.impostaAttivoUtente(id!, !!dati.attivo); break;
+      case 'imposta-permesso': r = await M.impostaPermessoImmobile(dati as Parameters<typeof M.impostaPermessoImmobile>[0]); break;
       case 'anteprima-importi':
         r = await M.calcolaImportiPrenotazione(dati as Parameters<typeof M.calcolaImportiPrenotazione>[0]); break;
       default:

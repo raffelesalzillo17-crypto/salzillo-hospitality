@@ -72,7 +72,7 @@ export async function leggiSessione(req: NextRequest): Promise<Sessione | null> 
   if (!u || !u.attivo) return null;
 
   if (u.ruolo === 'Titolare') {
-    return { id: u.id, username: u.username, nome: u.nome, ruolo: u.ruolo, proprietarioId: u.proprietario_id,
+    return { id: u.id, username: u.username ?? '', nome: u.nome, ruolo: u.ruolo, proprietarioId: u.proprietario_id,
       immobiliVisibili: 'tutti', immobiliModificabili: 'tutti', vedeFinanziario: true };
   }
 
@@ -87,7 +87,7 @@ export async function leggiSessione(req: NextRequest): Promise<Sessione | null> 
     visibili = [...new Set([...visibili, ...suoi.map((x) => x.id)])];
   }
 
-  return { id: u.id, username: u.username, nome: u.nome, ruolo: u.ruolo, proprietarioId: u.proprietario_id,
+  return { id: u.id, username: u.username ?? '', nome: u.nome, ruolo: u.ruolo, proprietarioId: u.proprietario_id,
     immobiliVisibili: visibili, immobiliModificabili: modificabili,
     vedeFinanziario: u.ruolo === 'Proprietario' ? true : vedeFin };
 }

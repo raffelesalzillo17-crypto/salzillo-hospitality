@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const [u] = await db.select().from(utenti).where(eq(utenti.username, username));
-  if (!u || !u.attivo || !verificaPassword(password, u.password_hash)) {
+  if (!u || !u.attivo || !u.password_hash || !verificaPassword(password, u.password_hash)) {
     return NextResponse.json({ ok: false, error: 'Username o password non corretti' }, { status: 401 });
   }
 

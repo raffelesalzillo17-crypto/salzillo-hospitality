@@ -12,7 +12,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
-  scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo,
+  scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
 } from './schema';
 
 /** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
@@ -48,6 +48,7 @@ export type PrenotazioneVista = {
   origine: string;
   penaleImporto: number | null;
   calendarEventId: string;
+  checkinConfermatoIl: string | null;
   note: string;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
 };
@@ -78,6 +79,7 @@ function mappaPrenotazione(r: Record<string, unknown>, pagamentiRiga: Prenotazio
     origine: String(r.origine ?? 'Database'),
     penaleImporto: r.penale_importo == null ? null : n(r.penale_importo),
     calendarEventId: String(r.calendar_event_id ?? ''),
+    checkinConfermatoIl: r.checkin_confermato_il ? new Date(r.checkin_confermato_il as string | Date).toISOString() : null,
     note: String(r.note ?? ''),
     pagamenti: pagamentiRiga,
   };
@@ -104,6 +106,7 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
       origine: prenotazioni.origine,
       penale_importo: prenotazioni.penale_importo,
       calendar_event_id: prenotazioni.calendar_event_id,
+      checkin_confermato_il: prenotazioni.checkin_confermato_il,
       note: prenotazioni.note,
       ospite_id: prenotazioni.ospite_id,
       ospite_nome: ospiti.nome,
@@ -201,6 +204,21 @@ export async function leggiPreventiviDb() {
     .orderBy(desc(preventivi.creato_il));
 }
 
+/** Documenti veri salvati su Drive (contratti, ricevute...) — per la scheda Documenti,
+ *  accanto ai preventivi. Solo quelli generati dopo il 13/09/2026: vedi registraDocumento
+ *  in src/lib/documenti.ts. */
+export async function leggiDocumentiDb() {
+  const db = getDb();
+  return db
+    .select({
+      id: documenti.id, tipo: documenti.tipo, nome: documenti.nome,
+      ospiteId: documenti.ospite_id, prenotazioneId: documenti.prenotazione_id,
+      driveUrl: documenti.drive_url, caricatoIl: documenti.caricato_il,
+    })
+    .from(documenti)
+    .orderBy(desc(documenti.caricato_il));
+}
+
 /** Un preventivo con i dati che servono al PDF. */
 export async function preventivoPerPdf(id: string) {
   const db = getDb();
@@ -293,11 +311,14 @@ export async function leggiPulizieDb() {
   const db = getDb();
   return db
     .select({
-      id: pulizie.id, data: pulizie.data, alloggio: alloggi.nome,
-      confermataIl: pulizie.confermata_il, note: pulizie.note,
+      id: pulizie.id, data: pulizie.data, alloggioId: pulizie.alloggio_id, alloggio: alloggi.nome,
+      confermataIl: pulizie.confermata_il, note: pulizie.note, origine: pulizie.origine,
+      addettoNome: utenti.nome, prenotazioneId: pulizie.prenotazione_id,
+      pagata: pulizie.pagata, importo: pulizie.importo,
     })
     .from(pulizie)
     .innerJoin(alloggi, eq(alloggi.id, pulizie.alloggio_id))
+    .leftJoin(utenti, eq(utenti.id, pulizie.addetto_id))
     .orderBy(desc(pulizie.data));
 }
 

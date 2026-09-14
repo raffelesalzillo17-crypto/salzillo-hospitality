@@ -485,9 +485,9 @@ export async function POST(req: NextRequest) {
     // comunque restituito. Vedi src/lib/documenti.ts.
     try {
       const { trovaOCreaOspite } = await import('@/lib/ospiti');
-      const { salvaDocumento } = await import('@/lib/documenti');
+      const { registraDocumento } = await import('@/lib/documenti');
       const ospite = await trovaOCreaOspite(body.ospite, '');
-      await salvaDocumento(ospite.ospiteId, ospite.nome, nome, Buffer.from(pdfBytes));
+      await registraDocumento({ ospiteId: ospite.ospiteId, nomeOspite: ospite.nome, nomeFile: nome, contenuto: Buffer.from(pdfBytes), tipo: 'Contratto ospite' });
     } catch (docErr) {
       const docMsg = docErr instanceof Error ? docErr.message : String(docErr);
       console.error('[contratto] ERRORE salvataggio documento su Drive (PDF comunque restituito):', docMsg);

@@ -19,6 +19,18 @@
     {
       "path": "/api/cron/controllo-calendari",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/preventivo-scadenza",
+      "schedule": "20 8 * * *"
+    },
+    {
+      "path": "/api/cron/eventi-locali",
+      "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/pulizie-reminder",
+      "schedule": "20 9 * * *"
     }
   ]
 }

@@ -197,9 +197,9 @@ export async function POST(req: NextRequest) {
     // restituita anche se Drive non è configurato o fallisce. Vedi src/lib/documenti.ts.
     try {
       const { trovaOCreaOspite } = await import('@/lib/ospiti');
-      const { salvaDocumento } = await import('@/lib/documenti');
+      const { registraDocumento } = await import('@/lib/documenti');
       const ospite = await trovaOCreaOspite(body.ospite, '');
-      await salvaDocumento(ospite.ospiteId, ospite.nome, nome, Buffer.from(pdfBytes));
+      await registraDocumento({ ospiteId: ospite.ospiteId, nomeOspite: ospite.nome, nomeFile: nome, contenuto: Buffer.from(pdfBytes), tipo: 'Ricevuta' });
     } catch (docErr) {
       const docMsg = docErr instanceof Error ? docErr.message : String(docErr);
       console.error('[ricevuta] ERRORE salvataggio documento su Drive (PDF comunque restituito):', docMsg);

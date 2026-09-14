@@ -12,7 +12,7 @@
 
 import { and, eq, ne, gte } from 'drizzle-orm';
 import { getDb } from './index';
-import { prenotazioni, alloggi, ospiti, calendariIcal } from './schema';
+import { prenotazioni, alloggi, ospiti, calendariIcal, blocchiCalendario } from './schema';
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
 
@@ -45,8 +45,23 @@ export async function generaIcalAlloggio(alloggioId: string): Promise<string | n
       `DESCRIPTION:Canale ${r.canale}${r.stato === 'In attesa di conferma' ? ' — in attesa di conferma' : ''}`,
       'END:VEVENT'].join('\r\n'));
 
+  // Blocchi manuali (uso personale/manutenzione): stesso trattamento, date bloccate anche su
+  // Airbnb/Booking, ma senza passare da una prenotazione vera (niente ospite/importi).
+  const blocchi = await db.select({
+    id: blocchiCalendario.id, checkin: blocchiCalendario.checkin, checkout: blocchiCalendario.checkout, nota: blocchiCalendario.nota,
+  }).from(blocchiCalendario).where(and(eq(blocchiCalendario.alloggio_id, alloggioId), gte(blocchiCalendario.checkout, da)));
+  const eventiBlocchi = blocchi.map((b) =>
+    ['BEGIN:VEVENT',
+      `UID:sh-blocco-${b.id}@salzillo-hospitality`,
+      `DTSTAMP:${now}`,
+      `DTSTART;VALUE=DATE:${dt(b.checkin)}`,
+      `DTEND;VALUE=DATE:${dt(b.checkout)}`,
+      'SUMMARY:Bloccato (Salzillo Hospitality)',
+      `DESCRIPTION:Blocco manuale${b.nota ? ` — ${b.nota}` : ''}`,
+      'END:VEVENT'].join('\r\n'));
+
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Salzillo Hospitality//IT',
-    `X-WR-CALNAME:${a.nome} — Salzillo Hospitality`, ...eventi, 'END:VCALENDAR'].join('\r\n') + '\r\n';
+    `X-WR-CALNAME:${a.nome} — Salzillo Hospitality`, ...eventi, ...eventiBlocchi, 'END:VCALENDAR'].join('\r\n') + '\r\n';
 }
 
 // ── IMPORT / CHECK ───────────────────────────────────────────────────────────

@@ -91,6 +91,29 @@ export async function salvaDocumento(
   return { id: file.data.id, nome: file.data.name ?? nomeFile, link: file.data.webViewLink ?? '' };
 }
 
+/**
+ * Come salvaDocumento, ma registra anche una riga nella tabella `documenti` (Postgres) così il
+ * file compare nella scheda "Documenti" del nuovo sistema — non solo su Drive. Scoperto il
+ * 13/09/2026: contratto/ricevuta salvavano già su Drive da mesi, ma senza questa riga il file
+ * restava invisibile nell'app (solo i preventivi vi comparivano). Da qui in poi tutto ciò che
+ * passa da questa funzione (contratti, ricevute) è tracciato; i documenti più vecchi restano
+ * solo su Drive, recuperabili con elencaDocumenti.
+ */
+export async function registraDocumento(opts: {
+  ospiteId: string; nomeOspite: string; nomeFile: string; contenuto: Buffer;
+  tipo: 'Documento identità' | 'Contratto ospite' | 'Ricevuta' | 'Preventivo' | 'Conferma prenotazione' | 'Contratto gestione' | 'Rendiconto' | 'Ricevuta Alloggiati' | 'Altro';
+  prenotazioneId?: string; mimeType?: string;
+}): Promise<DocumentoSalvato> {
+  const salvato = await salvaDocumento(opts.ospiteId, opts.nomeOspite, opts.nomeFile, opts.contenuto, opts.mimeType);
+  const { getDb } = await import('./db/index');
+  const { documenti } = await import('./db/schema');
+  await getDb().insert(documenti).values({
+    tipo: opts.tipo, nome: opts.nomeFile, ospite_id: opts.ospiteId, prenotazione_id: opts.prenotazioneId || null,
+    drive_file_id: salvato.id, drive_url: salvato.link, mime: opts.mimeType || 'application/pdf',
+  });
+  return salvato;
+}
+
 export async function elencaDocumenti(ospiteId: string, nomeOspite: string): Promise<DocumentoSalvato[]> {
   const drive = getDrive();
   const cartellaId = await ensureCartellaOspite(ospiteId, nomeOspite);

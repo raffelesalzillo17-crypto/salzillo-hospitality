@@ -160,6 +160,7 @@ export const prenotazioni = pgTable('prenotazioni', {
   calendar_event_id: text('calendar_event_id'),
   note: text('note'),
   creata_da: uuid('creata_da').references(() => utenti.id),
+  checkin_confermato_il: timestamp('checkin_confermato_il', { withTimezone: true }), // "ospite arrivato" — confermato a mano dalla dashboard
 });
 
 export const pagamenti = pgTable('pagamenti', {
@@ -232,8 +233,11 @@ export const pulizie = pgTable('pulizie', {
   prenotazione_id: uuid('prenotazione_id').references(() => prenotazioni.id), // creata a ogni check-out
   alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
   data: date('data').notNull(),
-  addetto_id: uuid('addetto_id').references(() => utenti.id),
+  addetto_id: uuid('addetto_id').references(() => utenti.id), // chi ha pulito — utente con ruolo 'Pulizie' (o chiunque), scelto da un menu
   confermata_il: timestamp('confermata_il', { withTimezone: true }), // "pulizia terminata, stanza pronta"
+  // Pulizia extra richiesta durante il soggiorno (non quella di check-out) — a pagamento.
+  pagata: boolean('pagata').notNull().default(false),
+  importo: numeric('importo', { precision: 8, scale: 2 }),
   note: text('note'),
 });
 
@@ -317,6 +321,18 @@ export const calendariIcal = pgTable('calendari_ical', {
   ultimo_esito: text('ultimo_esito'), // "ok" oppure il testo del disallineamento
 }, (t) => ({ unico: unique().on(t.alloggio_id, t.nome) }));
 
+// Blocchi manuali di date (uso personale, manutenzione, ecc.) — non sono prenotazioni:
+// nessun ospite, nessun importo, non finiscono sul foglio Google né arrivano al bot
+// Telegram/dashboard. Entrano SOLO nell'export iCal (/api/ical/<alloggio>.ics), quindi
+// bloccano le date anche su Airbnb/Booking come una prenotazione Diretta/No Tax.
+export const blocchiCalendario = pgTable('blocchi_calendario', {
+  ...base,
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  checkin: date('checkin').notNull(),
+  checkout: date('checkout').notNull(),
+  nota: text('nota'),
+});
+
 export const rendiconti = pgTable('rendiconti', {
   ...base,
   proprietario_id: uuid('proprietario_id').notNull().references(() => proprietari.id),
@@ -391,8 +407,12 @@ export const inviiReport = pgTable('invii_report', {
 
 export const utenti = pgTable('utenti', {
   ...base,
-  username: text('username').notNull().unique(),
-  password_hash: text('password_hash').notNull(), // scrypt, come oggi
+  // Nulli finché non è completato il primo accesso: il Titolare crea la scheda (nome, ruolo,
+  // permessi) con un codice_invito, e la persona sceglie DA SÉ username e password la prima
+  // volta che entra — Raffaele/Claude non decidono mai una password per un'altra persona.
+  username: text('username').unique(),
+  password_hash: text('password_hash'), // scrypt, come oggi
+  codice_invito: text('codice_invito').unique(), // es. "TX7K92" — nullo una volta completato il primo accesso
   nome: text('nome').notNull(),
   email: text('email'),
   ruolo: ruoloUtente('ruolo').notNull(),

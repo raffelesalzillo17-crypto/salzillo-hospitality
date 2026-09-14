@@ -11,7 +11,7 @@
  * Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md.
  */
 
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomBytes, scryptSync } from 'crypto';
 import { getDb } from './index';
 import {
@@ -128,8 +128,15 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
       }).returning({ id: alloggi.id });
       alloggioPerFoglio[a.foglio] = row.id;
     }
+    // Niente password reali scritte qui: se questo seed dovesse mai rigirare da zero (nuovo
+    // ambiente, disaster recovery), ne genera una temporanea casuale e la stampa SOLO nel log
+    // di esecuzione (mai nel codice/commit) — da cambiare subito dopo il primo accesso.
+    const passwordSeed = process.env.SEED_TITOLARE_PASSWORD || randomBytes(9).toString('base64url');
     const salt0 = randomBytes(16).toString('hex');
-    await db.insert(utenti).values({ username: 'raffaele', password_hash: `${salt0}:${scryptSync('strada-lupo-89', salt0, 64).toString('hex')}`, nome: 'Raffaele Salzillo', ruolo: 'Titolare' });
+    await db.insert(utenti).values({ username: 'raffaele', password_hash: `${salt0}:${scryptSync(passwordSeed, salt0, 64).toString('hex')}`, nome: 'Raffaele Salzillo', ruolo: 'Titolare' });
+    if (!process.env.SEED_TITOLARE_PASSWORD) {
+      console.warn(`[importDaSheets] Password temporanea generata per "raffaele": ${passwordSeed} — cambiala subito dopo il primo accesso.`);
+    }
   } else {
     for (const im of await db.select().from(immobili)) immId[im.nome] = im.id;
     for (const al of await db.select().from(alloggi)) {
@@ -169,11 +176,22 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   }
 
   // Prenotazioni
+  // Le prenotazioni create direttamente nel nuovo sistema (origine='Database') si scrivono da
+  // sole anche sul foglio (vedi scriviNuovaPrenotazioneSuFoglio), riportando il proprio eventId
+  // in colonna J — altrimenti questo stesso import le re-inserirebbe come righe 'Foglio'
+  // duplicate a ogni sincronizzazione (scoperto il 13/09/2026 con la prenotazione doppia di
+  // Emanuel Sulis). Le righe con un eventId già in uso da una prenotazione Database vanno
+  // saltate: sono lo specchio di quella prenotazione, non una nuova.
+  const eventIdDatabase = new Set(
+    (await db.select({ id: prenotazioni.calendar_event_id }).from(prenotazioni).where(eq(prenotazioni.origine, 'Database')))
+      .map((r) => r.id).filter((id): id is string => !!id),
+  );
   const dbRows = await leggi('prenotazioni', 'DATABASE', 'B1:K100000');
   let nPren = 0, sommaLordo = 0, sommaUtile = 0;
   for (let i = 1; i < dbRows.length; i++) {
     const [checkin, checkout, ospite, stanza, canaleRaw, lordoRaw, statoRaw, penaleRaw, eventId, telefono] = dbRows[i];
     if (!checkin || !ospite || !stanza || !canaleRaw) continue;
+    if (eventId && eventIdDatabase.has(String(eventId))) continue;
     const ci = itToIso(checkin); if (!ci) continue;
     const canale = CANALE_MAP[String(canaleRaw).trim()] ?? 'Diretto';
     const stato = STATO_MAP[String(statoRaw || 'Attiva').trim()] ?? 'Attiva';

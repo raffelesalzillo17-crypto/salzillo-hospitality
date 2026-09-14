@@ -7,8 +7,11 @@
 // - Endpoint reale della Polizia di Stato. Un errore di formato qui non è un bug normale:
 //   è una comunicazione sbagliata a un ente pubblico, con rischio di sanzione reale per il
 //   proprietario del B&B.
-// - Send() — l'invio VERO e DEFINITIVO delle schedine — non è implementato in questo file,
-//   di proposito. Vedi il commento su sendSchedine() in fondo al file per il perché.
+// - Send() — l'invio VERO e DEFINITIVO delle schedine — è implementato (14/09/2026) ma va
+//   chiamato SOLO tramite src/lib/alloggiatiInvio.ts, mai direttamente: quel file applica il
+//   filtro di sicurezza (solo Tulipano, canali Airbnb/Booking/Diretto) e obbliga un
+//   testSchedine() con esito positivo prima di ogni Send(). Vedi il commento su sendSchedine()
+//   in fondo al file.
 // - Le credenziali si leggono SOLO da process.env (ALLOGGIATI_USER, ALLOGGIATI_PASSWORD,
 //   ALLOGGIATI_WSKEY) e non vanno mai loggate, nemmeno negli errori.
 //
@@ -284,27 +287,43 @@ export async function downloadTabella(token: string, tipo: TipoTabella): Promise
 }
 
 /**
- * Send(Utente, token, ElencoSchedine) — NON IMPLEMENTATO, DI PROPOSITO.
+ * Send(Utente, token, ElencoSchedine) → invio VERO e DEFINITIVO delle schedine alla Polizia
+ * di Stato. Implementato il 14/09/2026 su richiesta esplicita di Raffaele, dopo il test
+ * supervisionato in modalità Test (08/09/2026, Francesco La Manna + Silvia Vita).
  *
- * Questo è il metodo che esegue l'invio VERO e DEFINITIVO delle schedine alla Polizia di
- * Stato. Non è un dettaglio tecnico rimandabile: implementarlo (anche solo come funzione
- * disponibile ma non chiamata) aumenta il rischio che in futuro venga invocato per sbaglio
- * — da un refactor, da un test, da un bottone collegato per errore. Finché non c'è un test
- * supervisionato con Raffaele, Send resta volutamente assente da questo file.
- *
- * Vedi anche la stessa decisione già presa altrove nel progetto per lo stesso motivo:
- * src/app/api/schedine/route.ts e src/lib/schedine.ts (notte del 07/09/2026) — quella route
- * gestisce la RACCOLTA dati, non l'invio; questo file gestisce la FORMATTAZIONE/VALIDAZIONE,
- * non l'invio. Stessa cautela, stesso motivo.
- *
- * Quando arriverà il momento (deciso insieme all'utente), implementarlo seguendo esattamente
- * lo stesso pattern di testSchedine() sopra, cambiando solo l'elemento SOAP da <all:Test> a
- * <all:Send> — MA solo dopo un giro di validazione reale con testSchedine() e conferma esplicita.
+ * SICUREZZA: questa funzione NON va mai chiamata direttamente da una route senza prima aver
+ * chiamato testSchedine() sulle stesse righe e aver verificato che l'esito sia positivo — vedi
+ * src/lib/alloggiatiInvio.ts, che è l'UNICO punto del progetto autorizzato a orchestrare
+ * Test→Send, con il filtro "solo Tulipano, canali Airbnb/Booking/Diretto" applicato PRIMA di
+ * arrivare qui (wiki/decisioni/solo-tulipano-va-inviato-ad-alloggiati-e-sinfonia.md) e con
+ * l'invio sempre innescato da un click esplicito di Raffaele (mai automatico/in batch).
+ * Stesso pattern di testSchedine(), stesso parsing — cambia solo l'elemento SOAP.
  */
-export function sendSchedine(): never {
-  throw new Error(
-    "sendSchedine() non è implementato per decisione esplicita di sicurezza (vedi commento sopra in " +
-      'alloggiatiWebService.ts). Il metodo Send() del servizio Alloggiati Web NON va chiamato senza un ' +
-      'test supervisionato con l\'utente.'
-  );
+export async function sendSchedine(token: string, righe: string[]): Promise<TestResult> {
+  const utente = requireEnv('ALLOGGIATI_USER');
+
+  const elencoXml = righe.map((r) => `<all:string>${escapeXml(r)}</all:string>`).join('');
+  const body =
+    `<all:Send>` +
+    `<all:Utente>${escapeXml(utente)}</all:Utente>` +
+    `<all:token>${escapeXml(token)}</all:token>` +
+    `<all:ElencoSchedine>${elencoXml}</all:ElencoSchedine>` +
+    `</all:Send>`;
+
+  const xml = await soapCall('Send', body);
+
+  const responseBlock = getTag(xml, 'SendResponse') ?? xml;
+  const sendResultBlock = getTag(responseBlock, 'SendResult');
+  const resultBlock = getTag(responseBlock, 'result'); // ElencoSchedineEsito
+
+  const schedineValideStr = resultBlock != null ? getTag(resultBlock, 'SchedineValide') : null;
+  const dettaglioBlock = resultBlock != null ? getTag(resultBlock, 'Dettaglio') : null;
+  const dettaglio = dettaglioBlock != null ? getAllBlocks(dettaglioBlock, 'EsitoOperazioneServizio').map(parseEsito) : [];
+
+  return {
+    esito: parseEsito(sendResultBlock),
+    schedineValide: schedineValideStr != null && schedineValideStr !== '' ? parseInt(schedineValideStr, 10) : null,
+    dettaglio,
+    raw: xml,
+  };
 }
