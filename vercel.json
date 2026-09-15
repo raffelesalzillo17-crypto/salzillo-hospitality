@@ -1,36 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/checkout-reminder",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/checkin-reminder",
-      "schedule": "10 9 * * *"
-    },
-    {
-      "path": "/api/cron/sync-email-prenotazioni",
-      "schedule": "15 12 * * *"
-    },
-    {
       "path": "/api/cron/sync-db",
       "schedule": "45 5 * * *"
     },
     {
-      "path": "/api/cron/controllo-calendari",
-      "schedule": "0 7 * * *"
+      "path": "/api/cron/digest-mattina",
+      "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/preventivo-scadenza",
-      "schedule": "20 8 * * *"
-    },
-    {
-      "path": "/api/cron/eventi-locali",
-      "schedule": "0 6 * * 1"
-    },
-    {
-      "path": "/api/cron/pulizie-reminder",
-      "schedule": "20 9 * * *"
+      "path": "/api/cron/digest-sera",
+      "schedule": "0 19 * * *"
     }
   ]
 }
