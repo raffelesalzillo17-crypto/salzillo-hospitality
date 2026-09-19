@@ -99,6 +99,9 @@ const dataIt = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}
 const CANALE_COLOR: Record<string, string> = {
   'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
 };
+// La scheda 'documenti' mostra soprattutto i preventivi (più le richieste dal sito e i file
+// veri su Drive) — il nome in tab riflette quello che ci si trova davvero.
+const TAB_LABEL: Partial<Record<string, string>> = { documenti: 'Preventivi', alloggiati: 'Alloggiati Web' };
 
 type Campo = { k: string; label: string; tipo?: 'text' | 'number' | 'date' | 'select' | 'checkbox'; opzioni?: { v: string; t: string }[]; req?: boolean };
 
@@ -259,15 +262,16 @@ export default function Nuovo() {
       <div className="wrap gate">
         <style>{CSS}</style>
         <div className="card gatecard">
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><TemaToggle /></div>
+          <div className="gatetema"><TemaToggle /></div>
+          <div className="gatemark">S</div>
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Nuovo sistema</h1>
           {!primoAccesso ? (
             <>
               <form onSubmit={login}>
-                <input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" />
-                <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" />
-                <button type="submit">Entra</button>
+                <div className="field"><span className="fic">👤</span><input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" /></div>
+                <div className="field"><span className="fic">🔒</span><input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" /></div>
+                <button type="submit">Entra →</button>
               </form>
               <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
                 Hai un codice invito? <button type="button" className="linklike" onClick={() => { setPrimoAccesso(true); setErrore(''); setPaOk(false); }}>Primo accesso</button>
@@ -282,9 +286,9 @@ export default function Nuovo() {
             <>
               <p className="sub">Inserisci il codice invito che ti ha dato Raffaele, poi scegli tu username e password — nessun altro li conoscerà.</p>
               <form onSubmit={inviaPrimoAccesso}>
-                <input value={pa.codice} onChange={(e) => setPa({ ...pa, codice: e.target.value.toUpperCase() })} placeholder="codice invito" autoFocus />
-                <input value={pa.username} onChange={(e) => setPa({ ...pa, username: e.target.value })} placeholder="scegli uno username" autoComplete="username" />
-                <input type="password" value={pa.password} onChange={(e) => setPa({ ...pa, password: e.target.value })} placeholder="scegli una password (min. 8 caratteri)" autoComplete="new-password" />
+                <div className="field"><span className="fic">🎟️</span><input value={pa.codice} onChange={(e) => setPa({ ...pa, codice: e.target.value.toUpperCase() })} placeholder="codice invito" autoFocus /></div>
+                <div className="field"><span className="fic">👤</span><input value={pa.username} onChange={(e) => setPa({ ...pa, username: e.target.value })} placeholder="scegli uno username" autoComplete="username" /></div>
+                <div className="field"><span className="fic">🔒</span><input type="password" value={pa.password} onChange={(e) => setPa({ ...pa, password: e.target.value })} placeholder="scegli una password (min. 8 caratteri)" autoComplete="new-password" /></div>
                 <button type="submit">Crea il mio accesso</button>
               </form>
               <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
@@ -334,7 +338,7 @@ export default function Nuovo() {
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
           .map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'alloggiati' ? 'Alloggiati Web' : t[0].toUpperCase() + t.slice(1)}
+              {TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}
             </button>
           ))}
       </nav>
@@ -346,12 +350,12 @@ export default function Nuovo() {
             <button className="add" onClick={() => setNuovaPren(true)}>＋ Prenotazione</button>
             <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
             <button className="add" onClick={() => setTab('calendario')}>📅 Calendario</button>
-            <button className="add" onClick={() => setTab('documenti')}>📁 Documenti</button>
+            <button className="add" onClick={() => setTab('documenti')}>📁 Preventivi</button>
           </div>
         )}
         <div className="grid">
           <div className="card">
-            <h2>Arrivi · prossimi 7 giorni</h2>
+            <h2><i className="ic ic-arrivi">🛬</i>Arrivi <small>prossimi 7 giorni</small></h2>
             {arrivi.length === 0 ? <p className="empty">Nessun arrivo.</p> : arrivi.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
                 {p.checkin === oggi
@@ -380,7 +384,7 @@ export default function Nuovo() {
             ))}
           </div>
           <div className="card">
-            <h2>Partenze · prossimi 7 giorni</h2>
+            <h2><i className="ic ic-partenze">🛫</i>Partenze <small>prossimi 7 giorni</small></h2>
             {partenze.length === 0 ? <p className="empty">Nessuna partenza.</p> : partenze.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
                 {p.checkout === oggi
@@ -392,7 +396,7 @@ export default function Nuovo() {
             ))}
           </div>
           <div className="card">
-            <h2>{meseNome} · per immobile</h2>
+            <h2><i className="ic ic-mese">📊</i><span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
             <div className="tablescroll">
               <table className="tbl">
                 <tbody>
@@ -405,7 +409,7 @@ export default function Nuovo() {
             </div>
           </div>
           <div className="card">
-            <h2>Occupazione adesso</h2>
+            <h2><i className="ic ic-occ">🏠</i>Occupazione <small>adesso</small></h2>
             <p className="big">{occupatiOggi.length} / {dati.alloggi.filter((a) => a.attivo).length} <small>alloggi occupati</small></p>
             {occupatiOggi.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
@@ -415,7 +419,7 @@ export default function Nuovo() {
             ))}
           </div>
           <div className="card">
-            <h2>Cosa manca</h2>
+            <h2><i className="ic ic-manca">📋</i>Cosa manca</h2>
             {(() => {
               const cm = dati.cosaManca;
               const vuoto = cm.schedineDaInviare.length + cm.scadenzeVicine.length + cm.pulizieDaFare.length + cm.pagamentiInSospeso.length === 0;
@@ -436,7 +440,7 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -927,8 +931,8 @@ function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
 }
 
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, onCambiato }: {
-  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
+function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, onCambiato, onNuovoPreventivo }: {
+  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
 }) {
   const [q, setQ] = useState('');
   const [statoF, setStatoF] = useState('');
@@ -1010,9 +1014,10 @@ function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModifica
   return (
     <div className="card">
       <div className="cardhead">
-        <h2>Documenti <small>· {preventivi.length} preventivi · {documenti.length} file su Drive</small></h2>
+        <h2>Preventivi <small>· {preventivi.length} preventivi · {documenti.length} file su Drive</small></h2>
+        {puoModificare && <button className="add" onClick={onNuovoPreventivo}>＋ Nuovo preventivo</button>}
       </div>
-      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Il preventivo si crea dalla scheda Prenotazioni → 📄 Preventivo, poi lo salvi. Contratti e ricevute generati da qui in poi si aggiungono da soli.</p>
+      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Contratti e ricevute generati da qui in poi si aggiungono da soli.</p>
       <div className="filtri">
         <input className="cerca" placeholder="Cerca ospite, codice, alloggio…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={statoF} onChange={(e) => setStatoF(e.target.value)}>
@@ -2007,18 +2012,50 @@ const CSS = `
    un flex item e senza min-width:0 non si restringe mai sotto il min-content del contenuto —
    da qui il "blowout" su schermi stretti (vedi anche .card/.grid sotto). */
 .wrap{min-height:100vh;width:100%;min-width:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:20px;max-width:1200px;margin:0 auto;}
-.gate{display:flex;align-items:center;justify-content:center;}
-.gatecard{max-width:340px;text-align:center;}
-.gatecard input{width:100%;padding:11px 14px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin:12px 0;}
+.gate{display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;min-height:100vh;
+  background:radial-gradient(60% 50% at 12% 15%,var(--coral-soft) 0%,transparent 60%),
+    radial-gradient(50% 45% at 92% 10%,var(--coral-soft) 0%,transparent 55%),var(--bg);}
+.gate::before,.gate::after{content:'';position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;}
+.gate::before{width:320px;height:320px;background:var(--coral);opacity:.3;top:-100px;left:-100px;animation:gateblob1 12s ease-in-out infinite;}
+.gate::after{width:260px;height:260px;background:var(--coral);opacity:.22;bottom:-90px;right:-70px;animation:gateblob2 14s ease-in-out infinite;}
+@keyframes gateblob1{0%,100%{transform:translate(0,0)}50%{transform:translate(26px,32px)}}
+@keyframes gateblob2{0%,100%{transform:translate(0,0)}50%{transform:translate(-22px,-28px)}}
+@keyframes gaterise{from{opacity:0;transform:translateY(16px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes gatefloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+@media (prefers-reduced-motion:reduce){.gate::before,.gate::after,.gatecard,.gatemark{animation:none!important;}}
+.gatecard{max-width:360px;width:100%;text-align:center;position:relative;z-index:1;padding:36px 28px 30px;
+  border-radius:22px;box-shadow:0 26px 60px -22px rgba(0,0,0,.3),0 2px 10px rgba(0,0,0,.05);
+  animation:gaterise .5s cubic-bezier(.2,.8,.2,1);}
+.gatetema{position:absolute;top:16px;right:16px;}
+.gatemark{width:56px;height:56px;margin:0 auto 14px;border-radius:16px;
+  background:linear-gradient(150deg,var(--coral),#FF8F86);display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-jakarta),sans-serif;font-weight:800;font-size:24px;color:#fff;
+  box-shadow:0 12px 26px -10px rgba(255,90,95,.6);animation:gatefloat 5s ease-in-out infinite;}
+.gatecard h1{font-family:var(--font-jakarta),-apple-system,sans-serif;font-size:26px;font-weight:800;margin:3px 0 6px;letter-spacing:-.01em;}
+.gatecard .field{position:relative;margin:12px 0;}
+.gatecard .field .fic{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;opacity:.55;pointer-events:none;}
+.gatecard input{width:100%;padding:12px 14px 12px 40px;font-size:16px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);transition:border-color .15s,box-shadow .15s;}
+.gatecard input:focus{outline:none;border-color:var(--coral);box-shadow:0 0 0 4px var(--coral-soft);}
 .gatecard button,.gatecard input{font-family:inherit}
+.gatecard button[type="submit"]{width:100%;margin-top:6px;padding:13px 16px;border:none;border-radius:12px;
+  background:linear-gradient(135deg,var(--coral),#FF7A73);color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em;
+  box-shadow:0 12px 24px -10px rgba(255,90,95,.6);transition:transform .15s,box-shadow .15s;}
+.gatecard button[type="submit"]:hover{transform:translateY(-1px);box-shadow:0 16px 28px -10px rgba(255,90,95,.7);}
+.gatecard button[type="submit"]:active{transform:translateY(0);}
 button{cursor:pointer;font-family:inherit}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;min-width:0;}
 /* .grid è display:grid e .card un suo figlio: senza min-width:0 un figlio grid/flex non si
    restringe mai sotto il min-content del contenuto interno (es. una tabella larga) — anche se
    quella tabella ha già il suo .tablescroll con overflow-x:auto — e "gonfia" tutta la pagina. */
 .grid{min-width:0;}
-.card h2{font-size:14px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em;}
-.card h2 small,h3 small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted);}
+.card h2{font-family:var(--font-jakarta),-apple-system,sans-serif;font-size:17px;font-weight:800;margin:0 0 14px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;color:var(--ink);}
+.card h2 small,h3 small{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink-muted);margin-left:2px;}
+.ic{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;font-size:14px;font-style:normal;flex:none;}
+.ic-arrivi{background:var(--coral-soft);}
+.ic-partenze{background:#1D6DF022;}
+.ic-mese{background:#1FAA6E22;}
+.ic-occ{background:#8C7BD822;}
+.ic-manca{background:#FFB23822;}
 .topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
 .eyebrow{font-size:11px;font-weight:800;color:var(--coral);text-transform:uppercase;letter-spacing:.1em;}
 .topbar h1{font-size:24px;margin:2px 0 0;}
