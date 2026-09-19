@@ -590,7 +590,7 @@ export default function Nuovo() {
             <input className="cerca" placeholder="Cerca per nome, cognome, telefono, email…" value={qOspiti} onChange={(e) => setQOspiti(e.target.value)} />
             <div className="tablescroll">
               <table className="tbl full">
-                <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th></tr></thead>
+                <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th>{sess.ruolo === 'Titolare' && <th></th>}</tr></thead>
                 <tbody>
                   {lista.map((o) => (
                     <tr key={o.id} className={sess.puoModificare ? 'clic' : undefined}
@@ -600,9 +600,17 @@ export default function Nuovo() {
                       })}>
                       <td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono || '—'}</td><td>{o.email || '—'}</td>
                       <td><span className={`vchip v-${o.valutazione}`}>{o.valutazione}</span></td>
+                      {sess.ruolo === 'Titolare' && <td>
+                        <button className="mini" onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm(`Eliminare ${o.cognome} ${o.nome}? Funziona solo se non ha prenotazioni/preventivi/documenti agganciati.`)) return;
+                          try { await api('elimina-ospite', { id: o.id }); await carica(); }
+                          catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+                        }}>🗑</button>
+                      </td>}
                     </tr>
                   ))}
-                  {lista.length === 0 && <tr><td colSpan={5} className="empty">Nessun ospite trovato.</td></tr>}
+                  {lista.length === 0 && <tr><td colSpan={sess.ruolo === 'Titolare' ? 6 : 5} className="empty">Nessun ospite trovato.</td></tr>}
                 </tbody>
               </table>
             </div>

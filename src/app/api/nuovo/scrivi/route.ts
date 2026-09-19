@@ -9,7 +9,7 @@ import * as M from '@/lib/db/mutations';
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-ospite']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       case 'cancella-prenotazione': r = await M.cancellaPrenotazione(id!, !!dati.conPenale, dati.importoPenale as number | undefined); break;
       case 'crea-ospite': r = await M.creaOspite(dati as Parameters<typeof M.creaOspite>[0]); break;
       case 'aggiorna-ospite': r = await M.aggiornaOspite(id!, dati); break;
+      case 'elimina-ospite': r = await M.eliminaOspite(id!); break;
       case 'aggiungi-pagamento': r = await M.aggiungiPagamento(dati as Parameters<typeof M.aggiungiPagamento>[0]); break;
       case 'crea-proprietario': r = await M.creaProprietario(dati as Parameters<typeof M.creaProprietario>[0]); break;
       case 'aggiorna-proprietario': r = await M.aggiornaProprietario(id!, dati); break;

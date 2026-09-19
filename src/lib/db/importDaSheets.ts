@@ -45,6 +45,16 @@ const num = (v: Cell): number => {
   const s = String(v).trim();
   return parseFloat(s.includes(',') && !s.includes('.') ? s.replace(',', '.') : s) || 0;
 };
+// Confronta i telefoni per le ultime 10 cifre: assorbe prefisso +39 presente/assente, spazi,
+// e i caratteri Unicode invisibili (LRM/RLM) che WhatsApp a volte aggiunge quando un numero
+// viene copiato da lì — senza questo, lo stesso numero con/senza quei caratteri non combacia
+// e l'ospite viene ricreato da capo ad ogni sync (bug reale, 19/09/2026: Marcello Vaghi e una
+// dozzina di altri ospiti duplicati da un sync dopo che la loro prenotazione era già stata
+// confermata a mano nel nuovo sistema).
+const normTel = (t: Cell): string | null => {
+  const cifre = String(t || '').replace(/\D/g, '');
+  return cifre.length >= 8 ? cifre.slice(-10) : null;
+};
 const splitNome = (intero: Cell): { nome: string; cognome: string } => {
   const parti = String(intero || '').trim().split(/\s+/).filter(Boolean);
   if (parti.length === 0) return { nome: '(sconosciuto)', cognome: '(sconosciuto)' };
@@ -157,12 +167,31 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   }
 
   // Ospiti
+  // Prima di creare un ospite dal foglio, controlla se esiste già nel database (per telefono,
+  // la chiave più affidabile — i nomi si spezzano diversamente tra i vari tab del foglio) o,
+  // in mancanza di telefono, per nome completo. Altrimenti ogni sync ricrea da zero chiunque
+  // sia già stato registrato a mano nel nuovo sistema (es. da un preventivo accettato) e che
+  // compare anche nel foglio: l'ospite si duplica invece di restare lo stesso.
+  const ospitiEsistenti = await db.select({ id: ospiti.id, nome: ospiti.nome, cognome: ospiti.cognome, telefono: ospiti.telefono }).from(ospiti);
+  const esistentePerTelefono = new Map<string, string>();
+  const esistentePerNome = new Map<string, string>();
+  for (const o of ospitiEsistenti) {
+    const t = normTel(o.telefono);
+    if (t && !esistentePerTelefono.has(t)) esistentePerTelefono.set(t, o.id);
+    const n = `${o.nome} ${o.cognome}`.toLowerCase().trim();
+    if (n && !esistentePerNome.has(n)) esistentePerNome.set(n, o.id);
+  }
+
   const ospitiRows = await leggi('prenotazioni', 'OSPITI');
   const ospitePerChiave: Record<string, string> = {};
   let nOspiti = 0;
   for (let i = 1; i < ospitiRows.length; i++) {
     const [ospiteIdFoglio, nomeIntero, telefono, cf, note] = ospitiRows[i];
     if (!nomeIntero) continue;
+    const chiave = String(nomeIntero).toLowerCase().trim();
+    const tel = normTel(telefono);
+    const giaEsiste = (tel && esistentePerTelefono.get(tel)) || esistentePerNome.get(chiave);
+    if (giaEsiste) { ospitePerChiave[chiave] = giaEsiste; continue; }
     const { nome, cognome } = splitNome(nomeIntero);
     const [row] = await db.insert(ospiti).values({
       origine: 'Foglio',
@@ -170,12 +199,17 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
       note: note ? String(note) : null,
       note_import: `Nome originale dal foglio: "${nomeIntero}"${ospiteIdFoglio ? ` (OspiteId ${ospiteIdFoglio})` : ''}`,
     }).returning({ id: ospiti.id });
-    ospitePerChiave[String(nomeIntero).toLowerCase().trim()] = row.id;
+    ospitePerChiave[chiave] = row.id;
+    if (tel) esistentePerTelefono.set(tel, row.id);
+    esistentePerNome.set(chiave, row.id);
     nOspiti++;
   }
   async function trovaOCreaOspite(nomeIntero: Cell, telefono: Cell): Promise<string> {
     const chiave = String(nomeIntero).toLowerCase().trim();
     if (ospitePerChiave[chiave]) return ospitePerChiave[chiave];
+    const tel = normTel(telefono);
+    const giaEsiste = (tel && esistentePerTelefono.get(tel)) || esistentePerNome.get(chiave);
+    if (giaEsiste) { ospitePerChiave[chiave] = giaEsiste; return giaEsiste; }
     const { nome, cognome } = splitNome(nomeIntero);
     const [row] = await db.insert(ospiti).values({
       origine: 'Foglio',
@@ -183,6 +217,8 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
       note_import: `Creato dall'import da una prenotazione. Nome originale: "${nomeIntero}"`,
     }).returning({ id: ospiti.id });
     ospitePerChiave[chiave] = row.id;
+    if (tel) esistentePerTelefono.set(tel, row.id);
+    esistentePerNome.set(chiave, row.id);
     return row.id;
   }
 

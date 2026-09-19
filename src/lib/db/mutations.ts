@@ -10,7 +10,7 @@ import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
   pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti, blocchiCalendario,
-  permessiImmobile, richiestePubbliche,
+  permessiImmobile, richiestePubbliche, ospitiPrenotazione, schedine, documenti,
 } from './schema';
 import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
@@ -177,6 +177,22 @@ export async function aggiornaOspite(id: string, d: Record<string, unknown>) {
   const [r] = await db.update(ospiti).set(set).where(eq(ospiti.id, id)).returning();
   await aggiornaOspiteSuFoglio({ id: r.id, nomeCompleto: `${r.nome} ${r.cognome}`.trim(), telefono: r.telefono, codiceFiscale: r.codice_fiscale, note: r.note });
   return r;
+}
+/** Elimina un ospite SOLO se non è agganciato a niente di reale (prenotazione, preventivo,
+ *  documento, schedina) — pensato per ripulire i doppioni creati da un sync o dei test,
+ *  mai per un ospite con dati veri dietro. Non tocca la riga sul foglio Google (resta lì
+ *  come storico secondario, stesso trattamento di eliminaPreventivo). */
+export async function eliminaOspite(id: string) {
+  const db = getDb();
+  const [pren] = await db.select({ n: sql<number>`count(*)` }).from(prenotazioni).where(eq(prenotazioni.ospite_id, id));
+  const [op] = await db.select({ n: sql<number>`count(*)` }).from(ospitiPrenotazione).where(eq(ospitiPrenotazione.ospite_id, id));
+  const [prev] = await db.select({ n: sql<number>`count(*)` }).from(preventivi).where(eq(preventivi.ospite_id, id));
+  const [doc] = await db.select({ n: sql<number>`count(*)` }).from(documenti).where(eq(documenti.ospite_id, id));
+  const [sch] = await db.select({ n: sql<number>`count(*)` }).from(schedine).where(eq(schedine.ospite_id, id));
+  const totale = Number(pren.n) + Number(op.n) + Number(prev.n) + Number(doc.n) + Number(sch.n);
+  if (totale > 0) throw new Error(`Questo ospite ha ${totale} prenotazione/documento agganciati — non si può eliminare.`);
+  await db.delete(ospiti).where(eq(ospiti.id, id));
+  return { ok: true };
 }
 
 // ── Prenotazioni ─────────────────────────────────────────────────────────────
