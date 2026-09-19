@@ -13,6 +13,7 @@ import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
   scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
+  richiestePubbliche,
 } from './schema';
 
 /** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
@@ -203,6 +204,27 @@ export async function leggiPreventiviDb() {
     .leftJoin(ospiti, eq(ospiti.id, preventivi.ospite_id))
     .orderBy(desc(preventivi.creato_il));
 }
+
+/** Richieste dal sito vetrina non ancora trasformate in preventivo (stato 'Nuova'). */
+export async function richiesteNuoveDb() {
+  const db = getDb();
+  return db
+    .select({
+      id: richiestePubbliche.id, checkin: richiestePubbliche.checkin, checkout: richiestePubbliche.checkout,
+      numeroOspiti: richiestePubbliche.numero_ospiti, nome: richiestePubbliche.nome, telefono: richiestePubbliche.telefono,
+      note: richiestePubbliche.note, creatoIl: richiestePubbliche.creato_il,
+      alloggioId: richiestePubbliche.alloggio_id, alloggio: alloggi.nome,
+    })
+    .from(richiestePubbliche)
+    .innerJoin(alloggi, eq(alloggi.id, richiestePubbliche.alloggio_id))
+    .where(eq(richiestePubbliche.stato, 'Nuova'))
+    .orderBy(desc(richiestePubbliche.creato_il));
+}
+
+// Le query "Vita personale" (checkinRecentiDb, abitudiniConLogDb, obiettiviTrimestraliDb)
+// sono state spostate in plancia-raffaele il 18/09/2026 — la feature era finita per errore
+// in questo progetto. Le tabelle restano in schema.ts (stesso database condiviso), ma le
+// query vivono ora solo in plancia-raffaele/src/lib/db/queries.ts.
 
 /** Documenti veri salvati su Drive (contratti, ricevute...) — per la scheda Documenti,
  *  accanto ai preventivi. Solo quelli generati dopo il 13/09/2026: vedi registraDocumento

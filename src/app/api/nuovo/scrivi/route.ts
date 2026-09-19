@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
       case 'crea-preventivo': r = await M.creaPreventivo({ ...(dati as Parameters<typeof M.creaPreventivo>[0]), creatoDa: sess.id }); break;
       case 'stato-preventivo': r = await M.aggiornaStatoPreventivo(id!, String(dati.stato)); break;
       case 'accetta-preventivo': r = await M.accettaPreventivo(id!, sess.id); break;
+      case 'elimina-preventivo': r = await M.eliminaPreventivo(id!); break;
+      case 'crea-preventivo-da-richiesta': r = await M.creaPreventivoDaRichiesta(id!, { ...(dati as Parameters<typeof M.creaPreventivoDaRichiesta>[1]), creatoDa: sess.id }); break;
+      case 'ignora-richiesta': r = await M.ignoraRichiestaPubblica(id!); break;
       case 'crea-evento': r = await M.creaEventoLocale(dati as Parameters<typeof M.creaEventoLocale>[0]); break;
       case 'aggiorna-evento': r = await M.aggiornaEventoLocale(id!, dati); break;
       case 'cancella-evento': r = await M.cancellaEventoLocale(id!); break;

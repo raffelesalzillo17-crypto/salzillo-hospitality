@@ -62,10 +62,15 @@ type Preventivo = {
   alloggioId: string; alloggio: string; immobile: string;
   ospiteId: string | null; ospiteNome: string | null; ospiteCognome: string | null; ospiteTelefono: string | null;
 };
+type Richiesta = {
+  id: string; checkin: string; checkout: string; numeroOspiti: number; nome: string; telefono: string;
+  note: string | null; creatoIl: string; alloggioId: string; alloggio: string;
+};
 type Dati = {
   ok: boolean; oggi: string; prenotazioni: Prenotazione[]; ospiti: Ospite[];
   anagrafica: Anagrafica; alloggi: Alloggio[]; spese: Spesa[]; scadenze: Scadenza[];
   riepilogoMese: RigaMese[]; cosaManca: CosaManca; preventivi?: Preventivo[]; pulizie?: Pulizia[];
+  richieste?: Richiesta[];
   operatoriPulizie?: Operatore[]; utenti?: UtenteAdmin[]; permessi?: Permesso[]; documenti?: DocumentoCaricato[];
   schedineAlloggiati?: SchedinaAlloggiati[];
   categorieSpesa?: { id: string; nome: string }[];
@@ -431,7 +436,7 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -922,18 +927,36 @@ function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
 }
 
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambiato }: {
-  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
+function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, onCambiato }: {
+  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>;
 }) {
   const [q, setQ] = useState('');
   const [statoF, setStatoF] = useState('');
   const [apri, setApri] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [prezzoRichiesta, setPrezzoRichiesta] = useState<Record<string, string>>({});
 
-  async function azione(id: string, a: 'stato-preventivo' | 'accetta-preventivo', stato?: string) {
+  async function azione(id: string, a: 'stato-preventivo' | 'accetta-preventivo' | 'elimina-preventivo', stato?: string) {
     setBusy(id); setErr('');
     try { await api(a, { id, dati: stato ? { stato } : {} }); await onCambiato(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(''); }
+  }
+
+  async function creaPreventivoDaRichiesta(id: string) {
+    const prezzoNotte = Number(prezzoRichiesta[id]);
+    if (!prezzoNotte || prezzoNotte <= 0) { setErr('Metti un prezzo a notte prima di creare il preventivo.'); return; }
+    setBusy(id); setErr('');
+    try { await api('crea-preventivo-da-richiesta', { id, dati: { prezzoNotte } }); await onCambiato(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(''); }
+  }
+
+  async function ignoraRichiesta(id: string) {
+    if (!confirm('Ignorare questa richiesta? Non diventerà un preventivo.')) return;
+    setBusy(id); setErr('');
+    try { await api('ignora-richiesta', { id }); await onCambiato(); }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(''); }
   }
@@ -998,6 +1021,29 @@ function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambi
         </select>
       </div>
       {err && <p className="err">{err}</p>}
+
+      {richieste.length > 0 && (
+        <div className="docgroup">
+          <h3><span>🌐 Richieste dal sito</span><span className="empty">{richieste.length} da gestire</span></h3>
+          {richieste.map((r) => (
+            <div key={r.id} className="docrow">
+              <b>{r.nome}</b>
+              <span>{r.alloggio} · {dataIt(r.checkin)}→{dataIt(r.checkout)} · {r.numeroOspiti} ospiti · {r.telefono}</span>
+              {r.note && <small className="empty">{r.note}</small>}
+              <span className="azioni">
+                <input
+                  type="number" placeholder="€/notte" style={{ width: 80 }}
+                  value={prezzoRichiesta[r.id] ?? ''}
+                  onChange={(e) => setPrezzoRichiesta((p) => ({ ...p, [r.id]: e.target.value }))}
+                />
+                <button className="mini coral" disabled={busy === r.id} onClick={() => creaPreventivoDaRichiesta(r.id)}>📄 Crea preventivo</button>
+                <button className="mini" disabled={busy === r.id} onClick={() => ignoraRichiesta(r.id)}>Ignora</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {cartelle.length === 0 && <p className="empty">Nessun documento{q || statoF ? ' con questi filtri' : ' ancora'}.</p>}
       {cartelle.map((c) => (
         <div key={c.nome} className="docgroup">
@@ -1027,6 +1073,7 @@ function Documenti({ preventivi, documenti, ospiti, oggi, puoModificare, onCambi
                     {puoModificare && p.stato === 'Bozza' && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Inviato')}>→ Inviato</button>}
                     {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini coral" disabled={busy === p.id} onClick={() => { if (confirm(`Accettare ${p.codice}? Creo la prenotazione e blocco le date.`)) azione(p.id, 'accetta-preventivo'); }}>✓ Accettato</button>}
                     {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Rifiutato')}>✕</button>}
+                    {puoModificare && <button className="mini" disabled={busy === p.id} onClick={() => { if (confirm(`Eliminare del tutto il preventivo ${p.codice}? Non si può annullare.`)) azione(p.id, 'elimina-preventivo'); }}>🗑 Elimina</button>}
                   </span>
                 </div>
                 {apri === p.id && <iframe src={url} title={p.codice} style={{ width: '100%', height: 420, border: '1px solid var(--line)', borderRadius: 10, background: '#fff', margin: '6px 0' }} />}

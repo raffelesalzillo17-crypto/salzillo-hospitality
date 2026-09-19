@@ -372,6 +372,26 @@ export const preventivi = pgTable('preventivi', {
   creato_da: uuid('creato_da').references(() => utenti.id),
 });
 
+// Richieste grezze arrivate dal sito vetrina (/soggiorna) — NON sono ancora un preventivo:
+// l'ospite ha solo indicato date/ospiti/contatto, senza prezzo. Raffaele le vede in dashboard
+// e, quando vuole, "crea il preventivo" da una richiesta (prezzo + eventuale sconto), a quel
+// punto nasce un vero preventivo (tabella `preventivi`, modificabile/inviabile come sempre) e
+// la richiesta si segna "Gestita" collegandola. Tenerle separate evita di intasare i Documenti
+// con bozze senza prezzo che nessuno può ancora inviare.
+export const statoRichiesta = pgEnum('stato_richiesta', ['Nuova', 'Gestita']);
+export const richiestePubbliche = pgTable('richieste_pubbliche', {
+  ...base,
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  checkin: date('checkin').notNull(),
+  checkout: date('checkout').notNull(),
+  numero_ospiti: integer('numero_ospiti').notNull().default(1),
+  nome: text('nome').notNull(),
+  telefono: text('telefono').notNull(),
+  note: text('note'),
+  stato: statoRichiesta('stato').notNull().default('Nuova'),
+  preventivo_id: uuid('preventivo_id').references(() => preventivi.id),
+});
+
 // Eventi locali (sagre, fiere, concerti, ponti) — servono a decidere i prezzi.
 export const impattoEvento = pgEnum('impatto_evento', ['Alto', 'Medio', 'Basso']);
 export const eventiLocali = pgTable('eventi_locali', {
@@ -462,4 +482,37 @@ export const notifiche = pgTable('notifiche', {
   schedina_id: uuid('schedina_id').references(() => schedine.id),
   scade_il: timestamp('scade_il', { withTimezone: true }),
   letta_il: timestamp('letta_il', { withTimezone: true }),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vita personale (Motore Rafilu — check-in, abitudini, obiettivi trimestrali)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const statoObiettivo = pgEnum('stato_obiettivo', ['In corso', 'Raggiunto', 'Abbandonato']);
+
+export const checkinPersonale = pgTable('checkin_personale', {
+  ...base,
+  data: date('data').notNull().unique(),
+  nota: text('nota').notNull(),
+});
+
+export const abitudini = pgTable('abitudini', {
+  ...base,
+  nome: text('nome').notNull(),
+  attiva: boolean('attiva').notNull().default(true),
+});
+
+export const abitudiniLog = pgTable('abitudini_log', {
+  ...base,
+  abitudine_id: uuid('abitudine_id').notNull().references(() => abitudini.id),
+  data: date('data').notNull(),
+}, (t) => ({
+  unico: unique().on(t.abitudine_id, t.data),
+}));
+
+export const obiettiviTrimestrali = pgTable('obiettivi_trimestrali', {
+  ...base,
+  trimestre: text('trimestre').notNull(), // es. "Q4 2026"
+  testo: text('testo').notNull(),
+  stato: statoObiettivo('stato').notNull().default('In corso'),
 });

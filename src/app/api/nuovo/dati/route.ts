@@ -3,6 +3,7 @@ import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
   leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb, leggiCategorieSpesaDb,
   leggiPreventiviDb, leggiEventiLocaliDb, leggiPrezziPeriodoDb, leggiPulizieDb, leggiDocumentiDb,
+  richiesteNuoveDb,
 } from '@/lib/db/queries';
 import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   try {
     const oggi = new Date();
     const oggiISO = oggi.toISOString().slice(0, 10);
-    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa, preventivi, pulizie, documenti] = await Promise.all([
+    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa, preventivi, pulizie, documenti, richieste] = await Promise.all([
       leggiPrenotazioniDb(),
       leggiOspitiDb(),
       leggiAnagraficaDb(),
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
       leggiPreventiviDb(),
       leggiPulizieDb(),
       leggiDocumentiDb(),
+      richiesteNuoveDb(),
     ]);
     const [eventi, prezzi, tuttiUtenti] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb(), leggiUtentiDb()]);
     const operatoriPulizie = tuttiUtenti.filter((u) => u.ruolo === 'Pulizie' && u.attivo).map((u) => ({ id: u.id, nome: u.nome }));
@@ -94,6 +96,7 @@ export async function GET(req: NextRequest) {
       schedineAlloggiati: sess.ruolo === 'Titolare' ? await schedineDaInviareAlloggiati() : [],
       categorieSpesa,
       preventivi: sess.vedeFinanziario ? preventivi : [],
+      richieste: sess.vedeFinanziario ? richieste : [],
       documenti: sess.vedeFinanziario ? documenti : [],
       eventi,
       prezzi,

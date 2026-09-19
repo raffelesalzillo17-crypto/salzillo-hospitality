@@ -10,7 +10,7 @@ import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
   pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti, blocchiCalendario,
-  permessiImmobile,
+  permessiImmobile, richiestePubbliche,
 } from './schema';
 import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
@@ -383,6 +383,45 @@ export async function creaPreventivo(d: {
   return r;
 }
 
+// ── Richieste dal sito vetrina ──────────────────────────────────────────────
+// Deliberatamente NON scritte su Google Sheets e senza creare un ospite: sono solo un
+// promemoria leggero finché Raffaele non decide di trasformarle in un vero preventivo.
+
+export async function creaRichiestaPubblica(d: {
+  alloggioId: string; checkin: string; checkout: string; numeroOspiti: number; nome: string; telefono: string; note?: string;
+}) {
+  const db = getDb();
+  const [r] = await db.insert(richiestePubbliche).values({
+    alloggio_id: d.alloggioId, checkin: d.checkin, checkout: d.checkout,
+    numero_ospiti: d.numeroOspiti, nome: d.nome.trim(), telefono: d.telefono.trim(),
+    note: d.note || null,
+  }).returning();
+  return r;
+}
+
+/** Crea il preventivo vero da una richiesta (Raffaele sceglie il prezzo) e la segna Gestita. */
+export async function creaPreventivoDaRichiesta(richiestaId: string, d: {
+  prezzo?: number; prezzoNotte?: number; sconto?: number; scontoTipo?: string; validoOre?: number; note?: string; creatoDa?: string;
+}) {
+  const db = getDb();
+  const [ri] = await db.select().from(richiestePubbliche).where(eq(richiestePubbliche.id, richiestaId));
+  if (!ri) throw new Error('Richiesta non trovata');
+  const p = await creaPreventivo({
+    alloggioId: ri.alloggio_id, checkin: ri.checkin, checkout: ri.checkout, numeroOspiti: ri.numero_ospiti,
+    prezzo: d.prezzo, prezzoNotte: d.prezzoNotte, sconto: d.sconto, scontoTipo: d.scontoTipo, validoOre: d.validoOre,
+    ospiteNome: ri.nome, ospiteTelefono: ri.telefono,
+    note: d.note || ri.note || undefined, creatoDa: d.creatoDa,
+  });
+  await db.update(richiestePubbliche).set({ stato: 'Gestita', preventivo_id: p.id, aggiornato_il: new Date() }).where(eq(richiestePubbliche.id, richiestaId));
+  return p;
+}
+
+export async function ignoraRichiestaPubblica(id: string) {
+  const db = getDb();
+  await db.update(richiestePubbliche).set({ stato: 'Gestita', aggiornato_il: new Date() }).where(eq(richiestePubbliche.id, id));
+  return { ok: true };
+}
+
 /** Alloggio e ospite di un preventivo — serve a syncFoglio.ts per scrivere/aggiornare la
  *  riga corrispondente sul tab PREVENTIVI del vecchio foglio. */
 async function contestoPreventivoPerFoglio(p: typeof preventivi.$inferSelect) {
@@ -404,6 +443,17 @@ function rigaPreventivoDa(p: typeof preventivi.$inferSelect, ctx: { alloggioNome
     totale: Number(p.totale), sconto: Number(p.sconto), stato: p.stato,
     validoOre: p.valido_ore, note: p.note,
   };
+}
+
+/** Elimina del tutto un preventivo (es. prove/test) — non tocca la riga sul foglio Google,
+ *  che resta come storico secondario. Solo per uso interno, mai chiamata dal sito pubblico.
+ *  Se il preventivo era nato da una richiesta del sito, quella richiesta torna "Nuova" (si
+ *  può rifare) invece di restare agganciata a un preventivo che non esiste più. */
+export async function eliminaPreventivo(id: string) {
+  const db = getDb();
+  await db.update(richiestePubbliche).set({ stato: 'Nuova', preventivo_id: null, aggiornato_il: new Date() }).where(eq(richiestePubbliche.preventivo_id, id));
+  await db.delete(preventivi).where(eq(preventivi.id, id));
+  return { ok: true };
 }
 
 export async function aggiornaStatoPreventivo(id: string, stato: string) {
@@ -755,5 +805,16 @@ export async function eliminaBloccoCalendario(id: string) {
   const db = getDb();
   await db.delete(blocchiCalendario).where(eq(blocchiCalendario.id, id));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vita personale (Motore Rafilu)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Salva/aggiorna il check-in del giorno (una nota per data, sovrascrive se già presente). */
+// Le mutation "Vita personale" (salvaCheckin, creaAbitudine, eliminaAbitudine, segnaAbitudine,
+// creaObiettivoTrimestrale, aggiornaStatoObiettivo) sono state spostate in plancia-raffaele
+// il 18/09/2026 — la feature era finita per errore in questo progetto. Le tabelle restano in
+// schema.ts (stesso database condiviso), ma le mutation vivono ora solo in
+// plancia-raffaele/src/lib/db/mutations.ts.
 
 export { nottiTra };
