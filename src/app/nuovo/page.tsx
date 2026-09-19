@@ -347,8 +347,8 @@ export default function Nuovo() {
         <>
         {sess.puoModificare && (
           <div className="azionirapide">
-            <button className="add" onClick={() => setNuovaPren(true)}>＋ Prenotazione</button>
-            <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
+            <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
+            <button className="add" onClick={() => setPreventivo(true)}>📄 Nuovo preventivo</button>
             <button className="add" onClick={() => setTab('calendario')}>📅 Calendario</button>
             <button className="add" onClick={() => setTab('documenti')}>📁 Preventivi</button>
           </div>
@@ -520,7 +520,7 @@ export default function Nuovo() {
             <div className="cardhead">
               <h2>Prenotazioni <small>({lista.length}{lista.length !== dati.prenotazioni.length ? ` di ${dati.prenotazioni.length}` : ''})</small></h2>
               {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="add" onClick={() => setPreventivo(true)}>📄 Preventivo</button>
+                <button className="add" onClick={() => setPreventivo(true)}>📄 Nuovo preventivo</button>
                 <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
               </div>}
             </div>
