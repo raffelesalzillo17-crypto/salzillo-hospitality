@@ -13,8 +13,22 @@ import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
   scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
-  richiestePubbliche,
+  richiestePubbliche, blocchiCalendario,
 } from './schema';
+
+// Il Tulipano e Stanza Rosa condividono lo stabile di Via Clanio 60 — vanno viste vicine
+// nel calendario invece che separate dall'ordine alfabetico (che mette Rosa per ultima).
+// Qualunque alloggio non elencato qui finisce in fondo, in ordine alfabetico.
+const ORDINE_ALLOGGI = ['Il Tulipano', 'Stanza Rosa', 'Piano Terra', 'Primo Piano', 'Secondo Piano'];
+function ordinaAlloggi<T extends { nome: string }>(righe: T[]): T[] {
+  return [...righe].sort((a, b) => {
+    const ia = ORDINE_ALLOGGI.indexOf(a.nome), ib = ORDINE_ALLOGGI.indexOf(b.nome);
+    if (ia === -1 && ib === -1) return a.nome.localeCompare(b.nome);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
 
 /** Primo e ultimo giorno (inclusi) di un mese, in formato YYYY-MM-DD. */
 function estremiMese(anno: number, mese: number): [string, string] {
@@ -282,7 +296,7 @@ export async function leggiPrezziPeriodoDb() {
 /** Elenco alloggi con nome immobile — sostituisce la lista hardcoded di src/lib/strutture.ts. */
 export async function leggiAlloggiDb() {
   const db = getDb();
-  return db
+  const righe = await db
     .select({
       id: alloggi.id, nome: alloggi.nome, attivo: alloggi.attivo, regimeFiscale: alloggi.regime_fiscale,
       costoPulizia: alloggi.costo_pulizia, haSelfCheckin: alloggi.ha_self_checkin,
@@ -292,8 +306,23 @@ export async function leggiAlloggiDb() {
       immobile: immobili.nome, indirizzo: immobili.indirizzo,
     })
     .from(alloggi)
-    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
-    .orderBy(alloggi.nome);
+    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id));
+  return ordinaAlloggi(righe);
+}
+
+/** Blocchi manuali di TUTTI gli alloggi (futuri/in corso) — per mostrarli nel calendario
+ *  generale insieme alle prenotazioni, senza dover aprire la scheda di un singolo alloggio. */
+export async function leggiTuttiIBlocchiDb() {
+  const oggi = new Date().toISOString().slice(0, 10);
+  return getDb()
+    .select({
+      id: blocchiCalendario.id, alloggioId: blocchiCalendario.alloggio_id, alloggio: alloggi.nome,
+      checkin: blocchiCalendario.checkin, checkout: blocchiCalendario.checkout, nota: blocchiCalendario.nota,
+    })
+    .from(blocchiCalendario)
+    .innerJoin(alloggi, eq(alloggi.id, blocchiCalendario.alloggio_id))
+    .where(gte(blocchiCalendario.checkout, oggi))
+    .orderBy(blocchiCalendario.checkin);
 }
 
 // ── Gestione (spese, scadenze, pulizie) ─────────────────────────────────────

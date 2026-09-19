@@ -3,7 +3,7 @@ import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
   leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb, leggiCategorieSpesaDb,
   leggiPreventiviDb, leggiEventiLocaliDb, leggiPrezziPeriodoDb, leggiPulizieDb, leggiDocumentiDb,
-  richiesteNuoveDb,
+  richiesteNuoveDb, leggiTuttiIBlocchiDb,
 } from '@/lib/db/queries';
 import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   try {
     const oggi = new Date();
     const oggiISO = oggi.toISOString().slice(0, 10);
-    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa, preventivi, pulizie, documenti, richieste] = await Promise.all([
+    const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa, preventivi, pulizie, documenti, richieste, tuttiBlocchi] = await Promise.all([
       leggiPrenotazioniDb(),
       leggiOspitiDb(),
       leggiAnagraficaDb(),
@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
       leggiPulizieDb(),
       leggiDocumentiDb(),
       richiesteNuoveDb(),
+      leggiTuttiIBlocchiDb(),
     ]);
     const [eventi, prezzi, tuttiUtenti] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb(), leggiUtentiDb()]);
     const operatoriPulizie = tuttiUtenti.filter((u) => u.ruolo === 'Pulizie' && u.attivo).map((u) => ({ id: u.id, nome: u.nome }));
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
     });
     const alloggiFiltr = visibili === 'tutti' ? alloggi : alloggi.filter((a) => visibili.has(a.id));
     const pulizieFiltr = visibili === 'tutti' ? pulizie : pulizie.filter((p) => visibili.has(p.alloggioId));
+    const blocchiFiltr = visibili === 'tutti' ? tuttiBlocchi : tuttiBlocchi.filter((b) => visibili.has(b.alloggioId));
 
     // Chi non vede il finanziario riceve i numeri azzerati
     const pren = (sess.vedeFinanziario ? prenotazioni : prenotazioni.map((p) => ({
@@ -100,6 +102,7 @@ export async function GET(req: NextRequest) {
       documenti: sess.vedeFinanziario ? documenti : [],
       eventi,
       prezzi,
+      blocchi: blocchiFiltr,
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,
         prenotazioni: r.prenotazioni, lordo: Number(r.lordo),

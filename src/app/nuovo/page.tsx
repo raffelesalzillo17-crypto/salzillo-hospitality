@@ -76,6 +76,7 @@ type Dati = {
   categorieSpesa?: { id: string; nome: string }[];
   eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
+  blocchi?: { id: string; alloggioId: string; alloggio: string; checkin: string; checkout: string; nota: string | null }[];
 };
 type SintesiMese = { anno: number; mese: number; prenotazioni: number; lordo: number; nettoProprietario: number };
 type Rendiconto = {
@@ -1225,6 +1226,16 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
 // ── Sezione Calendario: griglia + Prezzi + Eventi ──────────────────────────
 type EventoLoc = { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null };
 type PrezzoPer = { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null };
+type Blocco = { id: string; alloggioId: string; alloggio: string; checkin: string; checkout: string; nota: string | null };
+
+async function creaBlocco(alloggioId: string, checkin: string, checkout: string, nota?: string) {
+  const r = await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId, checkin, checkout, nota }) });
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error || 'Errore');
+}
+async function rimuoviBloccoApi(id: string) {
+  await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rimuovi: id }) });
+}
 
 function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiato }: {
   dati: Dati; attive: Prenotazione[]; oggi: string; onSel: (p: Prenotazione) => void; puoModificare: boolean; onCambiato: () => Promise<void>;
@@ -1232,6 +1243,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
   const [sub, setSub] = useState<'griglia' | 'prezzi' | 'eventi'>('griglia');
   const eventi = (dati.eventi ?? []) as EventoLoc[];
   const prezzi = (dati.prezzi ?? []) as PrezzoPer[];
+  const blocchi = (dati.blocchi ?? []) as Blocco[];
   return (
     <>
       <div className="subtabs">
@@ -1241,7 +1253,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
           </button>
         ))}
       </div>
-      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} />}
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
     </>
@@ -1356,8 +1368,9 @@ function PannelloEventi({ eventi, puoModificare, onCambiato }: {
 }
 
 // ── Calendario stile Airbnb ─────────────────────────────────────────────────
-function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [] }: {
+function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], puoModificare = false, onCambiato }: {
   prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
+  blocchi?: Blocco[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
 }) {
   const [meseOffset, setMeseOffset] = useState(0);
   const CELL = 40; // px per giorno
@@ -1414,9 +1427,11 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
               </div>
             )}
             {alloggiAttivi.map((a) => (
-              <CalRow key={a.id} giorni={giorni} cell={CELL}
+              <CalRow key={a.id} giorni={giorni} cell={CELL} alloggioId={a.id} alloggioNome={a.nome}
                 prenotazioni={prenotazioni.filter((p) => p.alloggio === a.nome && p.checkout > primoGiorno && p.checkin <= ultimoGiorno)}
                 prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
+                blocchi={blocchi.filter((b) => b.alloggioId === a.id && b.checkout > primoGiorno && b.checkin <= ultimoGiorno)}
+                puoModificare={puoModificare} onCambiato={onCambiato}
                 onSel={onSel} />
             ))}
           </div>
@@ -1424,21 +1439,85 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
       </div>
       <div className="callegend">
         {Object.entries(CANALE_COLOR).map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
+        <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
+        {puoModificare && <span className="empty">— trascina su una riga vuota per bloccare/sbloccare delle notti</span>}
       </div>
     </div>
   );
 }
 
-function CalRow({ giorni, cell, prenotazioni, prezzi = [], onSel }: {
-  giorni: string[]; cell: number; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[]; onSel: (p: Prenotazione) => void;
+function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], puoModificare = false, onCambiato, onSel }: {
+  giorni: string[]; cell: number; alloggioId: string; alloggioNome: string; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[];
+  blocchi?: Blocco[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
+  const [drag, setDrag] = useState<{ start: number; end: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const occupato = (i: number) => {
+    const g = giorni[i];
+    return prenotazioni.some((p) => p.checkin <= g && p.checkout > g) || blocchi.some((b) => b.checkin <= g && b.checkout > g);
+  };
+
+  function iniziaSel(i: number) { if (!puoModificare || busy || occupato(i)) return; setDrag({ start: i, end: i }); }
+  function estendiSel(i: number) { setDrag((d) => (d ? { ...d, end: i } : d)); }
+  async function chiudiSel(d: { start: number; end: number } | null) {
+    if (!d) return;
+    const a = Math.min(d.start, d.end), b = Math.max(d.start, d.end);
+    for (let i = a; i <= b; i++) if (occupato(i)) return; // qualcosa nel mezzo è occupato: annulla senza chiedere
+    const checkin = giorni[a];
+    const checkout = new Date(Date.parse(giorni[b]) + 864e5).toISOString().slice(0, 10);
+    const notti = b - a + 1;
+    if (!confirm(`Bloccare ${alloggioNome} dal ${dataIt(checkin)} al ${dataIt(checkout)} (${notti} nott${notti === 1 ? 'e' : 'i'})?`)) return;
+    const nota = prompt('Nota (facoltativa) — es. manutenzione, uso personale:') ?? undefined;
+    setBusy(true);
+    try { await creaBlocco(alloggioId, checkin, checkout, nota || undefined); await onCambiato?.(); }
+    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  async function sblocca(b: Blocco) {
+    if (!puoModificare || busy) return;
+    if (!confirm(`Sbloccare ${alloggioNome} dal ${dataIt(b.checkin)} al ${dataIt(b.checkout)}?${b.nota ? `\n${b.nota}` : ''}`)) return;
+    setBusy(true);
+    try { await rimuoviBloccoApi(b.id); await onCambiato?.(); }
+    finally { setBusy(false); }
+  }
+
+  // Un listener globale, non solo sulla riga: se il rilascio del mouse avviene fuori dalla
+  // riga (drag impreciso, o il dito scivola sul touch) la selezione va comunque chiusa,
+  // altrimenti resta "incollata" senza modo di uscirne.
+  useEffect(() => {
+    if (!drag) return;
+    const onUp = () => { const d = drag; setDrag(null); chiudiSel(d); };
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [drag]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}` }}>
-      {giorni.map((g) => {
+    <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}`, userSelect: drag ? 'none' : undefined }}>
+      {giorni.map((g, i) => {
         const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
-        return <div key={g} className="cal-cell" style={{ width: cell }}>{pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}</div>;
+        const sel = drag && i >= Math.min(drag.start, drag.end) && i <= Math.max(drag.start, drag.end);
+        const cliccabile = puoModificare && !occupato(i);
+        return (
+          <div key={g} className={'cal-cell' + (sel ? ' selecting' : '') + (cliccabile ? ' selectable' : '')} style={{ width: cell }}
+            onMouseDown={() => iniziaSel(i)} onMouseEnter={() => estendiSel(i)}>
+            {pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}
+          </div>
+        );
+      })}
+      {blocchi.map((b) => {
+        const start = Math.max(0, idx(b.checkin));
+        const end = Math.min(giorni.length, idx(b.checkout));
+        if (end <= start) return null;
+        return (
+          <button key={b.id} className="cal-bar blocco" onClick={() => sblocca(b)} disabled={!puoModificare || busy}
+            style={{ left: start * cell + 4, width: (end - start) * cell - 8 }}
+            title={`Bloccato · ${dataIt(b.checkin)}→${dataIt(b.checkout)}${b.nota ? ` · ${b.nota}` : ''}${puoModificare ? ' — clicca per sbloccare' : ''}`}>
+            <span>🔒 {b.nota || 'Bloccato'}</span>
+          </button>
+        );
       })}
       {prenotazioni.map((p) => {
         const start = Math.max(0, idx(p.checkin));
@@ -2105,6 +2184,11 @@ button{cursor:pointer;font-family:inherit}
 .cal-room{background:var(--surface);font-weight:700;font-size:12px;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line);height:46px;}
 .cal-track{position:relative;height:46px;border-bottom:1px solid var(--line);display:flex;}
 .cal-cell{border-left:1px solid var(--line);height:100%;flex:none;position:relative;}
+.cal-cell.selectable{cursor:pointer;}
+.cal-cell.selectable:hover{background:var(--coral-soft);}
+.cal-cell.selecting{background:var(--coral);opacity:.35;}
+.cal-bar.blocco{background:repeating-linear-gradient(135deg,#7d7d7d,#7d7d7d 6px,#969696 6px,#969696 12px);cursor:pointer;}
+.cal-bar:disabled{cursor:default;}
 .cal-bar{position:absolute;top:7px;height:32px;border-radius:8px;border:none;color:#fff;font-size:11px;font-weight:700;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.2);}
 .cal-bar span{overflow:hidden;text-overflow:ellipsis;}
 .callegend{display:flex;gap:14px;margin-top:12px;font-size:12px;flex-wrap:wrap;}
