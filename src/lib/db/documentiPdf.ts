@@ -129,7 +129,13 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
   f.nl(6); f.riga(); f.nl(16);
   // Il WiFi non si ripete qui: è già nella pagina guida linkata sotto — un dato solo, non due
   // copie da tenere allineate (e da aggiornare in due posti se la password cambia).
-  if (p.checkinGuideUrl) { f.t('Guida completa (WiFi, ingresso, regole)', 50, 9, true); f.link(p.checkinGuideUrl, 200, 8); f.nl(15); }
+  // Etichetta su una riga propria, link sulla riga sotto: a x=200 un'etichetta lunga come
+  // questa si sovrapponeva al link (bug segnalato da Raffaele il 20/09/2026) — f.t() non va
+  // a capo da sola, quindi due colonne sulla stessa riga funzionano solo con etichette corte.
+  if (p.checkinGuideUrl) {
+    f.t('Guida completa (WiFi, ingresso, regole)', 50, 9, true); f.nl(14);
+    f.link(p.checkinGuideUrl, 50, 9); f.nl(15);
+  }
   f.nl(10);
   f.t('Per qualsiasi necessità ci trova su WhatsApp. La aspettiamo!', 50, 10, false, MUTED);
   f.piede();
