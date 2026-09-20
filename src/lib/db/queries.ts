@@ -434,15 +434,15 @@ export async function leggiPulizieDb() {
 
 /** Sintesi sintetica di un mese (n° prenotazioni, lordo, netto proprietario) — per i confronti. */
 async function sintesiRendiconto(
-  db: ReturnType<typeof getDb>, proprietarioId: string, anno: number, mese: number,
+  db: ReturnType<typeof getDb>, proprietarioId: string | null, anno: number, mese: number,
   ambito: { immobileId?: string; alloggioId?: string } | undefined, stati: string[],
 ) {
   const [daISO, aISO] = estremiMese(anno, mese);
   const conds = [
-    eq(immobili.proprietario_id, proprietarioId),
     gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
     inArray(prenotazioni.stato, stati as never[]),
   ];
+  if (proprietarioId) conds.push(eq(immobili.proprietario_id, proprietarioId));
   if (ambito?.immobileId) conds.push(eq(immobili.id, ambito.immobileId));
   if (ambito?.alloggioId) conds.push(eq(alloggi.id, ambito.alloggioId));
   const [row] = await db
@@ -465,15 +465,22 @@ async function sintesiRendiconto(
 /** Rendiconto di un proprietario per un mese: le prenotazioni con check-in in quel mese,
  *  la cascata economica per ciascuna, i totali, i confronti (mese scorso, stesso mese anno
  *  scorso) e la previsione per il mese successivo. Base per il PDF e la pagina proprietario.
- *  `ambito` opzionale: limita a un singolo immobile o a un singolo alloggio del proprietario. */
+ *  `ambito` opzionale: limita a un singolo immobile o a un singolo alloggio del proprietario.
+ *  `proprietarioId` può essere `null` per il quadro generale su TUTTI i proprietari insieme
+ *  (aggiunto 20/09/2026, richiesto da Raffaele per avere sempre una vista d'insieme) — in quel
+ *  caso `ambito` non ha senso e va ignorato dal chiamante. */
 export async function rendicontoProprietarioDb(
-  proprietarioId: string, anno: number, mese: number,
+  proprietarioId: string | null, anno: number, mese: number,
   ambito?: { immobileId?: string; alloggioId?: string },
 ) {
   const db = getDb();
   const [daISO, aISO] = estremiMese(anno, mese);
-  const [prop] = await db.select().from(proprietari).where(eq(proprietari.id, proprietarioId));
-  if (!prop) return null;
+  let nomeProprietario = 'Tutti i proprietari';
+  if (proprietarioId) {
+    const [prop] = await db.select().from(proprietari).where(eq(proprietari.id, proprietarioId));
+    if (!prop) return null;
+    nomeProprietario = prop.nome;
+  }
 
   // etichetta dell'ambito + immobile di riferimento per filtrare le spese
   let ambitoEtichetta = 'Tutti gli immobili';
@@ -489,10 +496,10 @@ export async function rendicontoProprietarioDb(
   }
 
   const righeConds = [
-    eq(immobili.proprietario_id, proprietarioId),
     gte(prenotazioni.checkin, daISO), lte(prenotazioni.checkin, aISO),
     eq(prenotazioni.stato, 'Attiva'),
   ];
+  if (proprietarioId) righeConds.push(eq(immobili.proprietario_id, proprietarioId));
   if (ambito?.immobileId) righeConds.push(eq(immobili.id, ambito.immobileId));
   if (ambito?.alloggioId) righeConds.push(eq(alloggi.id, ambito.alloggioId));
 
@@ -514,7 +521,8 @@ export async function rendicontoProprietarioDb(
     .where(and(...righeConds))
     .orderBy(prenotazioni.checkin);
 
-  const speseConds = [eq(immobili.proprietario_id, proprietarioId), gte(spese.data, daISO), lte(spese.data, aISO)];
+  const speseConds = [gte(spese.data, daISO), lte(spese.data, aISO)];
+  if (proprietarioId) speseConds.push(eq(immobili.proprietario_id, proprietarioId));
   if (speseImmobileId) speseConds.push(eq(immobili.id, speseImmobileId));
   const speseRighe = await db
     .select({ id: spese.id, data: spese.data, descrizione: spese.descrizione, importo: spese.importo, categoria: categorieSpesa.nome, immobile: immobili.nome })
@@ -558,7 +566,7 @@ export async function rendicontoProprietarioDb(
   const nettoFinale = Math.round((t.nettoProprietario - totSpese) * 100) / 100;
 
   return {
-    proprietario: prop.nome, anno, mese,
+    proprietario: nomeProprietario, anno, mese,
     ambito: {
       etichetta: ambitoEtichetta,
       tipo: ambito?.alloggioId ? 'alloggio' : ambito?.immobileId ? 'immobile' : 'tutto',

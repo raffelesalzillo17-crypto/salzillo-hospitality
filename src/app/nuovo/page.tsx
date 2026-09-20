@@ -484,11 +484,11 @@ export default function Nuovo() {
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca e clicca per modificare</li>
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
-              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono e si modificano</li>
+              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking</li>
               <li><b>Spese</b> — i costi. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
-              <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti e permessi)</li>
+              <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send)</li>
-              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare</li>
+              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
               <li><b>Link utili</b> — rubrica di link comodi (sito vetrina, check-in, WhatsApp, e quelli che aggiungi tu) da avere a portata di mano e condividere</li>
             </ul>
             <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
@@ -1198,6 +1198,7 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
     <div className="card">
       <div className="rendctl">
         <select value={propId} onChange={(e) => setPropId(e.target.value)}>
+          <option value="tutti">— Tutti i proprietari —</option>
           {anagrafica.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
         </select>
         <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>
