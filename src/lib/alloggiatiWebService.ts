@@ -71,6 +71,12 @@ export type TabellaResult = {
   csv: string | null;
 };
 
+export type RicevutaResult = {
+  esito: EsitoOperazione;
+  /** PDF della ricevuta giornaliera, in base64 — null se non disponibile per quel giorno. */
+  pdfBase64: string | null;
+};
+
 // Valori confermati dallo schema WSDL pubblico (elemento <s:simpleType name="TipoTabella">).
 export type TipoTabella = 'Luoghi' | 'Tipi_Documento' | 'Tipi_Alloggiato' | 'TipoErrore' | 'ListaAppartamenti';
 
@@ -283,6 +289,47 @@ export async function downloadTabella(token: string, tipo: TipoTabella): Promise
   return {
     esito: parseEsito(resultBlock),
     csv: getTag(responseBlock, 'CSV'),
+  };
+}
+
+/**
+ * Ricevuta(Utente, token, Data) → PDF (base64) della ricevuta ufficiale di un giorno di invii.
+ * Obbligo normativo distinto dall'invio stesso: il gestore deve poter esibire, in caso di
+ * controllo, la ricevuta di ogni giorno in cui ha trasmesso schedine — non basta averle inviate.
+ *
+ * Aggiunta il 20/09/2026 dopo che Raffaele ha segnalato l'obbligo (mai implementato finora:
+ * Send() esisteva già dal 14/09 ma senza modo di scaricare la ricevuta). Il metodo esiste per
+ * data (una ricevuta copre TUTTE le schedine inviate quel giorno per la struttura, non una per
+ * schedina) — il portale la emette solo per i giorni in cui è stato fatto almeno un invio vero;
+ * chiederla per un giorno senza invii dà esito negativo, non un errore di rete.
+ *
+ * Stesso pattern SOAP di generateToken/testSchedine, confermato equivalente (stessi tre
+ * parametri, stesso namespace) in un'altra implementazione indipendente di questo servizio
+ * (github.com/cito09/alloggiati-web-app) usata come riscontro incrociato prima di scriverlo qui
+ * — non ancora testato contro il servizio reale (nessun invio vero è mai stato fatto finora,
+ * quindi non esiste ancora un giorno reale su cui provarlo).
+ */
+export async function ricevuta(token: string, data: string): Promise<RicevutaResult> {
+  const utente = requireEnv('ALLOGGIATI_USER');
+
+  const body =
+    `<all:Ricevuta>` +
+    `<all:Utente>${escapeXml(utente)}</all:Utente>` +
+    `<all:token>${escapeXml(token)}</all:token>` +
+    `<all:Data>${escapeXml(data)}</all:Data>` +
+    `</all:Ricevuta>`;
+
+  const xml = await soapCall('Ricevuta', body);
+  const responseBlock = getTag(xml, 'RicevutaResponse') ?? xml;
+  const resultBlock = getTag(responseBlock, 'RicevutaResult');
+
+  // Stessa incertezza già osservata per GenerateToken (vedi commento in testa al file): il PDF
+  // potrebbe comparire dentro RicevutaResult o come fratello — proviamo entrambi.
+  const pdf = (resultBlock != null ? getTag(resultBlock, 'PDF') : null) ?? getTag(responseBlock, 'PDF');
+
+  return {
+    esito: parseEsito(resultBlock),
+    pdfBase64: pdf && pdf.trim() ? pdf.trim() : null,
   };
 }
 

@@ -11,6 +11,8 @@
 // src/lib/alloggiatiWebService.ts) resta comunque prudente ri-validare con dati veri via
 // Test() ogni volta che cambia qualcosa nel tracciato.
 
+import { CODICE_ITALIA } from './alloggiatiTabelle';
+
 export const SCHEDINA_RECORD_LENGTH = 168;
 
 export type TipoAlloggiatoCodice = '16' | '17' | '18' | '19' | '20';
@@ -117,6 +119,14 @@ export function validateSchedina(dati: DatiSchedina): string[] {
   const tipoDocRichiesto = dati.tipoAlloggiato === '16' || dati.tipoAlloggiato === '17' || dati.tipoAlloggiato === '18';
   if (tipoDocRichiesto && !dati.tipoDocumento?.trim()) {
     errori.push(`Tipo Documento mancante (obbligatorio per capofamiglia/singolo, tipo ${dati.tipoAlloggiato})`);
+  }
+
+  // Comune/Provincia di nascita: obbligatori SOLO se nato in Italia (CODICE_ITALIA, vedi
+  // src/lib/alloggiatiTabelle.ts) — aggiunto il 20/09/2026, prima non veniva controllato perché
+  // non era stato ancora confermato quale codice della Tabella Stati rappresentasse l'Italia.
+  if (dati.statoNascita === CODICE_ITALIA) {
+    if (!dati.comuneNascita?.trim()) errori.push('Comune Nascita mancante (obbligatorio per chi nasce in Italia)');
+    if (!dati.provinciaNascita?.trim()) errori.push('Provincia Nascita mancante (obbligatoria per chi nasce in Italia)');
   }
 
   // Larghezza massima per campo — non tronchiamo mai in silenzio un dato legale.

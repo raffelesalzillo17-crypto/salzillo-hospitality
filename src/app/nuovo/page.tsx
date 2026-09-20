@@ -2065,6 +2065,31 @@ function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: str
 function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggiati[]; onCambiato: () => Promise<void> }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [esiti, setEsiti] = useState<Record<string, { ok: boolean; messaggio: string }>>({});
+  const [dataRicevuta, setDataRicevuta] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ricevutaBusy, setRicevutaBusy] = useState(false);
+  const [ricevutaErr, setRicevutaErr] = useState('');
+
+  async function scaricaRicevuta() {
+    setRicevutaBusy(true); setRicevutaErr('');
+    try {
+      const r = await fetch('/api/nuovo/alloggiati/ricevuta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dataRicevuta }),
+      });
+      const d = await r.json();
+      if (!d.ok) { setRicevutaErr(d.error || 'Errore'); return; }
+      const bin = atob(d.pdfBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `ricevuta-alloggiati-${dataRicevuta}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setRicevutaErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRicevutaBusy(false);
+    }
+  }
 
   async function invia(s: SchedinaAlloggiati) {
     if (!confirm(
@@ -2092,6 +2117,15 @@ function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggia
         schedine di prenotazioni <b>Il Tulipano</b> con canale <b>Airbnb, Booking o Diretto</b> (regola confermata da Raffaele
         — le prenotazioni No Tax e le altre strutture non vengono mai inviate). Prima di ogni invio il sistema rivalida i dati
         col servizio reale (Test) e invia solo se il test passa.
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 0', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', marginBottom: 12 }}>
+        <b style={{ fontSize: 13 }}>📄 Ricevuta del giorno</b>
+        <input type="date" value={dataRicevuta} onChange={(e) => setDataRicevuta(e.target.value)} />
+        <button className="mini" disabled={ricevutaBusy} onClick={scaricaRicevuta}>{ricevutaBusy ? 'scarico…' : '⬇️ Scarica PDF'}</button>
+        {ricevutaErr && <p className="err" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{ricevutaErr}</p>}
+      </div>
+      <p className="empty" style={{ marginTop: -6, marginBottom: 12 }}>
+        Obbligo distinto dall&apos;invio: la Polizia emette una ricevuta per ogni giorno in cui è stato fatto almeno un invio vero — va conservata. Il portale la emette solo per i giorni con un invio reale già effettuato.
       </p>
       {schedine.length === 0 ? <p className="empty">Nessuna schedina da inviare al momento.</p> : schedine.map((s) => (
         <div key={s.id} className="docrow">

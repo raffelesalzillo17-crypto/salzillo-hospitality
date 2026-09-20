@@ -46,24 +46,26 @@
       titolo: 'Prima di iniziare', sub: 'Per legge dobbiamo registrare i tuoi documenti in Questura entro 24 ore dal check-in. Compila i dati qui sotto (o carica una foto del documento e proviamo a leggerli per te): appena confermati, la pagina si sblocca subito.',
       dataArrivo: 'Data del tuo check-in', ospite: 'Ospite', rimuovi: '✕ Rimuovi', cognome: 'Cognome', nome: 'Nome', sesso: 'Sesso', seleziona: 'Seleziona…', maschio: 'Maschio', femmina: 'Femmina',
       dataNascita: 'Data di nascita', luogoNascita: 'Comune/città di nascita', statoNascita: 'Stato di nascita', cittadinanza: 'Cittadinanza',
+      comuneNascitaItalia: 'Comune di nascita (Italia)',
       tipoDocumento: 'Tipo documento', numeroDocumento: 'Numero documento', luogoRilascio: 'Luogo di rilascio del documento',
       caricaFoto: '📷 Documento (foto o file)', leggendo: 'Leggo il documento…', lettoOk: '✓ Dati letti — controllali prima di inviare',
       lettoErrore: 'Non sono riuscito a leggere la foto, compila a mano.',
       tipoGruppo: 'Siete un gruppo?', gruppoFamiglia: 'Famiglia', gruppoAmici: 'Amici/colleghi',
       aggiungi: '+ Aggiungi un altro ospite', invia: 'Invia e continua', invio: 'Invio in corso…',
-      erroreCampi: 'Compila tutti i campi obbligatori (sesso, cittadinanza e stato di nascita compresi).', erroreGenerico: 'Qualcosa non ha funzionato.',
+      erroreCampi: 'Compila tutti i campi obbligatori (sesso, cittadinanza, stato di nascita e, se nato in Italia, il comune di nascita).', erroreGenerico: 'Qualcosa non ha funzionato.',
       contatta: 'Problemi? Contatta Salzillo Hospitality su WhatsApp', fatto: 'Fatto, un attimo…',
     },
     en: {
       titolo: 'Before you start', sub: "By law we must register your documents with the local police within 24 hours of check-in. Fill in the details below (or upload a photo of your document and we'll try to read it for you): as soon as they're confirmed, the page unlocks right away.",
       dataArrivo: 'Your check-in date', ospite: 'Guest', rimuovi: '✕ Remove', cognome: 'Last name', nome: 'First name', sesso: 'Sex', seleziona: 'Select…', maschio: 'Male', femmina: 'Female',
       dataNascita: 'Date of birth', luogoNascita: 'Town/city of birth', statoNascita: 'Country of birth', cittadinanza: 'Nationality',
+      comuneNascitaItalia: 'Municipality of birth (Italy)',
       tipoDocumento: 'Document type', numeroDocumento: 'Document number', luogoRilascio: 'Place document was issued',
       caricaFoto: '📷 Document (photo or file)', leggendo: 'Reading document…', lettoOk: '✓ Data read — please check before sending',
       lettoErrore: "Couldn't read the photo, please fill in by hand.",
       tipoGruppo: 'Are you a group?', gruppoFamiglia: 'Family', gruppoAmici: 'Friends/colleagues',
       aggiungi: '+ Add another guest', invia: 'Send and continue', invio: 'Sending…',
-      erroreCampi: 'Fill in every required field (including sex, nationality and country of birth).', erroreGenerico: 'Something went wrong.',
+      erroreCampi: 'Fill in every required field (sex, nationality, country of birth and, if born in Italy, the municipality of birth).', erroreGenerico: 'Something went wrong.',
       contatta: 'Problems? Contact Salzillo Hospitality on WhatsApp', fatto: 'Done, one moment…',
     },
   };
@@ -157,6 +159,21 @@
     return '<div><label style="display:block;font-size:12.5px;font-weight:500;margin-bottom:5px;" data-tt="' + label + '">' + label + '</label>' +
       '<select id="' + id + '" data-campo-stato style="display:block;width:100%;padding:11px 12px;font-size:16px;background:var(--surface,#fff);border:1.5px solid var(--line,#EFEAE3);border-radius:10px;margin-bottom:14px;">' + opts + '</select></div>';
   }
+  // Comune di nascita — mostrato SOLO se lo Stato di nascita è Italia (obbligatorio dal
+  // tracciato solo in quel caso, vedi src/lib/alloggiatiRecordFormat.ts). Stessa select nativa
+  // di campoStato, valore composito "codice|provincia|nome" per portare tutto ciò che serve
+  // in un solo campo (11.284 comuni, elenco ufficiale — vedi src/lib/alloggiatiTabelle.ts per
+  // la provenienza dei dati).
+  function campoComune(id, label) {
+    if (!TABELLE || !TABELLE.comuni) return '<div></div>';
+    var t = T[lang];
+    var opts = '<option value="">' + t.seleziona + '</option>' + TABELLE.comuni.map(function (c) {
+      var leggibile = c.nome.charAt(0) + c.nome.slice(1).toLowerCase();
+      return '<option value="' + c.codice + '|' + c.provincia + '|' + c.nome + '">' + leggibile + ' (' + c.provincia + ')</option>';
+    }).join('');
+    return '<div id="' + id + '-wrap" style="display:none;"><label style="display:block;font-size:12.5px;font-weight:500;margin-bottom:5px;" data-tt="' + label + '">' + label + '</label>' +
+      '<select id="' + id + '" data-campo-stato style="display:block;width:100%;padding:11px 12px;font-size:16px;background:var(--surface,#fff);border:1.5px solid var(--line,#EFEAE3);border-radius:10px;margin-bottom:14px;">' + opts + '</select></div>';
+  }
   function campoSesso(id, label) {
     var t = T[lang];
     return '<div><label style="display:block;font-size:12.5px;font-weight:500;margin-bottom:5px;" data-tt="' + label + '">' + label + '</label>' +
@@ -195,11 +212,32 @@
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">' +
         campoStato(p + 'statoNascita', 'Stato di nascita') + campoStato(p + 'cittadinanza', 'Cittadinanza') +
       '</div>' +
+      campoComune(p + 'comuneNascita', 'Comune di nascita (Italia)') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">' +
         campoDocumento(p + 'tipoDocumento', 'Tipo documento') + campoTesto(p + 'numeroDocumento', 'Numero documento') +
       '</div>' +
       campoTesto(p + 'luogoRilascio', 'Luogo di rilascio del documento');
     ospitiBox.appendChild(card);
+
+    // Il comune di nascita compare solo per chi nasce in Italia (il tracciato lo vuole
+    // obbligatorio solo in quel caso) — e se l'ospite lo sceglie, aggiorna anche il campo
+    // testuale "Comune/città di nascita" così i due restano coerenti.
+    var statoNascitaSel = card.querySelector('#' + p + 'statoNascita');
+    var comuneWrap = card.querySelector('#' + p + 'comuneNascita-wrap');
+    var comuneSel = card.querySelector('#' + p + 'comuneNascita');
+    if (statoNascitaSel && comuneWrap && comuneSel) {
+      var aggiornaComuneVisibile = function () {
+        comuneWrap.style.display = statoNascitaSel.value === 'ITALIA' ? '' : 'none';
+      };
+      statoNascitaSel.addEventListener('change', aggiornaComuneVisibile);
+      aggiornaComuneVisibile();
+      comuneSel.addEventListener('change', function () {
+        if (!comuneSel.value) return;
+        var luogoInput = card.querySelector('#' + p + 'luogoNascita');
+        var nomeComune = comuneSel.value.split('|')[2];
+        if (luogoInput && nomeComune) luogoInput.value = nomeComune.charAt(0) + nomeComune.slice(1).toLowerCase();
+      });
+    }
 
     var fotoInput = card.querySelector('#' + p + 'foto');
     var fotoStato = card.querySelector('#' + p + 'foto-stato');
@@ -246,7 +284,21 @@
             // campoStato) — se il valore letto dalla foto non combacia con nessuna opzione
             // della select, semplicemente non viene preselezionato nulla (l'ospite sceglie a
             // mano), non genera un errore.
-            if (d.statoNascita) document.getElementById(p + 'statoNascita').value = d.statoNascita.toUpperCase();
+            if (d.statoNascita) {
+              var statoSel = document.getElementById(p + 'statoNascita');
+              statoSel.value = d.statoNascita.toUpperCase();
+              statoSel.dispatchEvent(new Event('change')); // mostra/nasconde il comune di nascita
+              // Nato in Italia: tenta di preselezionare il comune letto dalla foto (stesso nome
+              // di luogoNascita) — solo un aiuto, l'ospite può sempre correggerlo a mano.
+              if (statoSel.value === 'ITALIA' && d.luogoNascita && TABELLE && TABELLE.comuni) {
+                var nomeLetto = d.luogoNascita.trim().toUpperCase();
+                var comuneSelOcr = document.getElementById(p + 'comuneNascita');
+                var trovati = TABELLE.comuni.filter(function (c) { return c.nome === nomeLetto; });
+                if (comuneSelOcr && trovati.length === 1) {
+                  comuneSelOcr.value = trovati[0].codice + '|' + trovati[0].provincia + '|' + trovati[0].nome;
+                }
+              }
+            }
             if (d.cittadinanza) document.getElementById(p + 'cittadinanza').value = d.cittadinanza.toUpperCase();
             if (d.tipoDocumento) document.getElementById(p + 'tipoDocumento').value = d.tipoDocumento;
             setIfEmpty('numeroDocumento', d.numeroDocumento);
@@ -412,7 +464,19 @@
       var cittadinanzaCodice = trovaCodiceStato(cittadinanzaTesto);
       var tipoDocumentoCodice = trovaCodiceDocumento(tipoDocumentoTesto);
 
-      if (!cognome || !nome || !sesso || !dataNascita || !luogoNascita || !statoNascitaCodice || !cittadinanzaCodice || !numeroDocumento) {
+      // Comune di nascita: obbligatorio dal tracciato solo per chi nasce in Italia (per gli
+      // altri il campo resta nascosto e vuoto, corretto così). Valore composito
+      // "codice|provincia|nome" impostato da campoComune — vedi lì.
+      var comuneNascitaCodice = '', provinciaNascita = '';
+      var natoInItalia = statoNascitaTesto === 'ITALIA';
+      if (natoInItalia) {
+        var comuneValore = (document.getElementById(p + 'comuneNascita') || {}).value || '';
+        var comuneParti = comuneValore.split('|');
+        comuneNascitaCodice = comuneParti[0] || '';
+        provinciaNascita = comuneParti[1] || '';
+      }
+
+      if (!cognome || !nome || !sesso || !dataNascita || !luogoNascita || !statoNascitaCodice || !cittadinanzaCodice || !numeroDocumento || (natoInItalia && !comuneNascitaCodice)) {
         mostraErrore(t.erroreCampi);
         return;
       }
@@ -435,7 +499,7 @@
         cittadinanza: cittadinanzaTesto, tipoDocumento: tipoDocumentoTesto, numeroDocumento: numeroDocumento,
         rapporto: rapporto,
         sesso: sesso, tipoAlloggiatoCodice: tipoAlloggiatoCodice,
-        comuneNascitaCodice: '', provinciaNascita: '',
+        comuneNascitaCodice: comuneNascitaCodice, provinciaNascita: provinciaNascita,
         statoNascitaCodice: statoNascitaCodice, cittadinanzaCodice: cittadinanzaCodice,
         tipoDocumentoCodice: tipoDocumentoCodice, luogoRilascioDocumento: luogoRilascio,
       });

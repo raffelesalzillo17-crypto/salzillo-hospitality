@@ -6,10 +6,20 @@
 //
 // STATI: sottoinsieme della tabella "Luoghi" con provincia = "ES" (stato estero, non comune
 // italiano) e DataFineVal vuota (ancora valido oggi) — 232 stati su ~11.500 righe totali della
-// tabella (che include anche tutti i comuni italiani, non riportati qui perché non servono al
-// form: comuneNascita/provinciaNascita si valorizzano solo per nati in Italia, caso raro per
-// gli ospiti di un B&B — gestito lasciando i due campi vuoti e usando "ITALIA" come
-// statoNascita, sempre valido secondo il tracciato).
+// tabella (che include anche tutti i comuni italiani).
+//
+// COMUNI (aggiunta 20/09/2026): la scelta iniziale sopra — lasciare comuneNascita/
+// provinciaNascita sempre vuoti per gli ospiti nati in Italia — si è rivelata una lacuna reale,
+// non solo teorica (il tracciato li richiede obbligatoriamente per chi nasce in Italia).
+// L'elenco completo dei comuni (11.284 righe, la stessa tabella "Luoghi" di cui sopra ma per la
+// parte comuni italiani) NON è stato riscaricato da noi via Tabella() questa volta — Raffaele ha
+// segnalato un repository pubblico (github.com/cito09/alloggiati-web-app, un'altra
+// implementazione di questo stesso servizio) che lo incorpora già. Verificato prima di usarlo:
+// il codice per Marcianise nella loro copia (415061049) combacia esattamente con quello già
+// confermato funzionante nel nostro test reale dell'08/09/2026 (schedineValide:1) — stessa
+// fonte ufficiale, solo scaricata da qualcun altro invece che da noi. I dati completi vivono in
+// public/checkin/tabelle.json (chiave "comuni") invece che qui in TypeScript, per non appesantire
+// questo file con un array di undicimila righe che nessun codice server-side legge davvero.
 
 export type Stato = { codice: string; nome: string };
 
