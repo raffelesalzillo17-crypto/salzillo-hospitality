@@ -272,6 +272,26 @@ export async function preventivoPerPdf(id: string) {
   return p ?? null;
 }
 
+/** Solo i campi che un ospite può vedere di un suo preventivo (link pubblico /p/[id],
+ *  condiviso su WhatsApp) — niente creato_da, note interne o altri dati di gestione. */
+export async function preventivoPubblico(id: string) {
+  const db = getDb();
+  const [p] = await db
+    .select({
+      codice: preventivi.codice, stato: preventivi.stato,
+      checkin: preventivi.checkin, checkout: preventivi.checkout, numeroOspiti: preventivi.numero_ospiti,
+      totale: preventivi.totale, sconto: preventivi.sconto, validoOre: preventivi.valido_ore,
+      alloggio: alloggi.nome, immobile: immobili.nome, comune: immobili.comune,
+      ospiteNome: ospiti.nome,
+    })
+    .from(preventivi)
+    .innerJoin(alloggi, eq(alloggi.id, preventivi.alloggio_id))
+    .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .leftJoin(ospiti, eq(ospiti.id, preventivi.ospite_id))
+    .where(eq(preventivi.id, id));
+  return p ?? null;
+}
+
 /** Eventi locali futuri o in corso (sagre, fiere...) per decidere i prezzi. */
 export async function leggiEventiLocaliDb() {
   const oggi = new Date().toISOString().slice(0, 10);

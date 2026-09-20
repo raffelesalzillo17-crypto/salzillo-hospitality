@@ -1009,15 +1009,18 @@ function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModifica
   function msgWa(p: Preventivo) {
     const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
     const primo = (p.ospiteNome ?? '').trim();
-    const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=preventivo&id=${p.id}`;
+    const notti = Math.round((Date.parse(p.checkout) - Date.parse(p.checkin)) / 864e5);
+    const link = `${window.location.origin}/p/${p.id}`;
     return [
-      `${saluto}${primo ? ' ' + primo : ''}, sono Raffaele di Salzillo Hospitality.`,
-      `Ecco il preventivo ${p.codice} per ${p.alloggio}:`,
-      `Check-in ${dataIt(p.checkin)} · Check-out ${dataIt(p.checkout)} (${p.numeroOspiti} ospiti)`,
-      `Totale ${eur(Number(p.totale))}${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
-      `Per bloccare le date puoi confermare entro ${p.validoOre} ore: fino ad allora l'alloggio resta riservato a te.`,
-      `Cancellazione gratuita fino a 48h prima del check-in.`,
-      `Qui il PDF con tutti i dettagli: ${pdfUrl}`,
+      `${saluto}${primo ? ' ' + primo : ''}! 👋 Sono Raffaele di *Salzillo Hospitality*.`,
+      ``,
+      `Ecco il tuo preventivo per *${p.alloggio}*:`,
+      `📅 ${dataIt(p.checkin)} → ${dataIt(p.checkout)} (${notti} nott${notti === 1 ? 'e' : 'i'}, ${p.numeroOspiti} ospiti)`,
+      `💶 Totale: *${eur(Number(p.totale))}*${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
+      ``,
+      `Le date restano riservate per te per le prossime ${p.validoOre} ore. Cancellazione gratuita fino a 48h prima del check-in.`,
+      ``,
+      `📄 Tutti i dettagli qui: ${link}`,
     ].join('\n');
   }
   function waUrl(p: Preventivo) {
