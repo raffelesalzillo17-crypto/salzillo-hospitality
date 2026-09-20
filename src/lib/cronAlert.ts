@@ -27,7 +27,7 @@ export async function alertCronFailure(cronName: string, err: unknown): Promise<
 
 /**
  * Un ospite si è bloccato compilando la scheda di check-in online (checkin-gate.js) perché il
- * sistema non trova/riconosce in modo univoco la sua prenotazione sul foglio. Avvisa subito
+ * sistema non trova/riconosce in modo univoco la sua prenotazione. Avvisa subito
  * Raffaele via Telegram con i dati che l'ospite ha già inserito, così può intervenire lo stesso
  * giorno invece di scoprirlo solo quando l'ospite si lamenta di persona. Vedi
  * wiki/log.md 10/09/2026 (Serafina Posillipo) per il precedente che ha motivato questo alert.
@@ -43,7 +43,7 @@ export async function alertOspiteBloccato(dettagli: {
   const text = `🧍‍♂️ *Ospite bloccato al check-in online*\n\n` +
     `${dettagli.ospite} — ${dettagli.stanza}, arrivo ${dettagli.dataArrivo}\n` +
     `Motivo: ${dettagli.motivo}\n\n` +
-    `Probabilmente la prenotazione sul foglio non combacia (data diversa o ambigua). Contattalo tu direttamente per non lasciarlo bloccato.`;
+    `Controlla la prenotazione (data o stanza diversa/ambigua) e contattalo tu direttamente per non lasciarlo bloccato.`;
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',

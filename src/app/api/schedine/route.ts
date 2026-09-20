@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sheets_v4 } from 'googleapis';
+import { and, eq, ne } from 'drizzle-orm';
 import {
   getSheetsClient,
   colLetter,
-  ensureSheetWithHeaders,
   sheetExists as sheetExistsShared,
   readAllRows as readAllRowsShared,
-  findFirstFreeRow,
   fileIdForTab,
 } from '@/lib/sheets';
 import {
   SCHEDINE_SHEET_NAME,
-  SCHEDINE_HEADERS,
   SCHEDINE_NUM_COLS,
   COL_DATA_ARRIVO,
   COL_NOTTI,
@@ -38,23 +36,27 @@ import {
   STATO_INVIATO_MANUALMENTE,
   type Schedina,
 } from '@/lib/schedine';
+import { getDb } from '@/lib/db/index';
+import { prenotazioni, alloggi, schedine } from '@/lib/db/schema';
+import { alertOspiteBloccato } from '@/lib/cronAlert';
+import { inviaTelegram } from '@/lib/telegramDigest';
 
-// Scheda "SCHEDINE" sullo stesso spreadsheet SalzilloFlow_2026 usato da /api/prenotazioni.
-// Vedi src/lib/schedine.ts per lo schema colonne esatto.
-//
-// Auth/creazione scheda/lettura righe ora condivise in src/lib/sheets.ts (08/09/2026).
+// Scheda "SCHEDINE" sul vecchio foglio Google — GET e PATCH restano qui sotto per chi le usa
+// ancora da lì (nessun chiamante trovato nel codice attuale al 20/09/2026, ma non tolte per
+// prudenza). La POST invece — quella che il check-in pubblico usa davvero — è stata riscritta
+// per scrivere sul database: il tab "DATABASE" del vecchio foglio (da cui la POST leggeva le
+// prenotazioni per validare la data di arrivo dell'ospite) non esiste più nel file a cui questo
+// codice risulta collegato — spostato altrove durante la migrazione a Postgres di metà settembre
+// senza che le variabili SPREADSHEET_ID_* del nuovo file fossero mai impostate. Risultato: OGNI
+// check-in online falliva con "non troviamo una prenotazione", indipendentemente dalla data
+// inserita — scoperto il 20/09/2026 con la prenotazione vera di Marcello Vaghi. Il database è
+// comunque la fonte vera oggi (le prenotazioni create dall'app ci sono sempre, sul foglio no),
+// quindi la POST ora legge/scrive lì direttamente invece di dipendere da un foglio orfano.
 //
 // IMPORTANTE: questa route prepara e salva SOLO i dati delle schedine. Non chiama e non deve
 // mai chiamare API esterne reali di Alloggiati Web o Sinfonia Turismo Smart — decisione
 // esplicita di Raffaele (notte del 07/09/2026). L'invio resta manuale finché non verrà
-// attivato, un altro giorno, con un test supervisionato. (Nota 08/09/2026 sera: la connessione
-// al web service ufficiale WS_ALLOGGIATI è stata verificata con successo — vedi
-// wiki/entita/salzillo-hospitality.md — ma il formattatore del record e l'invio vero restano
-// un pezzo separato, non toccato da questa route.)
-
-function ensureSchedineSheet(sheets: sheets_v4.Sheets): Promise<void> {
-  return ensureSheetWithHeaders(sheets, SCHEDINE_SHEET_NAME, SCHEDINE_HEADERS, 'schedine');
-}
+// attivato, un altro giorno, con un test supervisionato.
 
 function rowToSchedina(row: number, values: unknown[]): Schedina {
   const v = (i: number) => String(values[i] ?? '');
@@ -111,52 +113,26 @@ export async function GET(req: NextRequest) {
     const aParam = req.nextUrl.searchParams.get('a');   // DD/MM/YYYY, incluso
 
     const rows = await readAllRows(sheets);
-    let schedine = rows.map((r) => rowToSchedina(r.row, r.values));
+    let schedineLette = rows.map((r) => rowToSchedina(r.row, r.values));
 
     if (prenotazioneRowParam) {
-      schedine = schedine.filter((s) => s.prenotazioneRow === prenotazioneRowParam);
+      schedineLette = schedineLette.filter((s) => s.prenotazioneRow === prenotazioneRowParam);
     }
     if (daParam) {
       const daISO = toISO(daParam);
-      schedine = schedine.filter((s) => toISO(s.dataArrivo) >= daISO);
+      schedineLette = schedineLette.filter((s) => toISO(s.dataArrivo) >= daISO);
     }
     if (aParam) {
       const aISO = toISO(aParam);
-      schedine = schedine.filter((s) => toISO(s.dataArrivo) <= aISO);
+      schedineLette = schedineLette.filter((s) => toISO(s.dataArrivo) <= aISO);
     }
 
-    return NextResponse.json({ ok: true, schedine });
+    return NextResponse.json({ ok: true, schedine: schedineLette });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[schedine] GET ERRORE:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
-
-// Trova il numero di riga della prenotazione in DATABASE corrispondente a stanza+checkin —
-// usata dal check-in pubblico (l'ospite non conosce e non deve conoscere il "prenotazioneRow"
-// interno). Nessuna ambiguità tollerata: se le righe candidate sono zero o più di una, chi
-// chiama deve gestire l'errore invece di indovinare quale prenotazione aggiornare.
-async function trovaPrenotazioneRow(
-  sheets: sheets_v4.Sheets,
-  stanza: string,
-  dataArrivo: string
-): Promise<{ row: number } | { errore: string }> {
-  const rows = await readAllRowsShared(sheets, 'DATABASE', 11, 1000); // A..K, vedi commento sotto per gli indici
-  // A=riga vuota/0, B=checkin(1), C=checkout(2), D=ospite(3), E=stanza(4), F=canale(5), G=lordo(6), H=stato(7)
-  const candidate = rows.filter((r) => {
-    const rStanza = String(r.values[4] ?? '').trim();
-    const rCheckin = String(r.values[1] ?? '').trim();
-    const rStato = String(r.values[7] ?? '').trim().toLowerCase();
-    return rStanza === stanza && rCheckin === dataArrivo && !rStato.includes('cancellat');
-  });
-  if (candidate.length === 0) {
-    return { errore: 'Non troviamo una prenotazione con questa data di arrivo. Controlla la data o contatta Salzillo Hospitality.' };
-  }
-  if (candidate.length > 1) {
-    return { errore: 'Troviamo più prenotazioni con questi dati — contatta Salzillo Hospitality per completare la registrazione.' };
-  }
-  return { row: candidate[0].row };
 }
 
 export async function POST(req: NextRequest) {
@@ -168,14 +144,11 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    dataArrivo, notti, stanza, cognome, nome, dataNascita, luogoNascita,
+    dataArrivo, stanza, cognome, nome, dataNascita, luogoNascita,
     cittadinanza, tipoDocumento, numeroDocumento, rapporto,
-    // Campi aggiunti il 09/09/2026 per allinearsi al tracciato reale — tutti opzionali per
-    // restare compatibili con chi non li passa ancora (es. inserimento manuale storico).
     sesso, tipoAlloggiatoCodice, comuneNascitaCodice, provinciaNascita,
     statoNascitaCodice, cittadinanzaCodice, tipoDocumentoCodice, luogoRilascioDocumento,
   } = body;
-  let { prenotazioneRow } = body;
 
   const campiTesto: Record<string, unknown> = {
     dataArrivo, stanza, cognome, nome, dataNascita, luogoNascita, cittadinanza, tipoDocumento, numeroDocumento, rapporto,
@@ -189,77 +162,86 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'dataArrivo e dataNascita devono essere in formato DD/MM/YYYY' }, { status: 400 });
   }
 
+  const nomeStanza = String(stanza).trim();
+  const checkinISO = toISO(String(dataArrivo).trim());
+
   try {
-    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const db = getDb();
 
-    // Se non arriva già un prenotazioneRow (caso interno da Motore Rafilu, che lo conosce
-    // già), lo deduciamo da stanza+data — caso del check-in pubblico, dove l'ospite compila
-    // solo i propri dati e la data del suo arrivo.
-    if (!prenotazioneRow || !String(prenotazioneRow).trim()) {
-      const trovata = await trovaPrenotazioneRow(sheets, String(stanza).trim(), String(dataArrivo).trim());
-      if ('errore' in trovata) {
-        // L'ospite resta bloccato senza poter proseguire — avvisa subito Raffaele invece di
-        // scoprirlo solo a guaio fatto (vedi wiki/log.md 10/09/2026, Serafina Posillipo).
-        const { alertOspiteBloccato } = await import('@/lib/cronAlert');
-        await alertOspiteBloccato({
-          stanza: String(stanza).trim(), dataArrivo: String(dataArrivo).trim(),
-          ospite: `${String(nome).trim()} ${String(cognome).trim()}`, motivo: trovata.errore,
-        });
-        return NextResponse.json({ error: trovata.errore }, { status: 404 });
-      }
-      prenotazioneRow = String(trovata.row);
+    // "Tulipano" (il nome corto usato da data-stanza nel gate) è sempre contenuto nel nome
+    // completo dell'alloggio nel database ("Il Tulipano") — stessa idea già usata altrove
+    // (vedi strutturaPerAlloggio in src/lib/strutture.ts, direzione opposta).
+    const alloggiAttivi = await db.select({ id: alloggi.id, nome: alloggi.nome }).from(alloggi).where(eq(alloggi.attivo, true));
+    const alloggioTrovato = alloggiAttivi.find((a) => a.nome.includes(nomeStanza));
+
+    const candidate = alloggioTrovato
+      ? await db.select().from(prenotazioni).where(and(
+          eq(prenotazioni.alloggio_id, alloggioTrovato.id),
+          eq(prenotazioni.checkin, checkinISO),
+          ne(prenotazioni.stato, 'Cancellata'),
+        ))
+      : [];
+
+    if (candidate.length !== 1) {
+      // L'ospite resta bloccato senza poter proseguire — avvisa subito Raffaele invece di
+      // scoprirlo solo a guaio fatto (vedi wiki/log.md 10/09/2026, Serafina Posillipo).
+      const motivo = !alloggioTrovato
+        ? `Stanza "${nomeStanza}" non riconosciuta`
+        : candidate.length === 0
+          ? 'Nessuna prenotazione attiva con questa data di arrivo'
+          : 'Più prenotazioni combaciano con questa data — serve una scelta manuale';
+      await alertOspiteBloccato({
+        stanza: nomeStanza, dataArrivo: String(dataArrivo).trim(),
+        ospite: `${String(nome).trim()} ${String(cognome).trim()}`, motivo,
+      });
+      return NextResponse.json({ error: 'Non troviamo una prenotazione con questa data di arrivo. Controlla la data o contatta Salzillo Hospitality.' }, { status: 404 });
     }
+    const pren = candidate[0];
 
-    await ensureSchedineSheet(sheets);
-    const targetRow = await findFirstFreeRow(sheets, SCHEDINE_SHEET_NAME);
+    // Scadenza invio Alloggiati Web: 6 ore dal check-in per un soggiorno di una notte, 24 ore
+    // per soggiorni più lunghi (regola già descritta nello schema, mai applicata finora perché
+    // questa route non arrivava a crearne — vedi commento sopra).
+    const notti = Math.max(1, Math.round((Date.parse(pren.checkout) - Date.parse(pren.checkin)) / 864e5));
+    const scadeIl = new Date(Date.parse(pren.checkin) + (notti <= 1 ? 6 : 24) * 3600e3);
 
-    const values = new Array(SCHEDINE_NUM_COLS).fill('');
-    values[COL_DATA_ARRIVO] = String(dataArrivo).trim();
-    values[COL_NOTTI] = typeof notti === 'string' || typeof notti === 'number' ? String(notti).trim() : '';
-    values[COL_STANZA] = String(stanza).trim();
-    values[COL_COGNOME] = String(cognome).trim();
-    values[COL_NOME] = String(nome).trim();
-    values[COL_DATA_NASCITA] = String(dataNascita).trim();
-    values[COL_LUOGO_NASCITA] = String(luogoNascita).trim();
-    values[COL_CITTADINANZA] = String(cittadinanza).trim();
-    values[COL_TIPO_DOCUMENTO] = String(tipoDocumento).trim();
-    values[COL_NUMERO_DOCUMENTO] = String(numeroDocumento).trim();
-    values[COL_RAPPORTO] = String(rapporto).trim();
-    values[COL_STATO] = STATO_DA_INVIARE;
-    values[COL_PRENOTAZIONE_ROW] = typeof prenotazioneRow === 'string' || typeof prenotazioneRow === 'number' ? String(prenotazioneRow) : '';
-    values[COL_SESSO] = typeof sesso === 'string' ? sesso.trim() : '';
-    values[COL_TIPO_ALLOGGIATO_CODICE] = typeof tipoAlloggiatoCodice === 'string' ? tipoAlloggiatoCodice.trim() : '';
-    values[COL_COMUNE_NASCITA_CODICE] = typeof comuneNascitaCodice === 'string' ? comuneNascitaCodice.trim() : '';
-    values[COL_PROVINCIA_NASCITA] = typeof provinciaNascita === 'string' ? provinciaNascita.trim() : '';
-    values[COL_STATO_NASCITA_CODICE] = typeof statoNascitaCodice === 'string' ? statoNascitaCodice.trim() : '';
-    values[COL_CITTADINANZA_CODICE] = typeof cittadinanzaCodice === 'string' ? cittadinanzaCodice.trim() : '';
-    values[COL_TIPO_DOCUMENTO_CODICE] = typeof tipoDocumentoCodice === 'string' ? tipoDocumentoCodice.trim() : '';
-    values[COL_LUOGO_RILASCIO_DOCUMENTO] = typeof luogoRilascioDocumento === 'string' ? luogoRilascioDocumento.trim() : '';
+    const sessoValido = sesso === 'M' || sesso === 'F' ? sesso : null;
+    const dataNascitaISO = toISO(String(dataNascita).trim()) || null;
 
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: fileIdForTab('SCHEDINE'),
-      range: `${SCHEDINE_SHEET_NAME}!A${targetRow}:${colLetter(SCHEDINE_NUM_COLS - 1)}${targetRow}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [values] },
-    });
+    const [riga] = await db.insert(schedine).values({
+      prenotazione_id: pren.id,
+      ospite_id: pren.ospite_id,
+      cognome: String(cognome).trim(),
+      nome: String(nome).trim(),
+      sesso: sessoValido,
+      data_nascita: dataNascitaISO,
+      luogo_nascita: String(luogoNascita).trim(),
+      cittadinanza: typeof cittadinanza === 'string' ? cittadinanza.trim() : null,
+      tipo_documento: String(tipoDocumento).trim(),
+      numero_documento: String(numeroDocumento).trim(),
+      luogo_rilascio_documento: typeof luogoRilascioDocumento === 'string' ? luogoRilascioDocumento.trim() || null : null,
+      tipo_alloggiato: String(rapporto).trim(),
+      tipo_alloggiato_codice: typeof tipoAlloggiatoCodice === 'string' ? tipoAlloggiatoCodice : null,
+      comune_nascita_codice: typeof comuneNascitaCodice === 'string' ? comuneNascitaCodice || null : null,
+      provincia_nascita: typeof provinciaNascita === 'string' ? provinciaNascita || null : null,
+      stato_nascita_codice: typeof statoNascitaCodice === 'string' ? statoNascitaCodice || null : null,
+      cittadinanza_codice: typeof cittadinanzaCodice === 'string' ? cittadinanzaCodice || null : null,
+      tipo_documento_codice: typeof tipoDocumentoCodice === 'string' ? tipoDocumentoCodice || null : null,
+      stato: 'Da inviare',
+      scade_il: scadeIl,
+    }).returning();
 
-    // Avviso a Raffaele: il check-in digitale NON sblocca più da solo la scheda WiFi/regole
-    // (deciso il 20/09/2026) — lui deve controllare questi dati e poi mandarla a mano dalla
-    // prenotazione ("📶 Manda scheda WiFi/regole"). Senza questo avviso non saprebbe mai che
-    // c'è una schedina da controllare. Non bloccante: se Telegram non risponde, l'ospite ha
-    // comunque completato il check-in.
-    try {
-      const { inviaTelegram } = await import('@/lib/telegramDigest');
-      await inviaTelegram(
-        `📋 *Check-in compilato*\n${String(stanza).trim()} — ${String(nome).trim()} ${String(cognome).trim()}\n` +
-        `Arrivo: ${String(dataArrivo).trim()}\n` +
-        `Controlla i dati in Alloggiati Web/Schedine: se sono ok, manda la scheda WiFi/regole dalla prenotazione. Se manca qualcosa, riscrivi all'ospite o correggi tu.`,
-      );
-    } catch (e) {
-      console.error('[schedine] avviso Telegram fallito (non bloccante):', e instanceof Error ? e.message : e);
-    }
+    // Avviso a Raffaele per la revisione manuale prima di inviare la scheda WiFi/regole —
+    // il flusso scelto esplicitamente il 19/09/2026: primo link solo check-in, poi lui controlla
+    // qui i dati e solo dopo manda il secondo link dalla scheda della prenotazione.
+    await inviaTelegram(
+      `📋 *Check-in compilato*\n${nomeStanza} — arrivo ${String(dataArrivo).trim()}\n\n` +
+      `${String(cognome).trim()} ${String(nome).trim()} (${String(rapporto).trim()})\n` +
+      `Nato/a: ${String(dataNascita).trim()} a ${String(luogoNascita).trim()}\n` +
+      `Documento: ${String(tipoDocumento).trim()} n. ${String(numeroDocumento).trim()}\n\n` +
+      `Se i dati sono corretti, manda la scheda WiFi/regole dalla prenotazione. Se manca o è sbagliato qualcosa, riscrivi all'ospite o correggi tu.`,
+    ).catch((e) => console.error('[schedine] avviso Telegram non inviato:', e));
 
-    return NextResponse.json({ ok: true, schedina: rowToSchedina(targetRow, values) });
+    return NextResponse.json({ ok: true, schedina: riga });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[schedine] POST ERRORE:', msg);
@@ -270,6 +252,9 @@ export async function POST(req: NextRequest) {
 // PATCH: cambia SOLO lo Stato di una schedina esistente (es. "Inviato manualmente" dopo che
 // Raffaele ha copiato i dati a mano nel vero Portale Alloggiati Web). Nessuna chiamata a
 // sistemi esterni: aggiorna solo la cella Stato sul foglio Google.
+//
+// NOTA: opera ancora sul vecchio foglio (vedi commento sopra su GET/POST) — nessun chiamante
+// trovato nel codice attuale, lasciata invariata per prudenza invece di rimossa alla cieca.
 export async function PATCH(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
