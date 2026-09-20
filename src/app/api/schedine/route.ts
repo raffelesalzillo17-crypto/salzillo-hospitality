@@ -135,6 +135,13 @@ export async function GET(req: NextRequest) {
   }
 }
 
+type OspiteInviato = {
+  cognome: unknown; nome: unknown; dataNascita: unknown; luogoNascita: unknown;
+  cittadinanza: unknown; tipoDocumento: unknown; numeroDocumento: unknown; rapporto: unknown;
+  sesso: unknown; tipoAlloggiatoCodice: unknown; comuneNascitaCodice: unknown; provinciaNascita: unknown;
+  statoNascitaCodice: unknown; cittadinanzaCodice: unknown; tipoDocumentoCodice: unknown; luogoRilascioDocumento: unknown;
+};
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -143,27 +150,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Body non valido' }, { status: 400 });
   }
 
-  const {
-    dataArrivo, stanza, cognome, nome, dataNascita, luogoNascita,
-    cittadinanza, tipoDocumento, numeroDocumento, rapporto,
-    sesso, tipoAlloggiatoCodice, comuneNascitaCodice, provinciaNascita,
-    statoNascitaCodice, cittadinanzaCodice, tipoDocumentoCodice, luogoRilascioDocumento,
-  } = body;
-
-  const campiTesto: Record<string, unknown> = {
-    dataArrivo, stanza, cognome, nome, dataNascita, luogoNascita, cittadinanza, tipoDocumento, numeroDocumento, rapporto,
-  };
-  for (const [campo, valore] of Object.entries(campiTesto)) {
-    if (typeof valore !== 'string' || !valore.trim()) {
-      return NextResponse.json({ error: `Campo mancante: ${campo}` }, { status: 400 });
+  const { dataArrivo, stanza, ospiti } = body;
+  if (typeof dataArrivo !== 'string' || !dataArrivo.trim() || typeof stanza !== 'string' || !stanza.trim()) {
+    return NextResponse.json({ error: 'Campo mancante: dataArrivo o stanza' }, { status: 400 });
+  }
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dataArrivo)) {
+    return NextResponse.json({ error: 'dataArrivo deve essere in formato DD/MM/YYYY' }, { status: 400 });
+  }
+  if (!Array.isArray(ospiti) || ospiti.length === 0) {
+    return NextResponse.json({ error: 'Nessun ospite nel check-in' }, { status: 400 });
+  }
+  const listaOspiti = ospiti as OspiteInviato[];
+  const campiRichiesti: (keyof OspiteInviato)[] = ['cognome', 'nome', 'dataNascita', 'luogoNascita', 'cittadinanza', 'tipoDocumento', 'numeroDocumento', 'rapporto'];
+  for (const o of listaOspiti) {
+    for (const campo of campiRichiesti) {
+      if (typeof o[campo] !== 'string' || !(o[campo] as string).trim()) {
+        return NextResponse.json({ error: `Campo mancante: ${campo}` }, { status: 400 });
+      }
+    }
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(o.dataNascita as string)) {
+      return NextResponse.json({ error: 'dataNascita deve essere in formato DD/MM/YYYY' }, { status: 400 });
     }
   }
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(dataArrivo)) || !/^\d{2}\/\d{2}\/\d{4}$/.test(String(dataNascita))) {
-    return NextResponse.json({ error: 'dataArrivo e dataNascita devono essere in formato DD/MM/YYYY' }, { status: 400 });
-  }
 
-  const nomeStanza = String(stanza).trim();
-  const checkinISO = toISO(String(dataArrivo).trim());
+  const nomeStanza = stanza.trim();
+  const checkinISO = toISO(dataArrivo.trim());
 
   try {
     const db = getDb();
@@ -183,16 +194,17 @@ export async function POST(req: NextRequest) {
       : [];
 
     if (candidate.length !== 1) {
-      // L'ospite resta bloccato senza poter proseguire — avvisa subito Raffaele invece di
+      // Gli ospiti restano bloccati senza poter proseguire — avvisa subito Raffaele invece di
       // scoprirlo solo a guaio fatto (vedi wiki/log.md 10/09/2026, Serafina Posillipo).
       const motivo = !alloggioTrovato
         ? `Stanza "${nomeStanza}" non riconosciuta`
         : candidate.length === 0
           ? 'Nessuna prenotazione attiva con questa data di arrivo'
           : 'Più prenotazioni combaciano con questa data — serve una scelta manuale';
+      const primo = listaOspiti[0];
       await alertOspiteBloccato({
-        stanza: nomeStanza, dataArrivo: String(dataArrivo).trim(),
-        ospite: `${String(nome).trim()} ${String(cognome).trim()}`, motivo,
+        stanza: nomeStanza, dataArrivo: dataArrivo.trim(),
+        ospite: `${String(primo.nome).trim()} ${String(primo.cognome).trim()}`, motivo,
       });
       return NextResponse.json({ error: 'Non troviamo una prenotazione con questa data di arrivo. Controlla la data o contatta Salzillo Hospitality.' }, { status: 404 });
     }
@@ -204,44 +216,46 @@ export async function POST(req: NextRequest) {
     const notti = Math.max(1, Math.round((Date.parse(pren.checkout) - Date.parse(pren.checkin)) / 864e5));
     const scadeIl = new Date(Date.parse(pren.checkin) + (notti <= 1 ? 6 : 24) * 3600e3);
 
-    const sessoValido = sesso === 'M' || sesso === 'F' ? sesso : null;
-    const dataNascitaISO = toISO(String(dataNascita).trim()) || null;
-
-    const [riga] = await db.insert(schedine).values({
+    const righe = await db.insert(schedine).values(listaOspiti.map((o) => ({
       prenotazione_id: pren.id,
       ospite_id: pren.ospite_id,
-      cognome: String(cognome).trim(),
-      nome: String(nome).trim(),
-      sesso: sessoValido,
-      data_nascita: dataNascitaISO,
-      luogo_nascita: String(luogoNascita).trim(),
-      cittadinanza: typeof cittadinanza === 'string' ? cittadinanza.trim() : null,
-      tipo_documento: String(tipoDocumento).trim(),
-      numero_documento: String(numeroDocumento).trim(),
-      luogo_rilascio_documento: typeof luogoRilascioDocumento === 'string' ? luogoRilascioDocumento.trim() || null : null,
-      tipo_alloggiato: String(rapporto).trim(),
-      tipo_alloggiato_codice: typeof tipoAlloggiatoCodice === 'string' ? tipoAlloggiatoCodice : null,
-      comune_nascita_codice: typeof comuneNascitaCodice === 'string' ? comuneNascitaCodice || null : null,
-      provincia_nascita: typeof provinciaNascita === 'string' ? provinciaNascita || null : null,
-      stato_nascita_codice: typeof statoNascitaCodice === 'string' ? statoNascitaCodice || null : null,
-      cittadinanza_codice: typeof cittadinanzaCodice === 'string' ? cittadinanzaCodice || null : null,
-      tipo_documento_codice: typeof tipoDocumentoCodice === 'string' ? tipoDocumentoCodice || null : null,
-      stato: 'Da inviare',
+      cognome: String(o.cognome).trim(),
+      nome: String(o.nome).trim(),
+      sesso: (o.sesso === 'M' || o.sesso === 'F' ? o.sesso : null) as 'M' | 'F' | null,
+      data_nascita: toISO(String(o.dataNascita).trim()) || null,
+      luogo_nascita: String(o.luogoNascita).trim(),
+      cittadinanza: typeof o.cittadinanza === 'string' ? o.cittadinanza.trim() : null,
+      tipo_documento: String(o.tipoDocumento).trim(),
+      numero_documento: String(o.numeroDocumento).trim(),
+      luogo_rilascio_documento: typeof o.luogoRilascioDocumento === 'string' ? o.luogoRilascioDocumento.trim() || null : null,
+      tipo_alloggiato: String(o.rapporto).trim(),
+      tipo_alloggiato_codice: typeof o.tipoAlloggiatoCodice === 'string' ? o.tipoAlloggiatoCodice : null,
+      comune_nascita_codice: typeof o.comuneNascitaCodice === 'string' ? o.comuneNascitaCodice || null : null,
+      provincia_nascita: typeof o.provinciaNascita === 'string' ? o.provinciaNascita || null : null,
+      stato_nascita_codice: typeof o.statoNascitaCodice === 'string' ? o.statoNascitaCodice || null : null,
+      cittadinanza_codice: typeof o.cittadinanzaCodice === 'string' ? o.cittadinanzaCodice || null : null,
+      tipo_documento_codice: typeof o.tipoDocumentoCodice === 'string' ? o.tipoDocumentoCodice || null : null,
+      stato: 'Da inviare' as const,
       scade_il: scadeIl,
-    }).returning();
+    }))).returning();
 
     // Avviso a Raffaele per la revisione manuale prima di inviare la scheda WiFi/regole —
     // il flusso scelto esplicitamente il 19/09/2026: primo link solo check-in, poi lui controlla
-    // qui i dati e solo dopo manda il secondo link dalla scheda della prenotazione.
+    // qui i dati e solo dopo manda il secondo link dalla scheda della prenotazione. UN messaggio
+    // per prenotazione con tutti gli ospiti (non uno a testa, vedi segnalazione di Raffaele del
+    // 20/09/2026 dopo il caso Marcello Vaghi + compagna).
+    const elencoOspiti = listaOspiti.map((o) =>
+      `${String(o.cognome).trim()} ${String(o.nome).trim()} (${String(o.rapporto).trim()})\n` +
+      `Nato/a: ${String(o.dataNascita).trim()} a ${String(o.luogoNascita).trim()}\n` +
+      `Documento: ${String(o.tipoDocumento).trim()} n. ${String(o.numeroDocumento).trim()}`,
+    ).join('\n\n');
     await inviaTelegram(
-      `📋 *Check-in compilato*\n${nomeStanza} — arrivo ${String(dataArrivo).trim()}\n\n` +
-      `${String(cognome).trim()} ${String(nome).trim()} (${String(rapporto).trim()})\n` +
-      `Nato/a: ${String(dataNascita).trim()} a ${String(luogoNascita).trim()}\n` +
-      `Documento: ${String(tipoDocumento).trim()} n. ${String(numeroDocumento).trim()}\n\n` +
+      `📋 *Check-in compilato*\n${nomeStanza} — arrivo ${dataArrivo.trim()} (${listaOspiti.length} ospit${listaOspiti.length === 1 ? 'e' : 'i'})\n\n` +
+      `${elencoOspiti}\n\n` +
       `Se i dati sono corretti, manda la scheda WiFi/regole dalla prenotazione. Se manca o è sbagliato qualcosa, riscrivi all'ospite o correggi tu.`,
     ).catch((e) => console.error('[schedine] avviso Telegram non inviato:', e));
 
-    return NextResponse.json({ ok: true, schedina: riga });
+    return NextResponse.json({ ok: true, schedine: righe });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[schedine] POST ERRORE:', msg);

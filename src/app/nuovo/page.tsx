@@ -16,6 +16,7 @@ type Prenotazione = {
   utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
   checkinConfermatoIl: string | null; waCheckinNumero: string | null; waCheckinMessaggio: string | null;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
+  schedine: { id: string; cognome: string; nome: string; tipoDocumento: string; numeroDocumento: string; rapporto: string; stato: string; creatoIl: string }[];
 };
 type Pulizia = {
   id: string; data: string; alloggioId: string; alloggio: string; confermataIl: string | null; note: string | null;
@@ -1637,6 +1638,18 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
                   <tr key={pg.id}><td>{pg.tipo} · {dataIt(pg.data)}{pg.metodo ? ` · ${pg.metodo}` : ''}</td><td className="num">{eur(pg.importo)}</td></tr>
                 ))}
                 <tr className="tot"><td>Totale incassato</td><td className="num strong">{eur(p.pagamenti.reduce((s, pg) => s + pg.importo, 0))}</td></tr>
+              </tbody></table>
+            )}
+
+            {p.schedine.length > 0 && (
+              <table className="tbl" style={{ marginTop: 10 }}><tbody>
+                <tr><td colSpan={2}><b style={{ fontSize: 13 }}>Documenti check-in ricevuti ({p.schedine.length})</b></td></tr>
+                {p.schedine.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.cognome} {s.nome} <small className="sub">({s.rapporto || '—'})</small></td>
+                    <td className="num"><small>{s.tipoDocumento || '—'} {s.numeroDocumento}</small></td>
+                  </tr>
+                ))}
               </tbody></table>
             )}
 

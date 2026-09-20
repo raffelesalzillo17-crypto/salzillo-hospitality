@@ -66,11 +66,19 @@ export type PrenotazioneVista = {
   checkinConfermatoIl: string | null;
   note: string;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
+  schedine: {
+    id: string; cognome: string; nome: string; tipoDocumento: string; numeroDocumento: string;
+    rapporto: string; stato: string; creatoIl: string;
+  }[];
 };
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
 
-function mappaPrenotazione(r: Record<string, unknown>, pagamentiRiga: PrenotazioneVista['pagamenti'] = []): PrenotazioneVista {
+function mappaPrenotazione(
+  r: Record<string, unknown>,
+  pagamentiRiga: PrenotazioneVista['pagamenti'] = [],
+  schedineRiga: PrenotazioneVista['schedine'] = [],
+): PrenotazioneVista {
   return {
     id: String(r.id),
     checkin: String(r.checkin),
@@ -97,6 +105,7 @@ function mappaPrenotazione(r: Record<string, unknown>, pagamentiRiga: Prenotazio
     checkinConfermatoIl: r.checkin_confermato_il ? new Date(r.checkin_confermato_il as string | Date).toISOString() : null,
     note: String(r.note ?? ''),
     pagamenti: pagamentiRiga,
+    schedine: schedineRiga,
   };
 }
 
@@ -149,7 +158,30 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
     pagamentiPerPren.set(p.prenotazione_id, lista);
   }
 
-  return righe.map((r) => mappaPrenotazione(r as Record<string, unknown>, pagamentiPerPren.get(String(r.id)) ?? []));
+  // Schedine ricevute dal check-in online — per far vedere a Raffaele cosa hanno compilato gli
+  // ospiti prima di mandare il link con le info della stanza (vedi wiki/decisioni per il flusso
+  // di revisione manuale deciso il 19/09/2026).
+  const righeSchedine = await db.select({
+    id: schedine.id, prenotazione_id: schedine.prenotazione_id, cognome: schedine.cognome,
+    nome: schedine.nome, tipoDocumento: schedine.tipo_documento, numeroDocumento: schedine.numero_documento,
+    rapporto: schedine.tipo_alloggiato, stato: schedine.stato, creatoIl: schedine.creato_il,
+  }).from(schedine);
+  const schedinePerPren = new Map<string, PrenotazioneVista['schedine']>();
+  for (const s of righeSchedine) {
+    const lista = schedinePerPren.get(s.prenotazione_id) ?? [];
+    lista.push({
+      id: s.id, cognome: s.cognome, nome: s.nome, tipoDocumento: s.tipoDocumento ?? '',
+      numeroDocumento: s.numeroDocumento ?? '', rapporto: s.rapporto ?? '', stato: s.stato,
+      creatoIl: new Date(s.creatoIl).toISOString(),
+    });
+    schedinePerPren.set(s.prenotazione_id, lista);
+  }
+
+  return righe.map((r) => mappaPrenotazione(
+    r as Record<string, unknown>,
+    pagamentiPerPren.get(String(r.id)) ?? [],
+    schedinePerPren.get(String(r.id)) ?? [],
+  ));
 }
 
 /** Prenotazioni con check-in o check-out tra due date (incluse) — per digest e promemoria. */

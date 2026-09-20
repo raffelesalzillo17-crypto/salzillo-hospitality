@@ -431,7 +431,6 @@
       }
 
       ospiti.push({
-        dataArrivo: dataArrivo, notti: '', stanza: STANZA,
         cognome: cognome, nome: nome, dataNascita: dataNascita, luogoNascita: luogoNascita,
         cittadinanza: cittadinanzaTesto, tipoDocumento: tipoDocumentoTesto, numeroDocumento: numeroDocumento,
         rapporto: rapporto,
@@ -445,33 +444,26 @@
     btn.disabled = true;
     btn.textContent = t.invio;
 
-    // Invio in sequenza (non in parallelo): se la prenotazione non viene trovata, meglio
-    // fermarsi al primo errore piuttosto che spammare N tentativi falliti.
-    var invia = function (idx) {
-      if (idx >= ospiti.length) {
+    // Un'unica chiamata con tutti gli ospiti della prenotazione (non più una per ospite):
+    // così Raffaele riceve UN messaggio di revisione per prenotazione, non uno per persona.
+    fetch('/api/schedine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataArrivo: dataArrivo, stanza: STANZA, ospiti: ospiti }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.d && res.d.error ? res.d.error : t.erroreGenerico);
         localStorage.setItem(STORAGE_KEY, '1');
         btn.textContent = t.fatto;
         document.body.style.overflow = '';
         overlay.remove();
-        return;
-      }
-      fetch('/api/schedine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ospiti[idx]),
       })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (!res.ok) throw new Error(res.d && res.d.error ? res.d.error : t.erroreGenerico);
-          invia(idx + 1);
-        })
-        .catch(function (e) {
-          mostraErrore(e.message || t.erroreGenerico);
-          btn.disabled = false;
-          btn.textContent = t.invia;
-        });
-    };
-    invia(0);
+      .catch(function (e) {
+        mostraErrore(e.message || t.erroreGenerico);
+        btn.disabled = false;
+        btn.textContent = t.invia;
+      });
   });
 
   // Carica le tabelle codici, poi mostra il primo ospite e traduce tutto.
