@@ -119,6 +119,11 @@ export async function pdfConfermaPrenotazione(prenotazioneId: string): Promise<{
     ['Ospiti', String(p.numeroOspiti)],
     ['Canale', p.canale],
   ];
+  // Solo per Diretto/No Tax: il prezzo lo fissa Raffaele stesso col cliente, quindi va
+  // ribadito qui (utile soprattutto quando cambia dopo la conferma, es. una notte in più).
+  // Per Airbnb/Booking il prezzo lo vede l'ospite sulla piattaforma — ripeterlo qui rischia
+  // solo di confondere se non torna per via delle commissioni.
+  if (p.canale === 'Diretto' || p.canale === 'No Tax') righe.push(['Totale concordato', eur(Number(p.lordo))]);
   if (p.codiceConferma) righe.push(['Codice prenotazione', p.codiceConferma]);
   for (const [k, v] of righe) { f.t(k, 50, 9, true); f.t(v, 200, 9); f.nl(15); }
   f.nl(6); f.riga(); f.nl(16);

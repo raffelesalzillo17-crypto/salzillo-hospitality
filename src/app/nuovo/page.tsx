@@ -1659,10 +1659,12 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
                   const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
                   const primo = p.ospite.trim().split(/\s+/)[0];
                   const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`;
+                  const conTotale = p.canale === 'Diretto' || p.canale === 'No Tax';
                   const msg = [
                     `${saluto} ${primo}, sono Raffaele di Salzillo Hospitality.`,
                     `Ecco la conferma della tua prenotazione per ${p.alloggio}:`,
                     `Check-in ${dataIt(p.checkin)} · Check-out ${dataIt(p.checkout)}`,
+                    ...(conTotale ? [`Totale concordato: ${eur(p.lordo)}`] : []),
                     `Qui il PDF con tutti i dettagli: ${pdfUrl}`,
                     `Per qualsiasi dubbio scrivimi pure qui.`,
                   ].join('\n');
