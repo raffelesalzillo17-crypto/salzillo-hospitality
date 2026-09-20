@@ -2068,9 +2068,10 @@ function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggia
   const [dataRicevuta, setDataRicevuta] = useState(() => new Date().toISOString().slice(0, 10));
   const [ricevutaBusy, setRicevutaBusy] = useState(false);
   const [ricevutaErr, setRicevutaErr] = useState('');
+  const [ricevutaEsito, setRicevutaEsito] = useState('');
 
   async function scaricaRicevuta() {
-    setRicevutaBusy(true); setRicevutaErr('');
+    setRicevutaBusy(true); setRicevutaErr(''); setRicevutaEsito('');
     try {
       const r = await fetch('/api/nuovo/alloggiati/ricevuta', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dataRicevuta }),
@@ -2084,6 +2085,12 @@ function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggia
       const a = document.createElement('a');
       a.href = url; a.download = `ricevuta-alloggiati-${dataRicevuta}.pdf`; a.click();
       URL.revokeObjectURL(url);
+      // Come per preventivi/contratti: salvata anche nella cartella Drive di ciascun ospite
+      // coperto da questa ricevuta, e comparirà nella scheda "Preventivi" → gruppo dell'ospite.
+      const salvate: string[] = d.salvateSuDrive || [];
+      const nonSalvate: string[] = d.nonSalvateSuDrive || [];
+      if (salvate.length > 0) setRicevutaEsito(`Salvata su Drive per: ${salvate.join(', ')} — la trovi nella scheda Preventivi, sotto ciascun ospite.`);
+      if (nonSalvate.length > 0) setRicevutaErr(`Scaricata, ma NON salvata su Drive per: ${nonSalvate.join('; ')}`);
     } catch (e) {
       setRicevutaErr(String(e instanceof Error ? e.message : e));
     } finally {
@@ -2123,6 +2130,7 @@ function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggia
         <input type="date" value={dataRicevuta} onChange={(e) => setDataRicevuta(e.target.value)} />
         <button className="mini" disabled={ricevutaBusy} onClick={scaricaRicevuta}>{ricevutaBusy ? 'scarico…' : '⬇️ Scarica PDF'}</button>
         {ricevutaErr && <p className="err" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{ricevutaErr}</p>}
+        {ricevutaEsito && <p className="empty" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{ricevutaEsito}</p>}
       </div>
       <p className="empty" style={{ marginTop: -6, marginBottom: 12 }}>
         Obbligo distinto dall&apos;invio: la Polizia emette una ricevuta per ogni giorno in cui è stato fatto almeno un invio vero — va conservata. Il portale la emette solo per i giorni con un invio reale già effettuato.
