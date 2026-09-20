@@ -209,14 +209,22 @@
       var t = T[lang];
       fotoStato.style.display = 'block';
       fotoStato.textContent = t.leggendo;
-      var reader = new FileReader();
-      reader.onload = function () {
-        var base64 = reader.result.split(',')[1];
-        fetch('/api/checkin-ocr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, mediaType: file.type || 'image/jpeg' }),
-        })
+      // iPhone salva le foto scattate in libreria come HEIC di default (dalla fotocamera dentro
+      // questa pagina invece arrivano già JPEG) — Claude non legge HEIC, quindi una foto "presa
+      // sul momento" funzionava e una "scelta dalla libreria" no: sembrava un problema del tipo
+      // di documento (patente vs carta d'identità), ma dipendeva solo da quale foto veniva scelta.
+      // Convertita in JPEG via canvas prima di mandarla, sfruttando che Safari/iOS sa DECODIFICARE
+      // l'HEIC per mostrarlo in una <img> anche se il resto del web non lo supporta.
+      var eHeic = /image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name || '');
+      var conFile = function (fileDaUsare, tipoDaUsare) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var base64 = reader.result.split(',')[1];
+          fetch('/api/checkin-ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64, mediaType: tipoDaUsare || 'image/jpeg' }),
+          })
           .then(function (r) { return r.json(); })
           .then(function (res) {
             if (!res.ok) { fotoStato.textContent = t.lettoErrore; return; }
@@ -245,8 +253,33 @@
             fotoStato.textContent = t.lettoOk;
           })
           .catch(function () { fotoStato.textContent = t.lettoErrore; });
+        };
+        reader.readAsDataURL(fileDaUsare);
       };
-      reader.readAsDataURL(file);
+
+      if (!eHeic) { conFile(file, file.type || 'image/jpeg'); return; }
+      var img = new Image();
+      var urlTemp = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(urlTemp);
+        var canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        canvas.toBlob(function (blob) {
+          // Se la conversione non produce nulla di utile, tentiamo comunque con il file
+          // originale piuttosto che bloccarci — è il comportamento di prima, non un
+          // peggioramento.
+          if (blob && blob.size > 0) conFile(blob, 'image/jpeg');
+          else conFile(file, file.type || 'image/jpeg');
+        }, 'image/jpeg', 0.92);
+      };
+      img.onerror = function () {
+        // Il browser non sa decodificare l'HEIC per mostrarlo (succede fuori da Safari/iOS) —
+        // proviamo comunque a mandarlo così com'è, stesso esito di prima di questa modifica.
+        URL.revokeObjectURL(urlTemp);
+        conFile(file, file.type || 'image/jpeg');
+      };
+      img.src = urlTemp;
     });
 
     card.querySelector('.cg-rimuovi').addEventListener('click', function () {

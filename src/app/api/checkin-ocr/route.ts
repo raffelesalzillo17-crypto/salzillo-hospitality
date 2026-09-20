@@ -47,6 +47,14 @@ export async function POST(req: NextRequest) {
   if (!imageBase64 || !mediaType) {
     return NextResponse.json({ error: 'Mancano imageBase64/mediaType' }, { status: 400 });
   }
+  // Claude non legge HEIC/HEIF (il formato di default delle foto su iPhone) — il gate lato
+  // client (checkin-gate.js) le converte già in JPEG prima di arrivare qui, ma un formato
+  // ancora diverso/inatteso va segnalato chiaramente invece di far fallire la chiamata ad
+  // Anthropic con un errore criptico.
+  const TIPI_SUPPORTATI = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+  if (!TIPI_SUPPORTATI.has(mediaType)) {
+    return NextResponse.json({ error: `Formato immagine non supportato (${mediaType}) — riprova con un'altra foto.` }, { status: 415 });
+  }
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'Lettura automatica non configurata su questo server' }, { status: 500 });
   }
