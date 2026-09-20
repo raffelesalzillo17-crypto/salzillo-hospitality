@@ -221,9 +221,15 @@ export default function Nuovo() {
 
   async function inviaModale(vals: Record<string, unknown>) {
     if (!modale) return;
-    await api(modale.azione, { id: modale.id, dati: vals });
+    const azioneFatta = modale.azione;
+    const r = await api(azioneFatta, { id: modale.id, dati: vals });
     setModale(null);
     await carica();
+    // Appena registrato un nuovo alloggio, apri subito il collegamento calendari (invece di
+    // dover tornare a cercarlo dopo) — richiesto esplicitamente da Raffaele il 20/09/2026.
+    if (azioneFatta === 'crea-alloggio' && r && typeof r === 'object' && 'id' in r && 'nome' in r) {
+      setCalAlloggio(r as { id: string; nome: string });
+    }
   }
 
   async function carica() {
@@ -636,12 +642,21 @@ export default function Nuovo() {
             <div key={pr.id} className="card">
               <div className="cardhead">
                 <h2>{pr.nome} <small>proprietario</small></h2>
-                {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo immobile di ${pr.nome}`, azione: 'crea-immobile', campi: [
-                  { k: 'proprietarioId', label: 'Proprietario', tipo: 'select', opzioni: dati.anagrafica.map((x) => ({ v: x.id, t: x.nome })) },
-                  { k: 'nome', label: 'Nome (es. Via Clanio 60)', req: true }, { k: 'indirizzo', label: 'Indirizzo', req: true },
-                  { k: 'comune', label: 'Comune', req: true }, { k: 'provincia', label: 'Provincia', req: true },
-                  { k: 'cin', label: 'CIN' }, { k: 'cir', label: 'CIR' },
-                ], iniziali: { proprietarioId: pr.id, comune: 'Marcianise', provincia: 'CE' } })}>＋ Immobile</button>}
+                <span style={{ display: 'flex', gap: 8 }}>
+                  {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo immobile di ${pr.nome}`, azione: 'crea-immobile', campi: [
+                    { k: 'proprietarioId', label: 'Proprietario', tipo: 'select', opzioni: dati.anagrafica.map((x) => ({ v: x.id, t: x.nome })) },
+                    { k: 'nome', label: 'Nome (es. Via Clanio 60)', req: true }, { k: 'indirizzo', label: 'Indirizzo', req: true },
+                    { k: 'comune', label: 'Comune', req: true }, { k: 'provincia', label: 'Provincia', req: true },
+                    { k: 'cin', label: 'CIN' }, { k: 'cir', label: 'CIR' },
+                  ], iniziali: { proprietarioId: pr.id, comune: 'Marcianise', provincia: 'CE' } })}>＋ Immobile</button>}
+                  {sess.ruolo === 'Titolare' && (
+                    <button className="mini" title="Elimina proprietario" onClick={async () => {
+                      if (!confirm(`Eliminare per sempre il proprietario "${pr.nome}"? Funziona solo se non ha ancora nessun immobile/utente/contratto agganciato.`)) return;
+                      try { await api('elimina-proprietario', { id: pr.id }); await carica(); }
+                      catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+                    }}>🗑️</button>
+                  )}
+                </span>
               </div>
               {pr.immobili.map((im) => (
                 <div key={im.id} className="imm">
@@ -908,6 +923,13 @@ function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
               )}
               {u.ruolo !== 'Titolare' && (
                 <button className="mini" onClick={async () => { await api('attiva-utente', { id: u.id, dati: { attivo: !u.attivo } }); await onCambiato(); }}>{u.attivo ? 'disattiva' : 'riattiva'}</button>
+              )}
+              {u.ruolo === 'Pulizie' && (
+                <button className="mini" onClick={async () => {
+                  if (!confirm(`Eliminare per sempre l'operatore "${u.nome}"? Funziona solo se non ha ancora nessuna pulizia agganciata (altrimenti usa "disattiva").`)) return;
+                  try { await api('elimina-operatore-pulizie', { id: u.id }); await onCambiato(); }
+                  catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+                }}>🗑️ elimina</button>
               )}
             </span>
           </div>
@@ -1278,6 +1300,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
   const eventi = (dati.eventi ?? []) as EventoLoc[];
   const prezzi = (dati.prezzi ?? []) as PrezzoPer[];
   const blocchi = (dati.blocchi ?? []) as Blocco[];
+  const pulizie = (dati.pulizie ?? []) as Pulizia[];
   return (
     <>
       <div className="subtabs">
@@ -1287,7 +1310,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
           </button>
         ))}
       </div>
-      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} puoModificare={puoModificare} onCambiato={onCambiato} />}
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} pulizie={pulizie} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
     </>
@@ -1402,9 +1425,9 @@ function PannelloEventi({ eventi, puoModificare, onCambiato }: {
 }
 
 // ── Calendario stile Airbnb ─────────────────────────────────────────────────
-function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], puoModificare = false, onCambiato }: {
+function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], puoModificare = false, onCambiato }: {
   prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
-  blocchi?: Blocco[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
+  blocchi?: Blocco[]; pulizie?: Pulizia[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
 }) {
   const [meseOffset, setMeseOffset] = useState(0);
   const CELL = 40; // px per giorno
@@ -1465,6 +1488,7 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
                 prenotazioni={prenotazioni.filter((p) => p.alloggio === a.nome && p.checkout > primoGiorno && p.checkin <= ultimoGiorno)}
                 prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
                 blocchi={blocchi.filter((b) => b.alloggioId === a.id && b.checkout > primoGiorno && b.checkin <= ultimoGiorno)}
+                pulizie={pulizie.filter((pu) => pu.alloggioId === a.id && pu.data >= primoGiorno && pu.data <= ultimoGiorno)}
                 puoModificare={puoModificare} onCambiato={onCambiato}
                 onSel={onSel} />
             ))}
@@ -1474,15 +1498,16 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
       <div className="callegend">
         {Object.entries(CANALE_COLOR).map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
         <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
+        <span>🧹 Pulizia da fare <span style={{ opacity: .5 }}>🧹 fatta</span></span>
         {puoModificare && <span className="empty">— trascina su una riga vuota per bloccare/sbloccare delle notti</span>}
       </div>
     </div>
   );
 }
 
-function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], puoModificare = false, onCambiato, onSel }: {
+function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], pulizie = [], puoModificare = false, onCambiato, onSel }: {
   giorni: string[]; cell: number; alloggioId: string; alloggioNome: string; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[];
-  blocchi?: Blocco[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
+  blocchi?: Blocco[]; pulizie?: Pulizia[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
@@ -1532,12 +1557,19 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
     <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}`, userSelect: drag ? 'none' : undefined }}>
       {giorni.map((g, i) => {
         const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
+        const pu = pulizie.find((p) => p.data === g);
         const sel = drag && i >= Math.min(drag.start, drag.end) && i <= Math.max(drag.start, drag.end);
         const cliccabile = puoModificare && !occupato(i);
         return (
           <div key={g} className={'cal-cell' + (sel ? ' selecting' : '') + (cliccabile ? ' selectable' : '')} style={{ width: cell }}
             onMouseDown={() => iniziaSel(i)} onMouseEnter={() => estendiSel(i)}>
             {pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}
+            {pu && (
+              <span className="cal-pulizia" style={{ opacity: pu.confermataIl ? 0.5 : 1 }}
+                title={`Pulizia ${dataIt(pu.data)}${pu.confermataIl ? ' — fatta' : ' — da fare'}${pu.addettoNome ? ` (${pu.addettoNome})` : ''}`}>
+                🧹
+              </span>
+            )}
           </div>
         );
       })}
@@ -2358,6 +2390,7 @@ button{cursor:pointer;font-family:inherit}
 .cal-room.cal-prezzo{height:22px;font-size:11px;color:var(--ink-muted);}
 .cal-prz{border-left:1px solid var(--line);height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--coral);}
 .cal-przrow{position:absolute;top:1px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;color:var(--ink-muted);opacity:.7;pointer-events:none;}
+.cal-pulizia{position:absolute;bottom:2px;right:2px;font-size:12px;line-height:1;pointer-events:none;}
 .filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
 .filtri select,.filtri input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
 .filtri .cerca{flex:1;min-width:160px;margin:0;}

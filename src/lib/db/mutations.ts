@@ -86,6 +86,20 @@ export async function aggiornaProprietario(id: string, d: Record<string, unknown
   return r;
 }
 
+// Stesso principio di eliminaOspite: pensata per un proprietario creato per prova (es. "Giuseppe
+// Salzillo" inserito per errore, mai collegato a nulla di vero) — rifiuta se ha già immobili,
+// utenti (accesso Proprietario) o contratti di gestione agganciati, per non perdere dati veri.
+export async function eliminaProprietario(id: string) {
+  const db = getDb();
+  const [imm] = await db.select({ n: sql<number>`count(*)` }).from(immobili).where(eq(immobili.proprietario_id, id));
+  const [ut] = await db.select({ n: sql<number>`count(*)` }).from(utenti).where(eq(utenti.proprietario_id, id));
+  const [ctr] = await db.select({ n: sql<number>`count(*)` }).from(contrattiGestione).where(eq(contrattiGestione.proprietario_id, id));
+  const totale = Number(imm.n) + Number(ut.n) + Number(ctr.n);
+  if (totale > 0) throw new Error(`Questo proprietario ha ${totale} immobile/utente/contratto agganciati — non si può eliminare.`);
+  await db.delete(proprietari).where(eq(proprietari.id, id));
+  return { ok: true };
+}
+
 async function proprietarioNomePerFoglio(id: string): Promise<string> {
   const [p] = await getDb().select({ nome: proprietari.nome }).from(proprietari).where(eq(proprietari.id, id));
   return p?.nome ?? '';
@@ -804,6 +818,24 @@ export async function impostaAttivoUtente(id: string, attivo: boolean) {
   const db = getDb();
   const [r] = await db.update(utenti).set({ attivo, aggiornato_il: new Date() }).where(eq(utenti.id, id)).returning();
   return r;
+}
+
+// Cancellazione vera (non solo disattivazione) — pensata per un operatore Pulizie creato per
+// prova o inserito per errore, mai realmente usato. Stesso principio di eliminaOspite: se ha
+// già storico agganciato (pulizie fatte davvero, da tenere per l'operatore che se n'è occupato),
+// si rifiuta e si suggerisce "disattiva" invece — che già toglie l'operatore dalle scelte
+// disponibili senza perdere chi ha pulito cosa in passato.
+export async function eliminaOperatorePulizie(id: string) {
+  const db = getDb();
+  const [u] = await db.select({ ruolo: utenti.ruolo }).from(utenti).where(eq(utenti.id, id));
+  if (!u) throw new Error('Operatore non trovato');
+  if (u.ruolo !== 'Pulizie') throw new Error('Questa azione è solo per operatori Pulizie — per gli altri ruoli usa "disattiva".');
+  const [pu] = await db.select({ n: sql<number>`count(*)` }).from(pulizie).where(eq(pulizie.addetto_id, id));
+  if (Number(pu.n) > 0) {
+    throw new Error(`Questo operatore ha ${pu.n} pulizie agganciate — usa "disattiva" invece, per non perdere lo storico di chi ha pulito cosa.`);
+  }
+  await db.delete(utenti).where(eq(utenti.id, id));
+  return { ok: true };
 }
 
 export async function impostaPermessoImmobile(d: { utenteId: string; immobileId: string; puoVedere: boolean; puoModificare: boolean; puoVedereFinanziario: boolean }) {
