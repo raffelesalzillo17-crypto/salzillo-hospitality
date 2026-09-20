@@ -79,7 +79,9 @@ type Dati = {
   eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
   blocchi?: { id: string; alloggioId: string; alloggio: string; checkin: string; checkout: string; nota: string | null }[];
+  linkUtili?: LinkUtile[];
 };
+type LinkUtile = { id: string; titolo: string; url: string; descrizione: string | null; ordine: number };
 type SintesiMese = { anno: number; mese: number; prenotazioni: number; lordo: number; nettoProprietario: number };
 type Rendiconto = {
   proprietario: string; anno: number; mese: number;
@@ -104,7 +106,7 @@ const CANALE_COLOR: Record<string, string> = {
 };
 // La scheda 'documenti' mostra soprattutto i preventivi (più le richieste dal sito e i file
 // veri su Drive) — il nome in tab riflette quello che ci si trova davvero.
-const TAB_LABEL: Partial<Record<string, string>> = { documenti: 'Preventivi', alloggiati: 'Alloggiati Web' };
+const TAB_LABEL: Partial<Record<string, string>> = { documenti: 'Preventivi', alloggiati: 'Alloggiati Web', link: 'Link utili' };
 
 type Campo = { k: string; label: string; tipo?: 'text' | 'number' | 'date' | 'select' | 'checkbox'; opzioni?: { v: string; t: string }[]; req?: boolean };
 
@@ -207,7 +209,7 @@ export default function Nuovo() {
   const [paOk, setPaOk] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'alloggiati' | 'rendiconti' | 'guida'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'alloggiati' | 'rendiconti' | 'link' | 'guida'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -343,7 +345,7 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'alloggiati', 'rendiconti', 'guida'] as const)
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'alloggiati', 'rendiconti', 'link', 'guida'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
           .map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -449,6 +451,8 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
+      {tab === 'link' && <LinkUtiliBox link={dati.linkUtili ?? []} puoModificare={sess.puoModificare} onCambiato={carica} />}
+
       {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
       {tab === 'guida' && (
@@ -485,6 +489,7 @@ export default function Nuovo() {
               <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti e permessi)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare</li>
+              <li><b>Link utili</b> — rubrica di link comodi (sito vetrina, check-in, WhatsApp, e quelli che aggiungi tu) da avere a portata di mano e condividere</li>
             </ul>
             <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
           </div>
@@ -661,6 +666,13 @@ export default function Nuovo() {
               {pr.immobili.map((im) => (
                 <div key={im.id} className="imm">
                   <div className="cardhead"><h3>{im.nome} <small>· {im.comune}{im.cin ? ` · CIN ${im.cin}` : ''}</small></h3>
+                    {sess.ruolo === 'Titolare' && im.alloggi.length === 0 && (
+                      <button className="mini" title="Elimina immobile" onClick={async () => {
+                        if (!confirm(`Eliminare per sempre l'immobile "${im.nome}"? Funziona solo se non ha spese/scadenze agganciate.`)) return;
+                        try { await api('elimina-immobile', { id: im.id }); await carica(); }
+                        catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+                      }}>🗑️</button>
+                    )}
                     {sess.ruolo === 'Titolare' && im.alloggi.some((a) => a.trasmette_regione) && <button className="add" onClick={() => setSinfoniaImm(im.id)}>Sinfonia</button>}
                     {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
                       { k: 'immobileId', label: 'Immobile', tipo: 'select', opzioni: pr.immobili.map((x) => ({ v: x.id, t: x.nome })) },
@@ -696,6 +708,14 @@ export default function Nuovo() {
                       {a.imposta_soggiorno_comune && <small>tassa soggiorno {a.imposta_soggiorno_comune}</small>}
                       {!a.attivo && <small>non attivo</small>}
                       {sess.ruolo === 'Titolare' && <button className="linklike" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); setCalAlloggio({ id: a.id, nome: a.nome }); }}>📅 calendari</button>}
+                      {sess.ruolo === 'Titolare' && (
+                        <button className="mini" title="Elimina alloggio" onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm(`Eliminare per sempre l'alloggio "${a.nome}"? Funziona solo se non ha prenotazioni/pulizie/preventivi agganciati.`)) return;
+                          try { await api('elimina-alloggio', { id: a.id }); await carica(); }
+                          catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+                        }}>🗑️</button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1301,6 +1321,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
   const prezzi = (dati.prezzi ?? []) as PrezzoPer[];
   const blocchi = (dati.blocchi ?? []) as Blocco[];
   const pulizie = (dati.pulizie ?? []) as Pulizia[];
+  const operatoriPulizie = (dati.operatoriPulizie ?? []) as Operatore[];
   return (
     <>
       <div className="subtabs">
@@ -1310,7 +1331,7 @@ function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiat
           </button>
         ))}
       </div>
-      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} pulizie={pulizie} puoModificare={puoModificare} onCambiato={onCambiato} />}
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} pulizie={pulizie} operatoriPulizie={operatoriPulizie} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
       {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
     </>
@@ -1424,10 +1445,83 @@ function PannelloEventi({ eventi, puoModificare, onCambiato }: {
   );
 }
 
+// ── Link utili ────────────────────────────────────────────────────────────────
+function LinkUtiliBox({ link, puoModificare, onCambiato }: {
+  link: LinkUtile[]; puoModificare: boolean; onCambiato: () => Promise<void>;
+}) {
+  const [f, setF] = useState({ titolo: '', url: '', descrizione: '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [copiato, setCopiato] = useState<string | null>(null);
+
+  async function salva() {
+    setBusy(true); setErr('');
+    try {
+      await api('crea-link-utile', { dati: { titolo: f.titolo, url: f.url, descrizione: f.descrizione || undefined, ordine: link.length } });
+      setF({ titolo: '', url: '', descrizione: '' }); await onCambiato();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }
+  async function rimuovi(id: string) { if (confirm('Rimuovere questo link?')) { await api('cancella-link-utile', { id }); await onCambiato(); } }
+  async function copia(url: string) {
+    try { await navigator.clipboard.writeText(url); setCopiato(url); setTimeout(() => setCopiato(null), 1500); } catch { /* niente, non blocca */ }
+  }
+
+  async function aggiungiLinkDiBase() {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const base = [
+      { titolo: 'Sito vetrina pubblico', url: `${origin}/soggiorna`, descrizione: 'Richieste dirette senza commissioni, tutte e 5 le camere' },
+      { titolo: 'Pannello gestionale (questo)', url: `${origin}/nuovo`, descrizione: 'Prenotazioni, calendario, tutto il resto' },
+      { titolo: 'Check-in — Il Tulipano', url: `${origin}/checkin/tulipano.html`, descrizione: 'Link da mandare agli ospiti del Tulipano' },
+      { titolo: 'Check-in — Stanza Rosa', url: `${origin}/checkin/rosa.html`, descrizione: '' },
+      { titolo: 'Check-in — Piano Terra', url: `${origin}/checkin/piano-terra.html`, descrizione: '' },
+      { titolo: 'Check-in — Primo Piano', url: `${origin}/checkin/primo-piano.html`, descrizione: '' },
+      { titolo: 'Check-in — Secondo Piano', url: `${origin}/checkin/secondo-piano.html`, descrizione: '' },
+      { titolo: 'WhatsApp Business Salzillo Hospitality', url: 'https://wa.me/393522203806', descrizione: 'Il numero ufficiale' },
+    ];
+    setBusy(true);
+    try {
+      for (let i = 0; i < base.length; i++) {
+        await api('crea-link-utile', { dati: { ...base[i], descrizione: base[i].descrizione || undefined, ordine: i } });
+      }
+      await onCambiato();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <div className="cardhead"><h2>Link utili <small>({link.length})</small></h2></div>
+      <p className="sub" style={{ marginTop: -4 }}>Una rubrica di link comodi da avere a portata di mano — anche da condividere. Tienila aggiornata tu: aggiungi qui il foglio Google, gli annunci Airbnb/Booking, o qualunque altro link che usi spesso.</p>
+      {link.length === 0 && puoModificare && (
+        <button className="add" disabled={busy} onClick={aggiungiLinkDiBase} style={{ marginBottom: 10 }}>✨ Aggiungi i link di base (sito, check-in, WhatsApp)</button>
+      )}
+      {puoModificare && (
+        <div className="filtri" style={{ marginTop: 10 }}>
+          <input placeholder="Titolo (es. Annuncio Airbnb — Tulipano)" value={f.titolo} onChange={(e) => setF({ ...f, titolo: e.target.value })} />
+          <input placeholder="https://..." value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} style={{ minWidth: 200 }} />
+          <input placeholder="Descrizione (facoltativa)" value={f.descrizione} onChange={(e) => setF({ ...f, descrizione: e.target.value })} />
+          <button className="add" disabled={busy || !f.titolo || !f.url} onClick={salva}>＋ Aggiungi</button>
+        </div>
+      )}
+      {err && <p className="err">{err}</p>}
+      {link.map((l) => (
+        <div key={l.id} className="docrow">
+          <b>{l.titolo}</b>
+          <a href={l.url} target="_blank" rel="noopener" className="empty" style={{ wordBreak: 'break-all' }}>{l.url}</a>
+          {l.descrizione && <span className="empty" style={{ flexBasis: '100%' }}>{l.descrizione}</span>}
+          <span className="azioni">
+            <button className="mini" onClick={() => copia(l.url)}>{copiato === l.url ? '✓ copiato' : '📋 copia'}</button>
+            {puoModificare && <button className="mini" onClick={() => rimuovi(l.id)}>✕</button>}
+          </span>
+        </div>
+      ))}
+      {link.length === 0 && <p className="empty">Nessun link ancora — {puoModificare ? 'aggiungine uno o parti da quelli di base qui sopra.' : 'chiedi al titolare di aggiungerne.'}</p>}
+    </div>
+  );
+}
+
 // ── Calendario stile Airbnb ─────────────────────────────────────────────────
-function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], puoModificare = false, onCambiato }: {
+function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato }: {
   prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
-  blocchi?: Blocco[]; pulizie?: Pulizia[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
+  blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
 }) {
   const [meseOffset, setMeseOffset] = useState(0);
   const CELL = 40; // px per giorno
@@ -1489,6 +1583,7 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
                 prezzi={prezzi.filter((p) => p.alloggioId === a.id)}
                 blocchi={blocchi.filter((b) => b.alloggioId === a.id && b.checkout > primoGiorno && b.checkin <= ultimoGiorno)}
                 pulizie={pulizie.filter((pu) => pu.alloggioId === a.id && pu.data >= primoGiorno && pu.data <= ultimoGiorno)}
+                operatoriPulizie={operatoriPulizie}
                 puoModificare={puoModificare} onCambiato={onCambiato}
                 onSel={onSel} />
             ))}
@@ -1498,21 +1593,31 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
       <div className="callegend">
         {Object.entries(CANALE_COLOR).map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
         <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
-        <span>🧹 Pulizia da fare <span style={{ opacity: .5 }}>🧹 fatta</span></span>
+        <span><i style={{ background: 'var(--coral)', borderRadius: '50%' }} />Pulizia da fare (clicca per confermare)</span>
+        <span><i style={{ background: '#1FAA6E', borderRadius: '50%', opacity: .75 }} />Pulizia fatta</span>
         {puoModificare && <span className="empty">— trascina su una riga vuota per bloccare/sbloccare delle notti</span>}
       </div>
     </div>
   );
 }
 
-function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], pulizie = [], puoModificare = false, onCambiato, onSel }: {
+function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato, onSel }: {
   giorni: string[]; cell: number; alloggioId: string; alloggioNome: string; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[];
-  blocchi?: Blocco[]; pulizie?: Pulizia[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
+  blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [puAperta, setPuAperta] = useState<string | null>(null);
+  const [addettoSel, setAddettoSel] = useState('');
+
+  async function confermaPuliziaCal(puId: string) {
+    setBusy(true);
+    try { await api('conferma-pulizia', { id: puId, dati: { addettoId: addettoSel || undefined } }); setPuAperta(null); setAddettoSel(''); await onCambiato?.(); }
+    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   const occupato = (i: number) => {
     const g = giorni[i];
@@ -1557,19 +1662,12 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
     <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}`, userSelect: drag ? 'none' : undefined }}>
       {giorni.map((g, i) => {
         const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
-        const pu = pulizie.find((p) => p.data === g);
         const sel = drag && i >= Math.min(drag.start, drag.end) && i <= Math.max(drag.start, drag.end);
         const cliccabile = puoModificare && !occupato(i);
         return (
           <div key={g} className={'cal-cell' + (sel ? ' selecting' : '') + (cliccabile ? ' selectable' : '')} style={{ width: cell }}
             onMouseDown={() => iniziaSel(i)} onMouseEnter={() => estendiSel(i)}>
             {pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}
-            {pu && (
-              <span className="cal-pulizia" style={{ opacity: pu.confermataIl ? 0.5 : 1 }}
-                title={`Pulizia ${dataIt(pu.data)}${pu.confermataIl ? ' — fatta' : ' — da fare'}${pu.addettoNome ? ` (${pu.addettoNome})` : ''}`}>
-                🧹
-              </span>
-            )}
           </div>
         );
       })}
@@ -1596,6 +1694,38 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
             title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}`}>
             <span>{p.ospite}</span>
           </button>
+        );
+      })}
+      {pulizie.map((pu) => {
+        const i = idx(pu.data);
+        if (i < 0 || i >= giorni.length) return null;
+        const fatta = !!pu.confermataIl;
+        return (
+          <div key={pu.id} className="cal-pulizia-wrap" style={{ left: i * cell }}>
+            <button type="button" className={'cal-pulizia-badge' + (fatta ? ' fatta' : '')}
+              onClick={(e) => { e.stopPropagation(); setPuAperta(puAperta === pu.id ? null : pu.id); setAddettoSel(''); }}
+              title={`Pulizia ${dataIt(pu.data)}${fatta ? ` — fatta${pu.addettoNome ? ` da ${pu.addettoNome}` : ''}` : ' — da fare, clicca per confermare'}`}>
+              🧹
+            </button>
+            {puAperta === pu.id && (
+              <div className="cal-pulizia-pop" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                {fatta ? (
+                  <p className="empty">Fatta{pu.addettoNome ? ` da ${pu.addettoNome}` : ''} il {pu.confermataIl ? new Date(pu.confermataIl).toLocaleDateString('it-IT') : ''}.</p>
+                ) : (
+                  <>
+                    {operatoriPulizie.length > 0 && (
+                      <select value={addettoSel} onChange={(e) => setAddettoSel(e.target.value)}>
+                        <option value="">chi ha pulito?</option>
+                        {operatoriPulizie.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                      </select>
+                    )}
+                    <button className="mini" disabled={busy} onClick={() => confermaPuliziaCal(pu.id)}>{busy ? '…' : '✓ fatto'}</button>
+                  </>
+                )}
+                <button className="linklike" onClick={() => setPuAperta(null)}>chiudi</button>
+              </div>
+            )}
+          </div>
         );
       })}
     </div>
@@ -2390,7 +2520,15 @@ button{cursor:pointer;font-family:inherit}
 .cal-room.cal-prezzo{height:22px;font-size:11px;color:var(--ink-muted);}
 .cal-prz{border-left:1px solid var(--line);height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--coral);}
 .cal-przrow{position:absolute;top:1px;left:0;right:0;text-align:center;font-size:9px;font-weight:700;color:var(--ink-muted);opacity:.7;pointer-events:none;}
-.cal-pulizia{position:absolute;bottom:2px;right:2px;font-size:12px;line-height:1;pointer-events:none;}
+.cal-pulizia-wrap{position:absolute;top:2px;z-index:3;width:0;height:0;}
+.cal-pulizia-badge{position:absolute;top:0;right:-8px;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--surface);
+  background:var(--coral);color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35);padding:0;}
+.cal-pulizia-badge.fatta{background:#1FAA6E;opacity:.75;}
+.cal-pulizia-pop{position:absolute;top:24px;right:-8px;z-index:4;background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;display:flex;flex-direction:column;gap:6px;
+  min-width:150px;font-size:12px;white-space:normal;}
+.cal-pulizia-pop select{font-size:12px;padding:4px;}
 .filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;}
 .filtri select,.filtri input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:13px;font-family:inherit;}
 .filtri .cerca{flex:1;min-width:160px;margin:0;}

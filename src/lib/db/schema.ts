@@ -404,6 +404,17 @@ export const eventiLocali = pgTable('eventi_locali', {
   note: text('note'),
 });
 
+// Raccolta di link utili del sistema (sito vetrina, pagine di check-in, ecc.) — una semplice
+// rubrica che Raffaele tiene aggiornata a mano, per averli a portata di mano e poterli
+// condividere, invece di doverli ricordare o ricercare ogni volta. Aggiunta il 20/09/2026.
+export const linkUtili = pgTable('link_utili', {
+  ...base,
+  titolo: text('titolo').notNull(),
+  url: text('url').notNull(),
+  descrizione: text('descrizione'),
+  ordine: integer('ordine').notNull().default(0),
+});
+
 // Prezzi per periodo: prezzo/notte consigliato per un intervallo di date, per un alloggio
 // (o per tutti se alloggio_id è null). Non tocca le prenotazioni: è un promemoria operativo.
 export const prezziPeriodo = pgTable('prezzi_periodo', {

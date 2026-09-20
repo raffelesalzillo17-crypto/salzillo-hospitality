@@ -9,7 +9,7 @@ import * as M from '@/lib/db/mutations';
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'backfill-preventivi-drive']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -44,8 +44,10 @@ export async function POST(req: NextRequest) {
       case 'elimina-proprietario': r = await M.eliminaProprietario(id!); break;
       case 'crea-immobile': r = await M.creaImmobile(dati as Parameters<typeof M.creaImmobile>[0]); break;
       case 'aggiorna-immobile': r = await M.aggiornaImmobile(id!, dati); break;
+      case 'elimina-immobile': r = await M.eliminaImmobile(id!); break;
       case 'crea-alloggio': r = await M.creaAlloggio(dati as Parameters<typeof M.creaAlloggio>[0]); break;
       case 'aggiorna-alloggio': r = await M.aggiornaAlloggio(id!, dati); break;
+      case 'elimina-alloggio': r = await M.eliminaAlloggio(id!); break;
       case 'crea-spesa': r = await M.creaSpesa(dati as Parameters<typeof M.creaSpesa>[0]); break;
       case 'crea-scadenza': r = await M.creaScadenza(dati as Parameters<typeof M.creaScadenza>[0]); break;
       case 'seed-scadenze': r = await M.seedScadenzeTipiche(); break;
@@ -59,6 +61,8 @@ export async function POST(req: NextRequest) {
       case 'crea-evento': r = await M.creaEventoLocale(dati as Parameters<typeof M.creaEventoLocale>[0]); break;
       case 'aggiorna-evento': r = await M.aggiornaEventoLocale(id!, dati); break;
       case 'cancella-evento': r = await M.cancellaEventoLocale(id!); break;
+      case 'crea-link-utile': r = await M.creaLinkUtile(dati as Parameters<typeof M.creaLinkUtile>[0]); break;
+      case 'cancella-link-utile': r = await M.cancellaLinkUtile(id!); break;
       case 'crea-prezzo': r = await M.creaPrezzoPeriodo(dati as Parameters<typeof M.creaPrezzoPeriodo>[0]); break;
       case 'cancella-prezzo': r = await M.cancellaPrezzoPeriodo(id!); break;
       case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;

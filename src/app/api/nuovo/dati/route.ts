@@ -3,7 +3,7 @@ import {
   leggiPrenotazioniDb, leggiOspitiDb, leggiAnagraficaDb, leggiAlloggiDb,
   leggiSpeseDb, leggiScadenzeDb, riepilogoMeseDb, cosaMancaDb, leggiCategorieSpesaDb,
   leggiPreventiviDb, leggiEventiLocaliDb, leggiPrezziPeriodoDb, leggiPulizieDb, leggiDocumentiDb,
-  richiesteNuoveDb, leggiTuttiIBlocchiDb,
+  richiesteNuoveDb, leggiTuttiIBlocchiDb, leggiLinkUtiliDb,
 } from '@/lib/db/queries';
 import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       richiesteNuoveDb(),
       leggiTuttiIBlocchiDb(),
     ]);
-    const [eventi, prezzi, tuttiUtenti] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb(), leggiUtentiDb()]);
+    const [eventi, prezzi, tuttiUtenti, linkUtili] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb(), leggiUtentiDb(), leggiLinkUtiliDb()]);
     const operatoriPulizie = tuttiUtenti.filter((u) => u.ruolo === 'Pulizie' && u.attivo).map((u) => ({ id: u.id, nome: u.nome }));
 
     // Filtro di visibilità
@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
       documenti: sess.vedeFinanziario ? documenti : [],
       eventi,
       prezzi,
+      linkUtili,
       blocchi: blocchiFiltr,
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,

@@ -13,7 +13,7 @@ import { getDb } from './index';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
   scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
-  richiestePubbliche, blocchiCalendario,
+  richiestePubbliche, blocchiCalendario, linkUtili,
 } from './schema';
 
 // Il Tulipano e Stanza Rosa condividono lo stabile di Via Clanio 60 — vanno viste vicine
@@ -328,6 +328,11 @@ export async function preventivoPubblico(id: string) {
 export async function leggiEventiLocaliDb() {
   const oggi = new Date().toISOString().slice(0, 10);
   return getDb().select().from(eventiLocali).where(gte(eventiLocali.al, oggi)).orderBy(eventiLocali.dal);
+}
+
+/** Link utili del sistema (sito vetrina, check-in, ecc.), rubrica tenuta a mano da Raffaele. */
+export async function leggiLinkUtiliDb() {
+  return getDb().select().from(linkUtili).orderBy(linkUtili.ordine, linkUtili.creato_il);
 }
 
 /** Prezzi consigliati per periodo (con nome alloggio; null = tutti). */

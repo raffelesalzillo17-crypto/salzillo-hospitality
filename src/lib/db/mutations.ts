@@ -11,6 +11,7 @@ import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
   pulizie, contrattiGestione, preventivi, eventiLocali, prezziPeriodo, utenti, blocchiCalendario,
   permessiImmobile, richiestePubbliche, ospitiPrenotazione, schedine, documenti,
+  calendariIcal, versamentiSoggiorno, inviiRegione, linkUtili,
 } from './schema';
 import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
@@ -128,6 +129,25 @@ export async function aggiornaImmobile(id: string, d: Record<string, unknown>) {
   return r;
 }
 
+// Pensata per un immobile creato per prova (es. quello di un proprietario di test) — rifiuta se
+// ha ancora alloggi (vanno eliminati prima, uno per uno: eliminaAlloggio sotto) o spese/scadenze/
+// versamenti/invii regione agganciati. I permessi collaboratore su questo immobile, invece, non
+// hanno valore storico da preservare: vengono ripuliti in automatico.
+export async function eliminaImmobile(id: string) {
+  const db = getDb();
+  const [al] = await db.select({ n: sql<number>`count(*)` }).from(alloggi).where(eq(alloggi.immobile_id, id));
+  if (Number(al.n) > 0) throw new Error(`Questo immobile ha ${al.n} alloggio/i collegati — eliminali prima.`);
+  const [spe] = await db.select({ n: sql<number>`count(*)` }).from(spese).where(eq(spese.immobile_id, id));
+  const [sca] = await db.select({ n: sql<number>`count(*)` }).from(scadenze).where(eq(scadenze.immobile_id, id));
+  const [ver] = await db.select({ n: sql<number>`count(*)` }).from(versamentiSoggiorno).where(eq(versamentiSoggiorno.immobile_id, id));
+  const [inv] = await db.select({ n: sql<number>`count(*)` }).from(inviiRegione).where(eq(inviiRegione.immobile_id, id));
+  const totale = Number(spe.n) + Number(sca.n) + Number(ver.n) + Number(inv.n);
+  if (totale > 0) throw new Error(`Questo immobile ha ${totale} spesa/scadenza/versamento agganciato — non si può eliminare.`);
+  await db.delete(permessiImmobile).where(eq(permessiImmobile.immobile_id, id));
+  await db.delete(immobili).where(eq(immobili.id, id));
+  return { ok: true };
+}
+
 async function immobileNomePerFoglio(id: string): Promise<string> {
   const [i] = await getDb().select({ nome: immobili.nome }).from(immobili).where(eq(immobili.id, id));
   return i?.nome ?? '';
@@ -171,6 +191,25 @@ export async function aggiornaAlloggio(id: string, d: Record<string, unknown>) {
   const [r] = await db.update(alloggi).set(set).where(eq(alloggi.id, id)).returning();
   await scriviAlloggioSuFoglioDa(r);
   return r;
+}
+
+// Pensato per un alloggio creato per prova, mai realmente usato — rifiuta se ha già
+// prenotazioni/pulizie/preventivi/richieste dal sito agganciati (record veri, mai da perdere
+// silenziosamente). Calendari iCal/blocchi/prezzi collegati sono invece semplice configurazione
+// senza valore storico: vengono ripuliti in automatico prima di eliminare l'alloggio.
+export async function eliminaAlloggio(id: string) {
+  const db = getDb();
+  const [pren] = await db.select({ n: sql<number>`count(*)` }).from(prenotazioni).where(eq(prenotazioni.alloggio_id, id));
+  const [pul] = await db.select({ n: sql<number>`count(*)` }).from(pulizie).where(eq(pulizie.alloggio_id, id));
+  const [prev] = await db.select({ n: sql<number>`count(*)` }).from(preventivi).where(eq(preventivi.alloggio_id, id));
+  const [rich] = await db.select({ n: sql<number>`count(*)` }).from(richiestePubbliche).where(eq(richiestePubbliche.alloggio_id, id));
+  const totale = Number(pren.n) + Number(pul.n) + Number(prev.n) + Number(rich.n);
+  if (totale > 0) throw new Error(`Questo alloggio ha ${totale} prenotazione/pulizia/preventivo/richiesta agganciati — non si può eliminare.`);
+  await db.delete(calendariIcal).where(eq(calendariIcal.alloggio_id, id));
+  await db.delete(blocchiCalendario).where(eq(blocchiCalendario.alloggio_id, id));
+  await db.delete(prezziPeriodo).where(eq(prezziPeriodo.alloggio_id, id));
+  await db.delete(alloggi).where(eq(alloggi.id, id));
+  return { ok: true };
 }
 
 // ── Ospiti ───────────────────────────────────────────────────────────────────
@@ -598,6 +637,20 @@ export async function cancellaEventoLocale(id: string) {
   const [e] = await db.select().from(eventiLocali).where(eq(eventiLocali.id, id));
   await db.delete(eventiLocali).where(eq(eventiLocali.id, id));
   if (e) await eliminaEventoLocaleSuFoglio(e.titolo, e.dal);
+  return { ok: true };
+}
+
+// ── Link utili ───────────────────────────────────────────────────────────────
+// Semplice rubrica, niente Sheets (non ha un corrispettivo nel foglio Google).
+
+export async function creaLinkUtile(d: { titolo: string; url: string; descrizione?: string; ordine?: number }) {
+  const [r] = await getDb().insert(linkUtili).values({
+    titolo: d.titolo.trim(), url: d.url.trim(), descrizione: d.descrizione || null, ordine: d.ordine ?? 0,
+  }).returning();
+  return r;
+}
+export async function cancellaLinkUtile(id: string) {
+  await getDb().delete(linkUtili).where(eq(linkUtili.id, id));
   return { ok: true };
 }
 
