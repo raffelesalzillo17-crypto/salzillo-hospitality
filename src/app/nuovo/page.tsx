@@ -998,7 +998,12 @@ function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModifica
     if (!gruppi.has(d.ospiteId)) gruppi.set(d.ospiteId, { nome, tel: o?.telefono ?? null, righe: [], file: [] });
     gruppi.get(d.ospiteId)!.file.push(d);
   }
-  const cartelle = [...gruppi.values()].filter((c) => c.righe.length || c.file.length).sort((a, b) => a.nome.localeCompare(b.nome));
+  // Più recente prima — non alfabetico: quello che serve aprire per primo è l'ultima cosa
+  // successa con quell'ospite (nuovo preventivo, nuovo file), non chi ha il cognome più vicino
+  // alla "A". La data più recente tra i suoi preventivi e i suoi file la decide.
+  const ultimaAttivita = (c: { righe: Preventivo[]; file: DocumentoCaricato[] }) =>
+    Math.max(0, ...c.righe.map((p) => Date.parse(p.creatoIl)), ...c.file.map((d) => Date.parse(d.caricatoIl)));
+  const cartelle = [...gruppi.values()].filter((c) => c.righe.length || c.file.length).sort((a, b) => ultimaAttivita(b) - ultimaAttivita(a));
 
   function msgWa(p: Preventivo) {
     const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';

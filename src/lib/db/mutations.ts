@@ -396,6 +396,26 @@ export async function creaPreventivo(d: {
 
   const ctx = await contestoPreventivoPerFoglio(r);
   await scriviPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
+
+  // Salva anche una copia vera su Drive (cartella dell'ospite), non solo il PDF al volo che si
+  // rigenera ad ogni apertura — si era rotto senza che nessuno se ne accorgesse: un unico
+  // preventivo di prova (Emanuel Sulis, 13/09/2026) aveva la riga in `documenti`, tutti quelli
+  // dopo no. Meglio non bloccare la creazione del preventivo se Drive non risponde.
+  if (r.ospite_id) {
+    try {
+      const { pdfPreventivoDaId } = await import('./documentiPdf');
+      const { registraDocumento } = await import('../documenti');
+      const pdf = await pdfPreventivoDaId(r.id);
+      if (pdf) {
+        await registraDocumento({
+          ospiteId: r.ospite_id, nomeOspite: ctx.ospiteNomeCompleto || '(senza nome)',
+          nomeFile: pdf.nome, contenuto: Buffer.from(pdf.bytes), tipo: 'Preventivo', prenotazioneId: r.prenotazione_id ?? undefined,
+        });
+      }
+    } catch (e) {
+      console.error('[creaPreventivo] salvataggio su Drive fallito (non bloccante):', e instanceof Error ? e.message : e);
+    }
+  }
   return r;
 }
 
