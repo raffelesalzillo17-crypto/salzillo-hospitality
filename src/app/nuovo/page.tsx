@@ -441,7 +441,7 @@ export default function Nuovo() {
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -940,10 +940,11 @@ function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
 }
 
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, onCambiato, onNuovoPreventivo }: {
-  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
+function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, ruoloTitolare, onCambiato, onNuovoPreventivo }: {
+  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; ruoloTitolare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
 }) {
   const [q, setQ] = useState('');
+  const [backfillBusy, setBackfillBusy] = useState(false);
   const [statoF, setStatoF] = useState('');
   const [apri, setApri] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
@@ -1029,7 +1030,18 @@ function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModifica
     <div className="card">
       <div className="cardhead">
         <h2>Preventivi <small>· {preventivi.length} preventivi · {documenti.length} file su Drive</small></h2>
-        {puoModificare && <button className="add" onClick={onNuovoPreventivo}>＋ Nuovo preventivo</button>}
+        <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {ruoloTitolare && <button className="mini" disabled={backfillBusy} onClick={async () => {
+            setBackfillBusy(true);
+            try {
+              const r = await api('backfill-preventivi-drive') as { salvati: string[]; saltati: string[] };
+              alert(r.salvati.length ? `Salvati su Drive: ${r.salvati.join(', ')}` : 'Nessun preventivo accettato da salvare — erano già tutti a posto.');
+              await onCambiato();
+            } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+            finally { setBackfillBusy(false); }
+          }}>{backfillBusy ? '…' : '📤 Recupera vecchi su Drive'}</button>}
+          {puoModificare && <button className="add" onClick={onNuovoPreventivo}>＋ Nuovo preventivo</button>}
+        </span>
       </div>
       <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Contratti e ricevute generati da qui in poi si aggiungono da soli.</p>
       <div className="filtri">

@@ -9,7 +9,7 @@ import * as M from '@/lib/db/mutations';
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-ospite']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-ospite', 'backfill-preventivi-drive']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       case 'stato-preventivo': r = await M.aggiornaStatoPreventivo(id!, String(dati.stato)); break;
       case 'accetta-preventivo': r = await M.accettaPreventivo(id!, sess.id); break;
       case 'elimina-preventivo': r = await M.eliminaPreventivo(id!); break;
+      case 'backfill-preventivi-drive': r = await M.backfillPreventiviSuDrive(); break;
       case 'crea-preventivo-da-richiesta': r = await M.creaPreventivoDaRichiesta(id!, { ...(dati as Parameters<typeof M.creaPreventivoDaRichiesta>[1]), creatoDa: sess.id }); break;
       case 'ignora-richiesta': r = await M.ignoraRichiestaPubblica(id!); break;
       case 'crea-evento': r = await M.creaEventoLocale(dati as Parameters<typeof M.creaEventoLocale>[0]); break;

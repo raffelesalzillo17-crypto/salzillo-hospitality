@@ -5,7 +5,7 @@
  * Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md.
  */
 
-import { and, eq, isNull, lte, gte, or, sql } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, lte, gte, or, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
@@ -501,6 +501,37 @@ export async function aggiornaStatoPreventivo(id: string, stato: string) {
   const ctx = await contestoPreventivoPerFoglio(r);
   await aggiornaPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
   return r;
+}
+
+/** Ripara i preventivi già Accettati creati prima del 20/09/2026 (quando il salvataggio su
+ *  Drive si era rotto senza che nessuno se ne accorgesse, vedi creaPreventivo) — solo quelli
+ *  Accettati, su richiesta esplicita di Raffaele: quelli Rifiutati/Scaduti restano come sono,
+ *  non serve un PDF da consegnare per una prenotazione che non c'è. Salta chi ha già un file
+ *  Drive per non duplicarlo; sicuro da rilanciare più volte. */
+export async function backfillPreventiviSuDrive(): Promise<{ salvati: string[]; saltati: string[] }> {
+  const db = getDb();
+  const accettati = await db.select().from(preventivi).where(eq(preventivi.stato, 'Accettato'));
+  const giaSalvati = new Set(
+    (await db.select({ p: documenti.prenotazione_id }).from(documenti)
+      .where(and(eq(documenti.tipo, 'Preventivo'), isNotNull(documenti.prenotazione_id))))
+      .map((r) => r.p),
+  );
+  const salvati: string[] = [];
+  const saltati: string[] = [];
+  for (const p of accettati) {
+    if (!p.ospite_id || (p.prenotazione_id && giaSalvati.has(p.prenotazione_id))) { saltati.push(p.codice); continue; }
+    const { pdfPreventivoDaId } = await import('./documentiPdf');
+    const { registraDocumento } = await import('../documenti');
+    const [o] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome }).from(ospiti).where(eq(ospiti.id, p.ospite_id));
+    const pdf = await pdfPreventivoDaId(p.id);
+    if (!pdf) { saltati.push(p.codice); continue; }
+    await registraDocumento({
+      ospiteId: p.ospite_id, nomeOspite: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim() || '(senza nome)',
+      nomeFile: pdf.nome, contenuto: Buffer.from(pdf.bytes), tipo: 'Preventivo', prenotazioneId: p.prenotazione_id ?? undefined,
+    });
+    salvati.push(p.codice);
+  }
+  return { salvati, saltati };
 }
 
 /** "Segna accettato": crea la prenotazione vera (canale Diretto) e la lega al preventivo.
