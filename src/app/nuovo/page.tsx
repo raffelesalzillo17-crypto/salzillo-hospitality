@@ -1011,16 +1011,20 @@ function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModifica
     const primo = (p.ospiteNome ?? '').trim();
     const notti = Math.round((Date.parse(p.checkout) - Date.parse(p.checkin)) / 864e5);
     const link = `${window.location.origin}/p/${p.id}`;
+    // Niente emoji "astrali" (4 byte, es. 📅💶👋) qui: Raffaele ha visto arrivare dei
+    // caratteri rotti (�) nel messaggio vero — probabile problema di codifica lungo la strada
+    // verso WhatsApp. Il grassetto e la spaziatura bastano a renderlo meno piatto senza
+    // rischiare lo stesso problema.
     return [
-      `${saluto}${primo ? ' ' + primo : ''}! 👋 Sono Raffaele di *Salzillo Hospitality*.`,
+      `${saluto}${primo ? ' ' + primo : ''}! Sono Raffaele di *Salzillo Hospitality*.`,
       ``,
       `Ecco il tuo preventivo per *${p.alloggio}*:`,
-      `📅 ${dataIt(p.checkin)} → ${dataIt(p.checkout)} (${notti} nott${notti === 1 ? 'e' : 'i'}, ${p.numeroOspiti} ospiti)`,
-      `💶 Totale: *${eur(Number(p.totale))}*${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
+      `${dataIt(p.checkin)} → ${dataIt(p.checkout)} (${notti} nott${notti === 1 ? 'e' : 'i'}, ${p.numeroOspiti} ospiti)`,
+      `Totale: *${eur(Number(p.totale))}*${Number(p.sconto) > 0 ? ` (sconto −${eur(Number(p.sconto))})` : ''}`,
       ``,
-      `Le date restano riservate per te per le prossime ${p.validoOre} ore. Cancellazione gratuita fino a 48h prima del check-in.`,
+      `Le date restano riservate per te per le prossime ${p.validoOre} or${p.validoOre === 1 ? 'a' : 'e'}. Cancellazione gratuita fino a 48h prima del check-in.`,
       ``,
-      `📄 Tutti i dettagli qui: ${link}`,
+      `Tutti i dettagli qui: ${link}`,
     ].join('\n');
   }
   function waUrl(p: Preventivo) {
