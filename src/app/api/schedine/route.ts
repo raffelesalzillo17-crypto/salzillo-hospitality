@@ -243,6 +243,22 @@ export async function POST(req: NextRequest) {
       requestBody: { values: [values] },
     });
 
+    // Avviso a Raffaele: il check-in digitale NON sblocca più da solo la scheda WiFi/regole
+    // (deciso il 20/09/2026) — lui deve controllare questi dati e poi mandarla a mano dalla
+    // prenotazione ("📶 Manda scheda WiFi/regole"). Senza questo avviso non saprebbe mai che
+    // c'è una schedina da controllare. Non bloccante: se Telegram non risponde, l'ospite ha
+    // comunque completato il check-in.
+    try {
+      const { inviaTelegram } = await import('@/lib/telegramDigest');
+      await inviaTelegram(
+        `📋 *Check-in compilato*\n${String(stanza).trim()} — ${String(nome).trim()} ${String(cognome).trim()}\n` +
+        `Arrivo: ${String(dataArrivo).trim()}\n` +
+        `Controlla i dati in Alloggiati Web/Schedine: se sono ok, manda la scheda WiFi/regole dalla prenotazione. Se manca qualcosa, riscrivi all'ospite o correggi tu.`,
+      );
+    } catch (e) {
+      console.error('[schedine] avviso Telegram fallito (non bloccante):', e instanceof Error ? e.message : e);
+    }
+
     return NextResponse.json({ ok: true, schedina: rowToSchedina(targetRow, values) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

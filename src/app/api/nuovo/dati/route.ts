@@ -7,17 +7,9 @@ import {
 } from '@/lib/db/queries';
 import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
-import { getStruttura } from '@/lib/strutture';
+import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati } from '@/lib/alloggiatiInvio';
-
-/** "Il Tulipano" → struttura "Tulipano", "Stanza Rosa" → "Rosa", per il resto match esatto. */
-function strutturaPerAlloggio(alloggioNome: string) {
-  const esatto = getStruttura(alloggioNome);
-  if (esatto) return esatto;
-  return ['Tulipano', 'Rosa', 'Piano Terra', 'Primo Piano', 'Secondo Piano']
-    .map((n) => getStruttura(n)).find((s) => s && alloggioNome.includes(s.nome));
-}
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
