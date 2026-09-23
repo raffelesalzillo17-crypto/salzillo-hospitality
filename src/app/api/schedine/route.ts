@@ -37,9 +37,10 @@ import {
   type Schedina,
 } from '@/lib/schedine';
 import { getDb } from '@/lib/db/index';
-import { prenotazioni, alloggi, schedine } from '@/lib/db/schema';
+import { prenotazioni, alloggi, schedine, ospiti as ospitiTabella } from '@/lib/db/schema';
 import { alertOspiteBloccato } from '@/lib/cronAlert';
 import { inviaTelegram } from '@/lib/telegramDigest';
+import { registraDocumento } from '@/lib/documenti';
 
 // Scheda "SCHEDINE" sul vecchio foglio Google — GET e PATCH restano qui sotto per chi le usa
 // ancora da lì (nessun chiamante trovato nel codice attuale al 20/09/2026, ma non tolte per
@@ -140,6 +141,10 @@ type OspiteInviato = {
   cittadinanza: unknown; tipoDocumento: unknown; numeroDocumento: unknown; rapporto: unknown;
   sesso: unknown; tipoAlloggiatoCodice: unknown; comuneNascitaCodice: unknown; provinciaNascita: unknown;
   statoNascitaCodice: unknown; cittadinanzaCodice: unknown; tipoDocumentoCodice: unknown; luogoRilascioDocumento: unknown;
+  // Foto del documento già ridimensionata lato client (stesso JPEG mandato a /api/checkin-ocr,
+  // riusato qui) — facoltativa: se l'ospite non ha caricato una foto, il check-in resta valido
+  // comunque, semplicemente non c'è nulla da salvare su Drive per lui.
+  documentoBase64: unknown; documentoMimeType: unknown;
 };
 
 export async function POST(req: NextRequest) {
@@ -238,6 +243,32 @@ export async function POST(req: NextRequest) {
       stato: 'Da inviare' as const,
       scade_il: scadeIl,
     }))).returning();
+
+    // Salva su Drive (cartella dell'ospite principale della prenotazione, la stessa già usata
+    // per contratti/ricevute — vedi src/lib/documenti.ts) la foto del documento di ogni ospite
+    // che ne ha caricata una: era prevista fin dal disegno dello schema (tipo "Documento
+    // identità") ma non era mai stata effettivamente collegata qui — il check-in online
+    // salvava solo i dati testuali letti dalla foto, non la foto stessa. Scoperto il
+    // 22/09/2026 da Raffaele: pensava fosse già così per Marcello Vaghi e Anna Maria Leo.
+    // Best-effort: un errore di Drive non deve mai far fallire il check-in già registrato.
+    const [ospitePrincipale] = await db.select({ nome: ospitiTabella.nome, cognome: ospitiTabella.cognome }).from(ospitiTabella).where(eq(ospitiTabella.id, pren.ospite_id));
+    const nomeCartella = ospitePrincipale ? `${ospitePrincipale.nome} ${ospitePrincipale.cognome}`.trim() : `${listaOspiti[0].nome} ${listaOspiti[0].cognome}`;
+    await Promise.all(listaOspiti.map(async (o) => {
+      if (typeof o.documentoBase64 !== 'string' || !o.documentoBase64) return;
+      try {
+        await registraDocumento({
+          ospiteId: pren.ospite_id,
+          nomeOspite: nomeCartella,
+          nomeFile: `Documento identità - ${String(o.cognome).trim()} ${String(o.nome).trim()}.jpg`,
+          contenuto: Buffer.from(o.documentoBase64, 'base64'),
+          tipo: 'Documento identità',
+          prenotazioneId: pren.id,
+          mimeType: typeof o.documentoMimeType === 'string' && o.documentoMimeType ? o.documentoMimeType : 'image/jpeg',
+        });
+      } catch (e) {
+        console.error(`[schedine] salvataggio documento su Drive fallito per ${String(o.cognome).trim()} ${String(o.nome).trim()}:`, e);
+      }
+    }));
 
     // Avviso a Raffaele per la revisione manuale prima di inviare la scheda WiFi/regole —
     // il flusso scelto esplicitamente il 19/09/2026: primo link solo check-in, poi lui controlla

@@ -22,6 +22,7 @@
 //   incolla i valori). Il CUSR è già noto e non sensibile (15061049EXT0003, vedi
 //   wiki/entita/bb-il-tulipano.md); l'API KEY invece sì.
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- non usata finché non arrivano le utenze di test (vedi sotto), tenuta a documentazione dell'endpoint.
 const BASE_URL_TEST = 'https://turismo-coll.regione.campania.it/turismoweb/api-gestionali';
 const BASE_URL_PROD = 'https://turismo.regione.campania.it/turismoweb/api-gestionali';
 

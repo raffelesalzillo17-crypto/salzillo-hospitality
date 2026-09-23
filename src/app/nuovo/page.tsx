@@ -116,7 +116,19 @@ function FormModale({ titolo, campi, iniziali = {}, onInvia, onClose }: {
 }) {
   const [v, setV] = useState<Record<string, unknown>>(() => {
     const o: Record<string, unknown> = {};
-    for (const c of campi) o[c.k] = iniziali[c.k] ?? (c.tipo === 'checkbox' ? false : c.tipo === 'number' ? '' : '');
+    for (const c of campi) {
+      if (iniziali[c.k] !== undefined) { o[c.k] = iniziali[c.k]; continue; }
+      // Un <select> senza valore iniziale mostra comunque la prima opzione selezionata (comportamento
+      // nativo del browser quando il value controllato non combacia con nessuna opzione) — ma lo
+      // stato React restava vuoto, quindi un campo select obbligatorio risultava per sempre "mancante"
+      // (bottone Salva disabilitato per sempre) anche se in UI sembrava già valorizzato. Bug scoperto
+      // il 22/09/2026: "Nuova spesa" non aveva MAI salvato nulla (0 spese in tutto il sistema) perché
+      // il campo Categoria, obbligatorio, non veniva mai considerato compilato finché non lo si
+      // riapriva a mano. Difetto dello stesso FormModale, quindi presente in ogni form che lo usa
+      // (Spese, Scadenze, Ospiti, Immobili/Alloggi...), non solo in quello dove è stato notato.
+      if (c.tipo === 'select' && c.opzioni && c.opzioni.length > 0) { o[c.k] = c.opzioni[0].v; continue; }
+      o[c.k] = c.tipo === 'checkbox' ? false : '';
+    }
     return o;
   });
   const [busy, setBusy] = useState(false);
@@ -453,7 +465,7 @@ export default function Nuovo() {
 
       {tab === 'link' && <LinkUtiliBox link={dati.linkUtili ?? []} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} oggi={oggi} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
+      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -984,8 +996,8 @@ function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
 }
 
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-function Documenti({ preventivi, documenti, richieste, ospiti, oggi, puoModificare, ruoloTitolare, onCambiato, onNuovoPreventivo }: {
-  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; oggi: string; puoModificare: boolean; ruoloTitolare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
+function Documenti({ preventivi, documenti, richieste, ospiti, puoModificare, ruoloTitolare, onCambiato, onNuovoPreventivo }: {
+  preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; puoModificare: boolean; ruoloTitolare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
 }) {
   const [q, setQ] = useState('');
   const [backfillBusy, setBackfillBusy] = useState(false);
@@ -1864,6 +1876,18 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
                   // altrimenti l'ospite ha WiFi/regole senza essere ancora registrato in Questura.
                   return <a className="sync" href={`https://wa.me/${num}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📶 Manda scheda WiFi/regole</a>;
                 })()}
+                {/* Solo Il Tulipano (unica struttura con link recensioni Google confermato, vedi
+                    reviewMessage in src/lib/telegramDigest.ts) e solo da check-out avvenuto —
+                    prima non ha senso chiedere una recensione. Riportata in dashboard il
+                    22/09/2026 su richiesta di Raffaele: prima esisteva solo come promemoria
+                    Telegram automatico (digest serale), non come azione manuale da qui. */}
+                {p.telefono && p.alloggio === 'Il Tulipano' && p.checkout <= new Date().toISOString().slice(0, 10) && (() => {
+                  const t = p.telefono.replace(/[^\d]/g, '');
+                  const num = t.length === 10 ? '39' + t : t;
+                  const link = 'https://g.page/r/CVxuMMgN8XDNEAE/review';
+                  const msg = `Grazie per aver soggiornato al B&B Il Tulipano! 🌷\n\nSperiamo che tutto sia andato per il meglio e che vi siate trovati bene con noi.\n\nSe vi va, una recensione su Google ci aiuterebbe moltissimo — bastano due minuti:\n⭐ ${link}\n\nGrazie di cuore, per noi è un piccolo gesto che conta davvero.\n\nA presto! 🌷\nSalzillo Hospitality — B&B Il Tulipano`;
+                  return <a className="sync" href={`https://wa.me/${num}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>⭐ Chiedi recensione</a>;
+                })()}
                 {p.origine !== 'Foglio' && <button className="sync" onClick={() => setPag({ tipo: 'Caparra', importo: '', metodo: 'Bonifico' })}>💰 Registra pagamento</button>}
               </p>
             ))}
@@ -2037,7 +2061,10 @@ function Preventivo({ alloggi, ospiti, onClose, onSalvato }: { alloggi: Alloggio
     // Apro subito una tab vuota, sincrona dentro il click — se aspettassi il salvataggio (un
     // await) prima di aprirla, i browser la trattano come popup non richiesto e la bloccano.
     // La reindirizzo su WhatsApp solo se il salvataggio va a buon fine; altrimenti la chiudo.
-    const tabWa = telPulito.length >= 9 ? window.open('', '_blank', 'noopener') : null;
+    // NON passare 'noopener' qui: Chrome/Chromium restituisce null da window.open() quando è
+    // presente, perdendo il riferimento alla tab e lasciandola bianca per sempre (bug scoperto
+    // il 22/09/2026 — il preventivo si salvava comunque, ma il redirect a WhatsApp non partiva mai).
+    const tabWa = telPulito.length >= 9 ? window.open('', '_blank') : null;
     try {
       const [nome, ...resto] = f.cliente.trim().split(/\s+/);
       const creato = await api('crea-preventivo', { dati: {

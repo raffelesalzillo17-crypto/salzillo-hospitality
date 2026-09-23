@@ -131,6 +131,10 @@
   var ospitiBox = overlay.querySelector('#cg-ospiti');
   var cardsAttive = []; // prefissi ("cg-o3-") delle card ancora presenti, nell'ordine in cui vanno inviate
   var contatoreId = 0;  // sempre crescente, mai riusato — anche dopo una rimozione
+  // Foto già ridimensionata (stesso JPEG mandato a /api/checkin-ocr) per ogni card, tenuta da
+  // parte per essere inviata di nuovo insieme ai dati testuali con "Invia e continua" — così va
+  // a finire salvata su Drive (src/lib/documenti.ts) invece che buttata via dopo la lettura.
+  var documentiFoto = {}; // prefisso card -> { base64, mimeType }
 
   // Ogni campo torna avvolto in un <div> — necessario perché più campi vengono messi fianco a
   // fianco in una grid a 2 colonne: senza il wrapper, la grid metteva la label di un campo e
@@ -259,6 +263,7 @@
       // in JPEG a prescindere dal formato di partenza.
       var LATO_MAX = 1600;
       var conFile = function (base64, tipoDaUsare) {
+        documentiFoto[p] = { base64: base64, mimeType: tipoDaUsare || 'image/jpeg' };
         fetch('/api/checkin-ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -344,6 +349,7 @@
     card.querySelector('.cg-rimuovi').addEventListener('click', function () {
       var idx = cardsAttive.indexOf(p);
       if (idx !== -1) cardsAttive.splice(idx, 1);
+      delete documentiFoto[p];
       card.remove();
       rinumeraOspiti();
     });
@@ -494,6 +500,7 @@
         rapporto = 'Familiare/Ospite';
       }
 
+      var foto = documentiFoto[p];
       ospiti.push({
         cognome: cognome, nome: nome, dataNascita: dataNascita, luogoNascita: luogoNascita,
         cittadinanza: cittadinanzaTesto, tipoDocumento: tipoDocumentoTesto, numeroDocumento: numeroDocumento,
@@ -502,6 +509,7 @@
         comuneNascitaCodice: comuneNascitaCodice, provinciaNascita: provinciaNascita,
         statoNascitaCodice: statoNascitaCodice, cittadinanzaCodice: cittadinanzaCodice,
         tipoDocumentoCodice: tipoDocumentoCodice, luogoRilascioDocumento: luogoRilascio,
+        documentoBase64: foto ? foto.base64 : null, documentoMimeType: foto ? foto.mimeType : null,
       });
     }
 

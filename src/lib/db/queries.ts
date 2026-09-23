@@ -592,12 +592,22 @@ export async function cosaMancaDb(oggiISO: string) {
   const db = getDb();
   const fra14 = new Date(Date.parse(oggiISO) + 14 * 864e5).toISOString().slice(0, 10);
 
+  // Stesso filtro di sicurezza della scheda Alloggiati Web (src/lib/alloggiatiInvio.ts,
+  // schedineDaInviareAlloggiati): senza, le schedine "No Tax" — che non vanno MAI inviate,
+  // per scelta esplicita di Raffaele — restavano segnate "da inviare" per sempre, anche se
+  // i dati erano già stati inseriti, comparendo qui come falso "manca ancora qualcosa".
+  // Scoperto il 22/09/2026 con la schedina di Marcello Vaghi (Il Tulipano, No Tax).
   const schedineDaInviare = await db
     .select({ id: schedine.id, cognome: schedine.cognome, nome: schedine.nome, scadeIl: schedine.scade_il, alloggio: alloggi.nome })
     .from(schedine)
     .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
-    .where(eq(schedine.stato, 'Da inviare'));
+    .where(and(
+      eq(schedine.stato, 'Da inviare'),
+      eq(alloggi.trasmette_alloggiati, true),
+      sql`${prenotazioni.canale} <> 'No Tax'`,
+      eq(prenotazioni.stato, 'Attiva'),
+    ));
 
   const scadenzeVicine = await db
     .select({ id: scadenze.id, titolo: scadenze.titolo, dataScadenza: scadenze.data_scadenza, immobile: immobili.nome })
