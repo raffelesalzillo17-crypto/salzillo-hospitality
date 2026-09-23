@@ -15,6 +15,7 @@ import {
 } from './schema';
 import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
+import { COMM_RATE, ALIQUOTA_CEDOLARE } from '../tariffe';
 import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
   scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
@@ -29,8 +30,6 @@ import {
 const s = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 const oggiISO = () => new Date().toISOString().slice(0, 10);
 const nottiTra = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(co) - Date.parse(ci)) / 864e5));
-
-const COMM_RATE: Record<string, number> = { Airbnb: 0.1891, Booking: 0.2015, Diretto: 0, 'No Tax': 0 };
 
 /** Calcola gli importi di una prenotazione dal listino attuale dell'alloggio + il contratto
  *  di gestione attivo del suo proprietario. Le prenotazioni SALVANO questi valori: se il
@@ -54,7 +53,7 @@ export async function calcolaImportiPrenotazione(opts: {
 
   const lordo = opts.lordo;
   const commissione = Math.round(lordo * (COMM_RATE[opts.canale] ?? 0) * 100) / 100;
-  const cedolare = (a.regime === 'Con cedolare' && opts.canale !== 'No Tax') ? Math.round(lordo * 0.21 * 100) / 100 : 0;
+  const cedolare = (a.regime === 'Con cedolare' && opts.canale !== 'No Tax') ? Math.round(lordo * ALIQUOTA_CEDOLARE * 100) / 100 : 0;
   const costoPulizia = Number(a.costoPulizia);
   const feeGestione = Math.round(lordo * (percFee / 100) * 100) / 100;
   const utile = Math.round((lordo - commissione - cedolare - costoPulizia) * 100) / 100;

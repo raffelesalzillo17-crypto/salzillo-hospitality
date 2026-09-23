@@ -10,6 +10,7 @@ import { google } from 'googleapis';
 import { leggiPrenotazioni } from './prenotazioni';
 import { getStruttura } from './strutture';
 import { leggiPulizieDb, leggiPreventiviDb, leggiEventiLocaliDb } from './db/queries';
+import { schedineInScadenza } from './alloggiatiInvio';
 import { controllaTuttiICalendari } from './db/ical';
 import { getSheetsClient, ensureSheetWithHeaders, fileIdForTab } from './sheets';
 import { getDb } from './db/index';
@@ -147,6 +148,23 @@ export async function testoPreventiviScadenza(): Promise<string | null> {
   if (inScadenza.length > 0) blocchi.push('Scadono entro domani:\n' + inScadenza.join('\n'));
   if (giaScaduti.length > 0) blocchi.push('Già scaduti (ancora segnati "Inviato" — valuta se aggiornarli):\n' + giaScaduti.join('\n'));
   return blocchi.join('\n\n');
+}
+
+// ── Schedine Alloggiati Web vicine alla scadenza delle 6h/24h ──────────────────
+// Aggiunto in un audit del 23/09/2026: prima l'unico modo di sapere che una schedina stava per
+// scadere era aprire la dashboard e leggere la data a occhio, senza nessun avviso proattivo.
+// Chiamata da entrambi i digest (mattina e sera): la finestra di 6-24h è troppo corta per un
+// avviso al giorno soltanto.
+export async function testoSchedineInScadenza(): Promise<string | null> {
+  const righe = await schedineInScadenza(12);
+  if (righe.length === 0) return null;
+  const ora = new Date();
+  const testo = righe.map((r) => {
+    const scaduta = r.scadeIl < ora;
+    const orario = r.scadeIl.toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `• *${r.ospiteNomeCompleto}* — ${r.alloggioNome} — ${scaduta ? `SCADUTA (${orario})` : `entro le ${orario}`}`;
+  }).join('\n');
+  return `🚨 *Schedine Alloggiati Web da inviare urgentemente*\n\n${testo}\n\nVai su "Alloggiati Web" e invia adesso.`;
 }
 
 // ── Pulizie da fare domani (ex /api/cron/pulizie-reminder) ─────────────────────

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { richiediSessione } from '@/lib/db/auth';
 import * as M from '@/lib/db/mutations';
+import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
 // (è un gestionale interno, non un'API pubblica — semplice e sufficiente).
@@ -9,7 +10,7 @@ import * as M from '@/lib/db/mutations';
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
       case 'imposta-permesso': r = await M.impostaPermessoImmobile(dati as Parameters<typeof M.impostaPermessoImmobile>[0]); break;
       case 'anteprima-importi':
         r = await M.calcolaImportiPrenotazione(dati as Parameters<typeof M.calcolaImportiPrenotazione>[0]); break;
+      case 'risolvi-schedina-ambigua':
+        r = await risolviSchedinaAmbigua(id!, dati.esito === 'Inviata' ? 'Inviata' : 'Da inviare'); break;
       default:
         return NextResponse.json({ ok: false, error: `Azione sconosciuta: ${azione}` }, { status: 400 });
     }

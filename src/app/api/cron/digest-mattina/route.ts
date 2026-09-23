@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { inviaTelegram, testoCheckinOggi, testoCheckoutOggi, testoControlloCalendari, testoPreventiviScadenza, testoPulizieDomani } from '@/lib/telegramDigest';
+import { inviaTelegram, testoCheckinOggi, testoCheckoutOggi, testoControlloCalendari, testoPreventiviScadenza, testoPulizieDomani, testoSchedineInScadenza } from '@/lib/telegramDigest';
 
 // Digest mattutino UNICO (06:00 Europe/Rome) — sostituisce dal 15/09/2026 quattro/cinque
 // messaggi Telegram separati sparsi tra le 7 e le 9:20 UTC (check-in, check-out, controllo
@@ -10,6 +10,16 @@ import { inviaTelegram, testoCheckinOggi, testoCheckoutOggi, testoControlloCalen
 // 21"). Ogni blocco resta condizionale (compare solo se c'è qualcosa da segnalare) — la logica
 // vera è in src/lib/telegramDigest.ts, condivisa con le vecchie route individuali (rimaste per
 // test manuale via ?dryRun=1, non più schedulate da sole in vercel.json).
+//
+// Fuso orario (corretto il 23/09/2026): Vercel Cron accetta solo orari UTC, senza fuso orario
+// nativo — un singolo "0 4 * * *" era corretto solo durante l'ora legale (CEST) e sarebbe
+// scattato un'ora troppo presto per 5 mesi l'anno con l'ora solare (CET), lo stesso bug già
+// scoperto e "risolto" disattivando /api/cron/report-notturno. Soluzione: due voci cron in
+// vercel.json sullo stesso path, una per i mesi CEST (aprile-ottobre, 04:00 UTC = 06:00 locali)
+// e una per i mesi CET (novembre-marzo, 05:00 UTC = 06:00 locali). Resta un'imprecisione di
+// un'ora per le settimane di transizione effettiva (fine marzo/fine ottobre, il cambio non
+// cade mai esattamente a inizio/fine mese) — inevitabile senza fuso orario nativo, ma molto
+// meglio di 5 mesi sbagliati l'anno.
 
 export const maxDuration = 60;
 
@@ -24,6 +34,7 @@ export async function GET(req: NextRequest) {
       testoControlloCalendari(),
       testoPreventiviScadenza(),
       testoPulizieDomani(),
+      testoSchedineInScadenza(),
     ])).filter((b): b is string => !!b);
 
     if (blocchi.length === 0) {

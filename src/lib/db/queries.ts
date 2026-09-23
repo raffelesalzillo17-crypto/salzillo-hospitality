@@ -281,6 +281,7 @@ export async function leggiDocumentiDb() {
     .select({
       id: documenti.id, tipo: documenti.tipo, nome: documenti.nome,
       ospiteId: documenti.ospite_id, prenotazioneId: documenti.prenotazione_id,
+      proprietarioId: documenti.proprietario_id,
       driveUrl: documenti.drive_url, caricatoIl: documenti.caricato_il,
     })
     .from(documenti)

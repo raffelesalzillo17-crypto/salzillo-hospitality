@@ -31,7 +31,14 @@ export const statoPrenotazione = pgEnum('stato_prenotazione', [
 ]);
 export const tipoPagamento = pgEnum('tipo_pagamento', ['Caparra', 'Saldo', 'Rimborso']);
 export const metodoPagamento = pgEnum('metodo_pagamento', ['Bonifico', 'Contanti', 'Carta', 'Piattaforma']);
-export const statoSchedina = pgEnum('stato_schedina', ['Da inviare', 'Inviata', 'Errore']);
+// "In invio" — stato transitorio: la schedina viene "prenotata" qui atomicamente PRIMA di
+// chiamare Alloggiati Web, così due click ravvicinati (doppia tab, retry di rete) non possono
+// superare entrambi il controllo ed effettuare un doppio invio reale alla Polizia. Se l'invio
+// va a buon fine ma il successivo aggiornamento a "Inviata" fallisce (es. timeout del DB),
+// la schedina RESTA qui invece di essere segnata "Errore" per sbaglio — evita che Raffaele la
+// rimandi a mano credendo che non sia mai partita. Va sempre risolta a mano (mai automatico,
+// vedi src/lib/alloggiatiInvio.ts) con "Segna come già inviata" o "Segna da rifare".
+export const statoSchedina = pgEnum('stato_schedina', ['Da inviare', 'In invio', 'Inviata', 'Errore']);
 export const statoPreventivo = pgEnum('stato_preventivo', ['Bozza', 'Inviato', 'Accettato', 'Scaduto', 'Rifiutato']);
 export const tipoDocumento = pgEnum('tipo_documento', [
   'Documento identità', 'Contratto ospite', 'Ricevuta', 'Preventivo', 'Conferma prenotazione',

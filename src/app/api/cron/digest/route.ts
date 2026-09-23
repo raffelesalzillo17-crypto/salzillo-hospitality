@@ -9,7 +9,10 @@ import { leggiPrenotazioni } from '@/lib/prenotazioni';
 // Recap mattutino proattivo — livello 5 del "secondo cervello" (vedi wiki/decisioni/).
 // Oltre a notizie/mercati (versione originale), ora controlla anche prenotazioni in arrivo/partenza,
 // eventi calendario dei prossimi 7 giorni, e le decisioni salvate per segnalare eventuali contraddizioni.
-// Invocato da Vercel Cron (vedi vercel.json) invece che da un processo sempre acceso come il vecchio bot.js.
+//
+// NON è più schedulato in vercel.json (verificato il 23/09/2026 — non confondere con l'unico
+// "digest mattutino" davvero attivo, /api/cron/digest-mattina, che copre check-in/out/pulizie
+// del B&B, non questo recap personale). Resta richiamabile a mano/in dryRun per test.
 
 // Dal 23/09/2026 Gemini al posto di Claude Sonnet — vedi src/lib/assistantCore.ts per il perché
 // (credito Anthropic esaurito) e per il perché del modello 'gemini-3.6-flash'.
@@ -132,7 +135,7 @@ La data di oggi è ESATTAMENTE ${todayStr} — usala se la citi, non calcolarla 
     return NextResponse.json({ ok: true, text, dryRun });
   } catch (err) {
     console.error('Errore nel digest giornaliero:', err);
-    if (!dryRun) await alertCronFailure('digest mattutino', err);
+    if (!dryRun) await alertCronFailure('digest personale (non schedulato)', err);
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }

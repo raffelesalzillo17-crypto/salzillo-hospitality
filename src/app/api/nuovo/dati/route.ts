@@ -9,7 +9,7 @@ import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
 import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
-import { schedineDaInviareAlloggiati } from '@/lib/alloggiatiInvio';
+import { schedineDaInviareAlloggiati, schedineDaVerificare } from '@/lib/alloggiatiInvio';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
       utenti: sess.ruolo === 'Titolare' ? tuttiUtenti : [],
       permessi: sess.ruolo === 'Titolare' ? await leggiPermessiDb() : [],
       schedineAlloggiati: sess.ruolo === 'Titolare' ? await schedineDaInviareAlloggiati() : [],
+      schedineDaVerificare: sess.ruolo === 'Titolare' ? await schedineDaVerificare() : [],
       categorieSpesa,
       preventivi: sess.vedeFinanziario ? preventivi : [],
       richieste: sess.vedeFinanziario ? richieste : [],

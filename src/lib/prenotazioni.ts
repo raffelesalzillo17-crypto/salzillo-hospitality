@@ -1,4 +1,5 @@
 import { getSheetsClient, fileIdForTab } from './sheets';
+import { COMM_RATE, ALIQUOTA_CEDOLARE } from './tariffe';
 
 // Lettura delle prenotazioni dal foglio DATABASE, condivisa tra la rotta HTTP
 // (/api/prenotazioni, con gate di autenticazione) e i consumatori interni che girano
@@ -10,17 +11,10 @@ import { getSheetsClient, fileIdForTab } from './sheets';
 // ricevevano 401 — gli avvisi hanno smesso di partire. Estratta qui la logica così il
 // problema non si ripresenta: chi è già server-side importa questa funzione direttamente.
 
-const COMM_RATE: Record<string, number> = {
-  Airbnb:   0.1891,
-  Booking:  0.2015,
-  Diretto:  0,
-  'No Tax': 0,
-};
-
 export function calcUtile(lordo: number, canale: string): number {
   if (canale === 'No Tax') return Math.round((lordo - 20) * 100) / 100;
   const comm = lordo * (COMM_RATE[canale] ?? 0);
-  const ced  = lordo * 0.21;
+  const ced  = lordo * ALIQUOTA_CEDOLARE;
   return Math.round((lordo - comm - ced - 20) * 100) / 100;
 }
 

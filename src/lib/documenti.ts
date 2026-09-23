@@ -29,7 +29,7 @@ function getDrive() {
 function requireRootFolder(): string {
   if (!ROOT_FOLDER_ID) {
     throw new Error(
-      'DRIVE_DOCUMENTI_FOLDER_ID non configurata — serve una cartella nel Drive di Raffaele, condivisa come Editor con il service account, vedi src/lib/documenti.ts'
+      'DRIVE_DOCUMENTI_FOLDER_ID non configurata — serve una cartella nel Drive personale di Raffaele (OAuth utente, DRIVE_REFRESH_TOKEN — un service account non può usarla, vedi commento in cima a questo file)'
     );
   }
   return ROOT_FOLDER_ID;
@@ -37,18 +37,21 @@ function requireRootFolder(): string {
 
 /** Nome cartella leggibile: "Mario Rossi (osp_ab12cd34)" — il nome per riconoscerla a vista,
  *  l'id per non rompersi mai se Raffaele rinomina la persona dopo un matrimonio, un refuso, ecc. */
-function nomeCartella(nomeOspite: string, ospiteId: string): string {
-  return `${nomeOspite} (${ospiteId})`;
+function nomeCartella(nome: string, id: string): string {
+  return `${nome} (${id})`;
 }
 
-/** Trova la cartella dell'ospite dentro la cartella radice, creandola se non esiste ancora. */
-export async function ensureCartellaOspite(ospiteId: string, nomeOspite: string): Promise<string> {
+/** Trova una cartella dentro la cartella radice, creandola se non esiste ancora — generica:
+ *  usata sia per la cartella di un ospite sia (dal 23/09/2026) per quella di un proprietario,
+ *  che prima non esisteva affatto (i rendiconti mensili non venivano mai salvati da nessuna
+ *  parte, vedi registraDocumentoProprietario sotto). */
+async function ensureCartella(id: string, nome: string): Promise<string> {
   const drive = getDrive();
   const root = requireRootFolder();
-  const nome = nomeCartella(nomeOspite, ospiteId);
+  const nomeCompleto = nomeCartella(nome, id);
 
   const trovata = await drive.files.list({
-    q: `'${root}' in parents and name = '${nome.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    q: `'${root}' in parents and name = '${nomeCompleto.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: 'files(id, name)',
     pageSize: 1,
   });
@@ -56,14 +59,38 @@ export async function ensureCartellaOspite(ospiteId: string, nomeOspite: string)
   if (esistente?.id) return esistente.id;
 
   const creata = await drive.files.create({
-    requestBody: { name: nome, mimeType: 'application/vnd.google-apps.folder', parents: [root] },
+    requestBody: { name: nomeCompleto, mimeType: 'application/vnd.google-apps.folder', parents: [root] },
     fields: 'id',
   });
-  if (!creata.data.id) throw new Error('Creazione cartella ospite fallita — Drive non ha restituito un id');
+  if (!creata.data.id) throw new Error('Creazione cartella fallita — Drive non ha restituito un id');
   return creata.data.id;
 }
 
+/** Trova la cartella dell'ospite dentro la cartella radice, creandola se non esiste ancora. */
+export async function ensureCartellaOspite(ospiteId: string, nomeOspite: string): Promise<string> {
+  return ensureCartella(ospiteId, nomeOspite);
+}
+
+/** Come ensureCartellaOspite, ma per un proprietario — usata per i rendiconti mensili, che
+ *  riguardano lui, non un ospite. Prefisso "Rendiconti — " nel nome per distinguerla a vista
+ *  dalle cartelle ospite nella stessa cartella radice. */
+export async function ensureCartellaProprietario(proprietarioId: string, nomeProprietario: string): Promise<string> {
+  return ensureCartella(proprietarioId, `Rendiconti — ${nomeProprietario}`);
+}
+
 export type DocumentoSalvato = { id: string; nome: string; link: string };
+
+async function salvaNellaCartella(cartellaId: string, nomeFile: string, contenuto: Buffer, mimeType: string): Promise<DocumentoSalvato> {
+  const drive = getDrive();
+  const { Readable } = await import('stream');
+  const file = await drive.files.create({
+    requestBody: { name: nomeFile, parents: [cartellaId] },
+    media: { mimeType, body: Readable.from(contenuto) },
+    fields: 'id, name, webViewLink',
+  });
+  if (!file.data.id) throw new Error('Caricamento documento fallito — Drive non ha restituito un id');
+  return { id: file.data.id, nome: file.data.name ?? nomeFile, link: file.data.webViewLink ?? '' };
+}
 
 /**
  * Salva un documento (PDF di contratto/ricevuta/schedina) nella cartella dell'ospite.
@@ -77,19 +104,11 @@ export async function salvaDocumento(
   contenuto: Buffer,
   mimeType: string = 'application/pdf'
 ): Promise<DocumentoSalvato> {
-  const drive = getDrive();
   const cartellaId = await ensureCartellaOspite(ospiteId, nomeOspite);
-
-  const { Readable } = await import('stream');
-  const file = await drive.files.create({
-    requestBody: { name: nomeFile, parents: [cartellaId] },
-    media: { mimeType, body: Readable.from(contenuto) },
-    fields: 'id, name, webViewLink',
-  });
-
-  if (!file.data.id) throw new Error('Caricamento documento fallito — Drive non ha restituito un id');
-  return { id: file.data.id, nome: file.data.name ?? nomeFile, link: file.data.webViewLink ?? '' };
+  return salvaNellaCartella(cartellaId, nomeFile, contenuto, mimeType);
 }
+
+type TipoDocumento = 'Documento identità' | 'Contratto ospite' | 'Ricevuta' | 'Preventivo' | 'Conferma prenotazione' | 'Contratto gestione' | 'Rendiconto' | 'Ricevuta Alloggiati' | 'Altro';
 
 /**
  * Come salvaDocumento, ma registra anche una riga nella tabella `documenti` (Postgres) così il
@@ -101,7 +120,7 @@ export async function salvaDocumento(
  */
 export async function registraDocumento(opts: {
   ospiteId: string; nomeOspite: string; nomeFile: string; contenuto: Buffer;
-  tipo: 'Documento identità' | 'Contratto ospite' | 'Ricevuta' | 'Preventivo' | 'Conferma prenotazione' | 'Contratto gestione' | 'Rendiconto' | 'Ricevuta Alloggiati' | 'Altro';
+  tipo: TipoDocumento;
   prenotazioneId?: string; mimeType?: string;
 }): Promise<DocumentoSalvato> {
   const salvato = await salvaDocumento(opts.ospiteId, opts.nomeOspite, opts.nomeFile, opts.contenuto, opts.mimeType);
@@ -114,9 +133,29 @@ export async function registraDocumento(opts: {
   return salvato;
 }
 
+/** Come registraDocumento, ma per un documento legato a un proprietario (oggi solo i
+ *  rendiconti mensili) invece che a un ospite — vedi ensureCartellaProprietario. Aggiunta il
+ *  23/09/2026: prima il rendiconto veniva solo generato al volo e mai salvato da nessuna
+ *  parte, quindi se una prenotazione veniva corretta dopo l'invio non c'era modo di recuperare
+ *  cosa fosse stato effettivamente mandato al proprietario. */
+export async function registraDocumentoProprietario(opts: {
+  proprietarioId: string; nomeProprietario: string; nomeFile: string; contenuto: Buffer;
+  tipo: TipoDocumento; mimeType?: string;
+}): Promise<DocumentoSalvato> {
+  const cartellaId = await ensureCartellaProprietario(opts.proprietarioId, opts.nomeProprietario);
+  const salvato = await salvaNellaCartella(cartellaId, opts.nomeFile, opts.contenuto, opts.mimeType || 'application/pdf');
+  const { getDb } = await import('./db/index');
+  const { documenti } = await import('./db/schema');
+  await getDb().insert(documenti).values({
+    tipo: opts.tipo, nome: opts.nomeFile, proprietario_id: opts.proprietarioId,
+    drive_file_id: salvato.id, drive_url: salvato.link, mime: opts.mimeType || 'application/pdf',
+  });
+  return salvato;
+}
+
 export async function elencaDocumenti(ospiteId: string, nomeOspite: string): Promise<DocumentoSalvato[]> {
-  const drive = getDrive();
   const cartellaId = await ensureCartellaOspite(ospiteId, nomeOspite);
+  const drive = getDrive();
   const res = await drive.files.list({
     q: `'${cartellaId}' in parents and trashed = false`,
     fields: 'files(id, name, webViewLink)',

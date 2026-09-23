@@ -18,6 +18,7 @@ import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, categorieSpesa, spese, scadenze,
   pulizie, schedine, documenti, botState, telegramLog, emailProcessate, utenti,
 } from './schema';
+import { COMM_RATE, ALIQUOTA_CEDOLARE } from '../tariffe';
 import { getSheetsClient } from '../sheets';
 
 const FILES = {
@@ -62,10 +63,15 @@ const splitNome = (intero: Cell): { nome: string; cognome: string } => {
   return { nome: parti.slice(0, -1).join(' '), cognome: parti[parti.length - 1] };
 };
 
-const COMM_RATE: Record<string, number> = { Airbnb: 0.1891, Booking: 0.2015, Diretto: 0, 'No Tax': 0 };
-function componenti(lordo: number, canale: string) {
+// La cedolare si applica solo se l'alloggio ha davvero il regime "Con cedolare" (oggi solo Il
+// Tulipano) — prima veniva applicata a chiunque avesse un canale diverso da "No Tax",
+// indipendentemente dal regime reale dell'alloggio: innocuo finché in pratica solo Il Tulipano
+// riceve prenotazioni non-No-Tax, ma un disallineamento silenzioso rispetto a
+// calcolaImportiPrenotazione (src/lib/db/mutations.ts) se un domani cambiasse. Corretto in un
+// audit del 23/09/2026, insieme alla deduplicazione delle percentuali in src/lib/tariffe.ts.
+function componenti(lordo: number, canale: string, regime: string) {
   const commissione = Math.round(lordo * (COMM_RATE[canale] ?? 0) * 100) / 100;
-  const cedolare = canale === 'No Tax' ? 0 : Math.round(lordo * 0.21 * 100) / 100;
+  const cedolare = (regime === 'Con cedolare' && canale !== 'No Tax') ? Math.round(lordo * ALIQUOTA_CEDOLARE * 100) / 100 : 0;
   const costo_pulizia = 20, fee_gestione = 0;
   const utile = Math.round((lordo - commissione - cedolare - costo_pulizia) * 100) / 100;
   return { commissione, cedolare, costo_pulizia, fee_gestione, utile, netto_proprietario: utile - fee_gestione };
@@ -133,6 +139,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
 
   const immId: Record<string, string> = {};
   const alloggioPerFoglio: Record<string, string> = {};
+  const regimePerFoglio: Record<string, string> = {};
 
   if (primaVolta) {
     const [pL] = await db.insert(proprietari).values({ nome: 'Salzillo Luigi', tipo: 'Persona fisica', note: 'Padre di Raffaele. Intestatario SCIA e notifica sanitaria Via Clanio 60.' }).returning({ id: proprietari.id });
@@ -148,6 +155,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
         checkin_guide_url: `https://salzillo-hospitality.vercel.app/checkin/${a.foglio.toLowerCase().replace(/\s+/g, '-')}.html`,
       }).returning({ id: alloggi.id });
       alloggioPerFoglio[a.foglio] = row.id;
+      regimePerFoglio[a.foglio] = a.regime;
     }
     // Niente password reali scritte qui: se questo seed dovesse mai rigirare da zero (nuovo
     // ambiente, disaster recovery), ne genera una temporanea casuale e la stampa SOLO nel log
@@ -160,9 +168,15 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     }
   } else {
     for (const im of await db.select().from(immobili)) immId[im.nome] = im.id;
+    // Il regime fiscale si legge DAL DATABASE, non dal seed statico: Raffaele può cambiarlo a
+    // mano da /nuovo → Immobili (regimeFiscale), e la cedolare del sync deve seguire il valore
+    // vero, non quello di quando l'alloggio fu creato la prima volta.
     for (const al of await db.select().from(alloggi)) {
       const seed = ALLOGGI_SEED.find((s) => s.nome === al.nome);
-      if (seed) alloggioPerFoglio[seed.foglio] = al.id;
+      if (seed) {
+        alloggioPerFoglio[seed.foglio] = al.id;
+        regimePerFoglio[seed.foglio] = al.regime_fiscale;
+      }
     }
   }
 
@@ -246,7 +260,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const alloggio_id = alloggioPerFoglio[String(stanza).trim()];
     if (!alloggio_id) continue;
     const ospite_id = await trovaOCreaOspite(ospite, telefono);
-    const c = componenti(lordo, canale);
+    const c = componenti(lordo, canale, regimePerFoglio[String(stanza).trim()] ?? 'No tax');
     await db.insert(prenotazioni).values({
       origine: 'Foglio',
       alloggio_id, ospite_id, checkin: ci, checkout: itToIso(checkout) ?? ci, numero_ospiti: 1,

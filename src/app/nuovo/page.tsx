@@ -23,7 +23,7 @@ type Pulizia = {
   origine: string; addettoNome: string | null; prenotazioneId: string | null; pagata: boolean; importo: string | null;
 };
 type Operatore = { id: string; nome: string };
-type DocumentoCaricato = { id: string; tipo: string; nome: string; ospiteId: string | null; prenotazioneId: string | null; driveUrl: string | null; caricatoIl: string };
+type DocumentoCaricato = { id: string; tipo: string; nome: string; ospiteId: string | null; prenotazioneId: string | null; proprietarioId: string | null; driveUrl: string | null; caricatoIl: string };
 type UtenteAdmin = { id: string; nome: string; ruolo: string; username: string | null; codiceInvito: string | null; attivo: boolean; proprietarioId: string | null };
 type Permesso = { utente_id: string; immobile_id: string; puo_vedere: boolean; puo_modificare: boolean; puo_vedere_finanziario: boolean };
 type Alloggio = {
@@ -55,6 +55,10 @@ type SchedinaAlloggiati = {
   id: string; cognome: string; nome: string; ospiteNomeCompleto: string;
   alloggioNome: string; prenotazioneId: string; checkin: string; checkout: string; canale: string;
 };
+type SchedinaDaVerificare = {
+  id: string; cognome: string; nome: string; stato: 'In invio' | 'Errore';
+  esitoInvio: string | null; prenotazioneId: string; checkin: string; alloggioNome: string;
+};
 type Preventivo = {
   id: string; codice: string; stato: 'Bozza' | 'Inviato' | 'Accettato' | 'Scaduto' | 'Rifiutato';
   checkin: string; checkout: string; numeroOspiti: number;
@@ -75,6 +79,7 @@ type Dati = {
   richieste?: Richiesta[];
   operatoriPulizie?: Operatore[]; utenti?: UtenteAdmin[]; permessi?: Permesso[]; documenti?: DocumentoCaricato[];
   schedineAlloggiati?: SchedinaAlloggiati[];
+  schedineDaVerificare?: SchedinaDaVerificare[];
   categorieSpesa?: { id: string; nome: string }[];
   eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
@@ -461,7 +466,7 @@ export default function Nuovo() {
         </>
       )}
 
-      {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} />}
+      {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} documenti={dati.documenti ?? []} />}
 
       {tab === 'link' && <LinkUtiliBox link={dati.linkUtili ?? []} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
@@ -849,7 +854,7 @@ export default function Nuovo() {
       })()}
 
       {tab === 'alloggiati' && sess.ruolo === 'Titolare' && (
-        <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} onCambiato={carica} />
+        <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} daVerificare={dati.schedineDaVerificare ?? []} onCambiato={carica} />
       )}
 
       {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
@@ -1182,7 +1187,7 @@ function Documenti({ preventivi, documenti, richieste, ospiti, puoModificare, ru
 }
 
 // ── Rendiconti proprietario ────────────────────────────────────────────────
-function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string }) {
+function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagrafica; oggi: string; documenti: DocumentoCaricato[] }) {
   const [propId, setPropId] = useState(anagrafica[0]?.id ?? '');
   const [ambito, setAmbito] = useState(''); // '' = tutti; 'imm:<id>' | 'all:<id>'
   const now = new Date(oggi);
@@ -1306,6 +1311,23 @@ function Rendiconti({ anagrafica, oggi }: { anagrafica: Anagrafica; oggi: string
             <a className="sync" href={`${pdfHref}&download=1`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
           </p>
           <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
+          {(() => {
+            const salvati = documenti.filter((d) => d.tipo === 'Rendiconto' && d.proprietarioId === propId);
+            if (salvati.length === 0) return null;
+            return (
+              <div style={{ marginTop: 14 }}>
+                <b style={{ fontSize: 13 }}>Rendiconti salvati su Drive per {r.proprietario}</b>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {salvati.slice(0, 12).map((d) => (
+                    <li key={d.id} style={{ fontSize: 12.5 }}>
+                      {d.driveUrl ? <a href={d.driveUrl} target="_blank" rel="noopener">{d.nome}</a> : d.nome}
+                      {' — '}<span className="empty">{dataIt(d.caricatoIl.slice(0, 10))}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </>
       )}
     </div>
@@ -2252,9 +2274,24 @@ function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: str
   );
 }
 
-function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggiati[]; onCambiato: () => Promise<void> }) {
+function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { schedine: SchedinaAlloggiati[]; daVerificare: SchedinaDaVerificare[]; onCambiato: () => Promise<void> }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [esiti, setEsiti] = useState<Record<string, { ok: boolean; messaggio: string }>>({});
+  const [risolviBusy, setRisolviBusy] = useState<string | null>(null);
+
+  async function risolvi(s: SchedinaDaVerificare, esito: 'Inviata' | 'Da inviare') {
+    const messaggioConferma = esito === 'Inviata'
+      ? `Confermi di aver verificato SUL PORTALE ALLOGGIATI WEB che la schedina di ${s.nome} ${s.cognome} risulta già inviata? Non farlo a intuito.`
+      : `Confermi che la schedina di ${s.nome} ${s.cognome} NON è mai arrivata ad Alloggiati Web e va rimessa tra le "da inviare"?`;
+    if (!confirm(messaggioConferma)) return;
+    setRisolviBusy(s.id);
+    try {
+      await api('risolvi-schedina-ambigua', { id: s.id, dati: { esito } });
+      await onCambiato();
+    } finally {
+      setRisolviBusy(null);
+    }
+  }
   const [dataRicevuta, setDataRicevuta] = useState(() => new Date().toISOString().slice(0, 10));
   const [ricevutaBusy, setRicevutaBusy] = useState(false);
   const [ricevutaErr, setRicevutaErr] = useState('');
@@ -2325,6 +2362,24 @@ function AlloggiatiWebBox({ schedine, onCambiato }: { schedine: SchedinaAlloggia
       <p className="empty" style={{ marginTop: -6, marginBottom: 12 }}>
         Obbligo distinto dall&apos;invio: la Polizia emette una ricevuta per ogni giorno in cui è stato fatto almeno un invio vero — va conservata. Il portale la emette solo per i giorni con un invio reale già effettuato.
       </p>
+      {daVerificare.length > 0 && (
+        <div style={{ background: 'var(--coral-soft)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+          <b style={{ fontSize: 13 }}>⚠️ Da verificare ({daVerificare.length})</b>
+          <p className="empty" style={{ margin: '4px 0 10px' }}>
+            Schedine con esito incerto — non risultano più &quot;da inviare&quot; ma non sono state confermate come inviate.
+            Controlla sul portale Alloggiati Web prima di scegliere: non tocca mai da sola nulla in automatico.
+          </p>
+          {daVerificare.map((s) => (
+            <div key={s.id} className="docrow">
+              <b>{s.nome} {s.cognome}</b>
+              <span className="empty">{s.alloggioNome} · arrivo {dataIt(s.checkin)} · stato: {s.stato}</span>
+              {s.esitoInvio && <span className="empty" style={{ flexBasis: '100%' }}>{s.esitoInvio}</span>}
+              <button className="mini" disabled={risolviBusy === s.id} onClick={() => risolvi(s, 'Inviata')}>✓ era già inviata</button>
+              <button className="mini" disabled={risolviBusy === s.id} onClick={() => risolvi(s, 'Da inviare')}>↺ segna da rifare</button>
+            </div>
+          ))}
+        </div>
+      )}
       {schedine.length === 0 ? <p className="empty">Nessuna schedina da inviare al momento.</p> : schedine.map((s) => (
         <div key={s.id} className="docrow">
           <b>{s.ospiteNomeCompleto}</b>

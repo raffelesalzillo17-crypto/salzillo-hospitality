@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { rendicontoProprietarioDb } from '@/lib/db/queries';
 import { richiediSessione } from '@/lib/db/auth';
 import { LOGO_SALZILLO_PNG_BASE64 } from '@/lib/db/logoSalzillo';
+import { registraDocumentoProprietario } from '@/lib/documenti';
 
 // PDF del rendiconto mensile proprietario — pronto da inviare (WhatsApp/email).
 // Riprogettato: intestazione con logo, riquadri di sintesi, confronto con mese
@@ -186,6 +187,20 @@ export async function GET(req: NextRequest) {
   const bytes = await pdf.save();
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const suff = r.ambito.tipo !== 'tutto' ? '-' + slug(r.ambito.etichetta) : '';
+  const nomeFile = `rendiconto-${slug(r.proprietario)}${suff}-${anno}-${String(mese).padStart(2, '0')}.pdf`;
+
+  // Salvato su Drive (cartella del proprietario) solo quando c'è un proprietario vero — la
+  // vista "tutti i proprietari insieme" non ha un unico destinatario a cui appartenga il file.
+  // Aggiunto il 23/09/2026: prima questo PDF veniva solo generato al volo e mai conservato da
+  // nessuna parte (vedi audit) — se una prenotazione veniva corretta dopo l'invio, non c'era
+  // modo di recuperare cosa fosse stato effettivamente mandato. Non bloccante: un problema di
+  // Drive non deve mai impedire di scaricare il rendiconto già generato.
+  if (proprietarioId) {
+    registraDocumentoProprietario({
+      proprietarioId, nomeProprietario: r.proprietario, nomeFile, contenuto: Buffer.from(bytes), tipo: 'Rendiconto',
+    }).catch((e) => console.error('[rendiconto/pdf] salvataggio su Drive fallito (non bloccante):', e instanceof Error ? e.message : e));
+  }
+
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
@@ -194,7 +209,7 @@ export async function GET(req: NextRequest) {
       // tornare indietro (bug reale segnalato da Raffaele il 14/09/2026). Con ?download=1 (i
       // link cliccabili nell'app lo passano sempre) forziamo invece il download: il file si
       // salva e l'app resta aperta dov'era.
-      'Content-Disposition': `${scarica ? 'attachment' : 'inline'}; filename="rendiconto-${slug(r.proprietario)}${suff}-${anno}-${String(mese).padStart(2, '0')}.pdf"`,
+      'Content-Disposition': `${scarica ? 'attachment' : 'inline'}; filename="${nomeFile}"`,
     },
   });
 }

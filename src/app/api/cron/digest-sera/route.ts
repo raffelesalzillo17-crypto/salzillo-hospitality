@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { inviaTelegram, eseguiSyncEmailPrenotazioni, testoEventiLocali } from '@/lib/telegramDigest';
+import { inviaTelegram, eseguiSyncEmailPrenotazioni, testoEventiLocali, testoSchedineInScadenza } from '@/lib/telegramDigest';
 
 // Digest serale UNICO (21:00 Europe/Rome) — sostituisce dal 15/09/2026 il sync email
 // prenotazioni delle 12:15 UTC e la ricerca eventi locali del lunedì mattina, uniti in un solo
 // messaggio invece di due sparsi durante il giorno (stessa richiesta di Raffaele del digest
 // mattutino — vedi /api/cron/digest-mattina). Gli eventi locali restano cercati una volta a
 // settimana (il lunedì) per non sprecare chiamate a Claude+ricerca web ogni sera per nulla.
+//
+// Stesso fix di fuso orario di digest-mattina (vedi lì per i dettagli, corretto il 23/09/2026):
+// due voci cron in vercel.json sullo stesso path, 19:00 UTC nei mesi CEST (aprile-ottobre) e
+// 20:00 UTC nei mesi CET (novembre-marzo), entrambe 21:00 locali.
 
 export const maxDuration = 90;
 
@@ -27,6 +31,9 @@ export async function GET(req: NextRequest) {
       const testoEventi = await testoEventiLocali(dryRun);
       if (testoEventi) blocchi.push(testoEventi);
     }
+
+    const testoSchedine = await testoSchedineInScadenza();
+    if (testoSchedine) blocchi.push(testoSchedine);
 
     if (blocchi.length === 0) {
       return NextResponse.json({ ok: true, sent: false, note: 'Niente da segnalare stasera', dryRun });
