@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { isAuthorizedCron } from '@/lib/cronAuth';
@@ -11,7 +11,10 @@ import { leggiPrenotazioni } from '@/lib/prenotazioni';
 // eventi calendario dei prossimi 7 giorni, e le decisioni salvate per segnalare eventuali contraddizioni.
 // Invocato da Vercel Cron (vedi vercel.json) invece che da un processo sempre acceso come il vecchio bot.js.
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Dal 23/09/2026 Gemini al posto di Claude Sonnet — vedi src/lib/assistantCore.ts per il perché
+// (credito Anthropic esaurito) e per il perché del modello 'gemini-3.6-flash'.
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = 'gemini-3.6-flash';
 
 type Booking = { checkin: string; checkout: string; ospite: string; stanza: string; stato: string; telefono?: string };
 type CalEvent = { summary: string; start: string; allDay: boolean };
@@ -97,11 +100,13 @@ export async function GET(req: NextRequest) {
     const decisioniText = readDecisioni();
     const todayStr = today.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1000,
-      thinking: { type: 'disabled' },
-      system: `Sei l'assistente digitale personale di Raffaele Salzillo. Scrivi un recap mattutino proattivo come messaggio su Telegram, da leggere a colazione mezzo addormentato: breve, a punti elenco con qualche emoji pertinente.
+    const response = await genai.models.generateContent({
+      model: MODEL,
+      contents: `Oggi è ${todayStr}.\n\nCheck-in/check-out prossimi 7 giorni:\n\n${bookingsText || '(nessun movimento nei prossimi 7 giorni)'}\n\nEventi calendario prossimi 7 giorni:\n\n${calText || '(nessun evento)'}\n\nNotizie di oggi:\n\n${newsText || '(nessuna notizia disponibile)'}\n\nMercati di oggi:\n\n${marketsText || '(dati di mercato non disponibili)'}\n\nPAC di Raffaele (iShares Core MSCI World), riporta questi numeri esatti in una riga dedicata:\n\n${pacText || '(dati PAC non disponibili)'}\n\nDecisioni salvate di Raffaele (per controllo contraddizioni, non da riportare per intero):\n\n${decisioniText || '(nessuna)'}\n\nScrivi il recap mattutino.`,
+      config: {
+        maxOutputTokens: 1000,
+        thinkingConfig: { thinkingBudget: 0 },
+        systemInstruction: `Sei l'assistente digitale personale di Raffaele Salzillo. Scrivi un recap mattutino proattivo come messaggio su Telegram, da leggere a colazione mezzo addormentato: breve, a punti elenco con qualche emoji pertinente.
 
 Struttura fissa, in quest'ordine:
 1. Prima riga ESATTAMENTE così, nient'altro prima: "☀️ *Buongiorno Raffaele!*" — non aggiungere un secondo saluto/data più sotto, quella riga basta.
@@ -110,12 +115,9 @@ Struttura fissa, in quest'ordine:
 4. Notizie, mercati, PAC — come sotto.
 
 La data di oggi è ESATTAMENTE ${todayStr} — usala se la citi, non calcolarla né indovinarla mai da sola. Usa SOLO i dati forniti qui sotto, non inventare nulla — per il PAC in particolare riporta ESATTAMENTE i numeri già calcolati forniti, non rifare tu i calcoli, e i numeri sono già in formato italiano (virgola) — non convertirli. Le "decisioni salvate" sono il perché delle scelte ricorrenti di Raffaele: se qualcosa tra prenotazioni/eventi/notizie sembra andarci esplicitamente contro, segnalalo con una riga dedicata "⚠️ Attenzione:" — altrimenti non menzionarle affatto, non è una sezione fissa del digest. Per il grassetto usa un solo asterisco (*così*), mai il doppio. Se una sezione manca, omettila senza commentarlo.`,
-      messages: [{
-        role: 'user',
-        content: `Oggi è ${todayStr}.\n\nCheck-in/check-out prossimi 7 giorni:\n\n${bookingsText || '(nessun movimento nei prossimi 7 giorni)'}\n\nEventi calendario prossimi 7 giorni:\n\n${calText || '(nessun evento)'}\n\nNotizie di oggi:\n\n${newsText || '(nessuna notizia disponibile)'}\n\nMercati di oggi:\n\n${marketsText || '(dati di mercato non disponibili)'}\n\nPAC di Raffaele (iShares Core MSCI World), riporta questi numeri esatti in una riga dedicata:\n\n${pacText || '(dati PAC non disponibili)'}\n\nDecisioni salvate di Raffaele (per controllo contraddizioni, non da riportare per intero):\n\n${decisioniText || '(nessuna)'}\n\nScrivi il recap mattutino.`,
-      }],
+      },
     });
-    const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    const text = response.text ?? '';
 
     if (chatId && token && !dryRun) {
       const send = (parseMode?: string) => fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

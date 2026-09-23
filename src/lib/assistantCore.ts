@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI, FunctionCallingConfigMode, type FunctionDeclaration, type Content, type Part } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { NOMI_STRUTTURE } from '@/lib/strutture';
@@ -18,11 +18,22 @@ function plancHeaders(extra?: Record<string, string>): Record<string, string> {
 // della dashboard Motore Rafilu (stato tenuto dal browser) sia dal bot Telegram (stato su
 // Google Sheets) — solo il "dove vive lo stato" cambia, il ciclo agentico è identico.
 // Wiki: copia in sola lettura bundlata in data/wiki (vedi next.config.ts, outputFileTracingIncludes),
-// sincronizzata a mano dal wiki locale e ripulita dalle tabelle sensibili, perché queste route non
-// hanno un login. Invio file NON incluso: raw/ è troppo grande per essere bundlata; resta disponibile
-// solo nel bot Telegram quando gira sul PC locale di Raffaele.
+// sincronizzata a mano dal wiki locale e ripulita dei dati sensibili, perché queste route non hanno
+// un login: non solo le tabelle di credenziali/password, ma anche (dal 22/09/2026, revisione fatta
+// per il passaggio a Gemini — vedi sotto) codici fiscali, numeri di carta d'identità/patente, IBAN,
+// tessere sanitarie ed estremi di atti di nascita — vedi wiki/decisioni/due-livelli-credenziali.md
+// nel wiki locale per la regola completa. Invio file NON incluso: raw/ è troppo grande per essere
+// bundlata; resta disponibile solo nel bot Telegram quando gira sul PC locale di Raffaele.
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Dal 23/09/2026 il motore è Gemini invece di Claude Sonnet: credito Anthropic esaurito (stesso
+// motivo, stessa migrazione già fatta in plancia-raffaele il 22/09/2026 — vedi src/lib/assistantCore.ts
+// lì per il dettaglio completo della scelta). Tier gratuito (Raffaele non vuole fatturazione): sul
+// tier gratuito Google può usare prompt/output per addestrare i modelli — mitigato irrobustendo la
+// redazione della copia cloud del wiki (sopra), non pagando. Modello 'gemini-3.6-flash', non
+// 'gemini-2.5-flash' (non più disponibile per nuove chiavi, 404 dall'API). Vedi wiki/decisioni/ nel
+// wiki locale.
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = 'gemini-3.6-flash';
 
 const WIKI_DIR = path.join(process.cwd(), 'data', 'wiki');
 const WIKI_STOPWORDS = new Set(['che', 'chi', 'con', 'per', 'sono', 'delle', 'degli', 'della', 'dello',
@@ -188,7 +199,9 @@ async function createCalendarEvent(data: { summary: string; start: string; end: 
   return res.data;
 }
 
-// ---- Strumenti "propose_*": chiamano Claude con un tool forzato per ottenere JSON pulito ----
+// ---- Strumenti "propose_*": chiamano Gemini con un tool forzato (toolConfig ANY) per ottenere JSON pulito ----
+// thinkingBudget 0: sono estrazioni deterministiche (data/nome/importo da testo libero), non
+// serve ragionamento esteso — meglio veloci, il ragionamento vero resta nel ciclo agentico sotto.
 
 async function proposeNewBooking(question: string) {
   const today = new Date();
@@ -198,35 +211,38 @@ Stanze valide (usa esattamente questi nomi): ${STANZE_VALIDE.join(', ')}.
 Canali validi (usa esattamente questi nomi): ${CANALI_VALIDI.join(', ')}. Se Raffaele dice "in nero"/"contanti"/"senza fattura", usa "No Tax". Se non è chiaro, chiedilo nel summary_for_user invece di indovinare.
 Se Raffaele fornisce anche il numero di telefono dell'ospite, includilo in "telefono" (facoltativo — non chiederlo se non lo dà spontaneamente).
 Non inventare dettagli che Raffaele non ha detto.`;
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 1024,
-    thinking: { type: 'disabled' },
-    system,
-    tools: [{
-      name: 'propose_booking',
-      description: 'Proponi una nuova prenotazione da registrare.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          checkin: { type: 'string', description: 'Data di check-in, formato ISO "YYYY-MM-DD".' },
-          checkout: { type: 'string', description: 'Data di check-out, formato ISO "YYYY-MM-DD".' },
-          ospite: { type: 'string' },
-          stanza: { type: 'string', enum: STANZE_VALIDE },
-          canale: { type: 'string', enum: CANALI_VALIDI },
-          lordo: { type: 'number' },
-          telefono: { type: 'string', description: 'Numero di telefono dell\'ospite, solo se Raffaele lo ha fornito spontaneamente.' },
-          summary_for_user: { type: 'string', description: 'Riassunto breve e amichevole di cosa stai per registrare, per chiedere conferma.' },
-        },
-        required: ['checkin', 'checkout', 'ospite', 'stanza', 'canale', 'lordo', 'summary_for_user'],
+  const declaration: FunctionDeclaration = {
+    name: 'propose_booking',
+    description: 'Proponi una nuova prenotazione da registrare.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        checkin: { type: 'string', description: 'Data di check-in, formato ISO "YYYY-MM-DD".' },
+        checkout: { type: 'string', description: 'Data di check-out, formato ISO "YYYY-MM-DD".' },
+        ospite: { type: 'string' },
+        stanza: { type: 'string', enum: STANZE_VALIDE },
+        canale: { type: 'string', enum: CANALI_VALIDI },
+        lordo: { type: 'number' },
+        telefono: { type: 'string', description: 'Numero di telefono dell\'ospite, solo se Raffaele lo ha fornito spontaneamente.' },
+        summary_for_user: { type: 'string', description: 'Riassunto breve e amichevole di cosa stai per registrare, per chiedere conferma.' },
       },
-    }],
-    tool_choice: { type: 'tool', name: 'propose_booking' },
-    messages: [{ role: 'user', content: question }],
+      required: ['checkin', 'checkout', 'ospite', 'stanza', 'canale', 'lordo', 'summary_for_user'],
+    },
+  };
+  const response = await genai.models.generateContent({
+    model: MODEL,
+    contents: question,
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingBudget: 0 },
+      tools: [{ functionDeclarations: [declaration] }],
+      toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ['propose_booking'] } },
+    },
   });
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'propose_booking');
-  if (!toolUse || toolUse.type !== 'tool_use') throw new Error('Nessuna proposta di prenotazione valida.');
-  return toolUse.input as { checkin: string; checkout: string; ospite: string; stanza: string; canale: string; lordo: number; telefono?: string; summary_for_user: string };
+  const fc = response.functionCalls?.[0];
+  if (!fc?.args) throw new Error('Nessuna proposta di prenotazione valida.');
+  return fc.args as unknown as { checkin: string; checkout: string; ospite: string; stanza: string; canale: string; lordo: number; telefono?: string; summary_for_user: string };
 }
 
 async function proposeCancellation(question: string, activeBookingsText: string) {
@@ -235,35 +251,38 @@ async function proposeCancellation(question: string, activeBookingsText: string)
 Data di oggi: ${today.toISOString().slice(0, 10)}.
 Ti vengono fornite le prenotazioni attive esistenti: trova quella a cui Raffaele si riferisce (nome ospite, date, stanza). Se più di una corrisponde plausibilmente, o nessuna, imposta found=false e chiedi chiarimento nel summary_for_user invece di indovinare.
 Non inventare mai un numero di riga che non è nell'elenco fornito.`;
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 1024,
-    thinking: { type: 'disabled' },
-    system,
-    tools: [{
-      name: 'propose_cancellation',
-      description: 'Identifica quale prenotazione esistente cancellare.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          found: { type: 'boolean' },
-          row: { type: 'number' },
-          ospite: { type: 'string' },
-          stanza: { type: 'string' },
-          eventId: { type: 'string' },
-          penale_type: { type: 'string', enum: ['nessuna', 'penale'] },
-          importo_penale: { type: 'number' },
-          summary_for_user: { type: 'string' },
-        },
-        required: ['found', 'summary_for_user'],
+  const declaration: FunctionDeclaration = {
+    name: 'propose_cancellation',
+    description: 'Identifica quale prenotazione esistente cancellare.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        found: { type: 'boolean' },
+        row: { type: 'number' },
+        ospite: { type: 'string' },
+        stanza: { type: 'string' },
+        eventId: { type: 'string' },
+        penale_type: { type: 'string', enum: ['nessuna', 'penale'] },
+        importo_penale: { type: 'number' },
+        summary_for_user: { type: 'string' },
       },
-    }],
-    tool_choice: { type: 'tool', name: 'propose_cancellation' },
-    messages: [{ role: 'user', content: `Prenotazioni attive:\n${activeBookingsText}\n\nRichiesta di Raffaele: "${question}"` }],
+      required: ['found', 'summary_for_user'],
+    },
+  };
+  const response = await genai.models.generateContent({
+    model: MODEL,
+    contents: `Prenotazioni attive:\n${activeBookingsText}\n\nRichiesta di Raffaele: "${question}"`,
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingBudget: 0 },
+      tools: [{ functionDeclarations: [declaration] }],
+      toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ['propose_cancellation'] } },
+    },
   });
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'propose_cancellation');
-  if (!toolUse || toolUse.type !== 'tool_use') throw new Error('Nessuna proposta di cancellazione valida.');
-  return toolUse.input as { found: boolean; row?: number; ospite?: string; stanza?: string; eventId?: string; penale_type?: 'nessuna' | 'penale'; importo_penale?: number; summary_for_user: string };
+  const fc = response.functionCalls?.[0];
+  if (!fc?.args) throw new Error('Nessuna proposta di cancellazione valida.');
+  return fc.args as unknown as { found: boolean; row?: number; ospite?: string; stanza?: string; eventId?: string; penale_type?: 'nessuna' | 'penale'; importo_penale?: number; summary_for_user: string };
 }
 
 async function proposeCalendarEventFn(question: string, existingEventsText: string) {
@@ -272,38 +291,43 @@ async function proposeCalendarEventFn(question: string, existingEventsText: stri
 Data e ora attuali: ${now.toISOString()} (fuso orario Europe/Rome).
 Se Raffaele non specifica un orario preciso, crea un evento per l'intera giornata (all_day: true). Se specifica un'ora ma non una durata, usa 1 ora. Se non specifica l'anno, assumi l'anno corrente o il prossimo se già passato.
 Non inventare dettagli che Raffaele non ha detto.`;
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 1024,
-    thinking: { type: 'disabled' },
-    system,
-    tools: [{
-      name: 'propose_calendar_event',
-      description: 'Proponi un nuovo evento/promemoria sul calendario.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string' },
-          all_day: { type: 'boolean' },
-          start: { type: 'string', description: 'Se all_day: "YYYY-MM-DD". Altrimenti ISO 8601 con offset, es "2026-09-05T15:00:00+02:00".' },
-          end: { type: 'string' },
-          description: { type: 'string' },
-          summary_for_user: { type: 'string' },
-        },
-        required: ['summary', 'all_day', 'start', 'end', 'summary_for_user'],
+  const declaration: FunctionDeclaration = {
+    name: 'propose_calendar_event',
+    description: 'Proponi un nuovo evento/promemoria sul calendario.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string' },
+        all_day: { type: 'boolean' },
+        start: { type: 'string', description: 'Se all_day: "YYYY-MM-DD". Altrimenti ISO 8601 con offset, es "2026-09-05T15:00:00+02:00".' },
+        end: { type: 'string' },
+        description: { type: 'string' },
+        summary_for_user: { type: 'string' },
       },
-    }],
-    tool_choice: { type: 'tool', name: 'propose_calendar_event' },
-    messages: [{ role: 'user', content: `Eventi già presenti nei prossimi giorni (per evitare doppioni ovvi):\n${existingEventsText || '(nessuno)'}\n\nRichiesta di Raffaele: "${question}"` }],
+      required: ['summary', 'all_day', 'start', 'end', 'summary_for_user'],
+    },
+  };
+  const response = await genai.models.generateContent({
+    model: MODEL,
+    contents: `Eventi già presenti nei prossimi giorni (per evitare doppioni ovvi):\n${existingEventsText || '(nessuno)'}\n\nRichiesta di Raffaele: "${question}"`,
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingBudget: 0 },
+      tools: [{ functionDeclarations: [declaration] }],
+      toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ['propose_calendar_event'] } },
+    },
   });
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'propose_calendar_event');
-  if (!toolUse || toolUse.type !== 'tool_use') throw new Error('Nessuna proposta di evento valida.');
-  return toolUse.input as { summary: string; all_day: boolean; start: string; end: string; description?: string; summary_for_user: string };
+  const fc = response.functionCalls?.[0];
+  if (!fc?.args) throw new Error('Nessuna proposta di evento valida.');
+  return fc.args as unknown as { summary: string; all_day: boolean; start: string; end: string; description?: string; summary_for_user: string };
 }
 
 // ---- Tool "di lettura", tutti basati sulle stesse API già live della dashboard ----
 
-const TOOLS: Anthropic.Tool[] = [
+type ToolSpec = { name: string; description: string; input_schema: Record<string, unknown> };
+
+const TOOLS: ToolSpec[] = [
   { name: 'search_wiki', description: 'Cerca nel wiki personale di Raffaele (il suo "secondo cervello": pagine su di lui, la sua famiglia, la sua carriera, il B&B/Salzillo Hospitality, ecc.). Usalo per qualsiasi domanda su fatti/dati/storia personale o del business che potrebbero essere documentati lì.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Parole chiave da cercare, in italiano.' } }, required: ['query'] } },
   { name: 'get_bookings', description: 'Recupera i dati LIVE delle prenotazioni del B&B (ospiti in casa, partenze di oggi, prossimi arrivi nei 14 giorni). Usa SEMPRE questo per domande su ospiti/prenotazioni/occupazione.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'get_calendar_events', description: 'Recupera gli eventi dal Google Calendar di Raffaele (personale + B&B). Usa SEMPRE questo per domande su agenda/impegni/appuntamenti.', input_schema: { type: 'object', properties: { days: { type: 'number', description: 'Giorni in avanti da oggi, default 14.' } }, required: [] } },
@@ -314,6 +338,8 @@ const TOOLS: Anthropic.Tool[] = [
   { name: 'propose_cancel_booking_from_chat', description: 'Prepara la cancellazione di una prenotazione esistente. Mostra la proposta e aspetta conferma sì/no — dopo averlo chiamato non aggiungere altro testo (eccetto se serve chiarimento).', input_schema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } },
   { name: 'propose_calendar_event_from_chat', description: 'Prepara un nuovo evento/promemoria sul calendario. Mostra la proposta e aspetta conferma sì/no — dopo averlo chiamato non aggiungere altro testo.', input_schema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } },
 ];
+
+const TOOL_DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema }));
 
 const SYSTEM_PROMPT = `Sei l'assistente digitale personale di Raffaele Salzillo. Tono amichevole e diretto, frasi brevi, elenchi puntati invece di prosa lunga quando elenchi più cose.
 Per il grassetto usa un solo asterisco, es. *così*. Non usare mai [[pagina]] con doppie parentesi quadre.
@@ -435,6 +461,10 @@ async function executeTool(name: string, input: Record<string, unknown>, origin:
 export type TurnResult = { answer: string; history: ChatMessage[]; pendingAction: PendingAction | null };
 export type ImageInput = { base64: string; mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' };
 
+function toGeminiContents(history: ChatMessage[]): Content[] {
+  return history.map((h) => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] }));
+}
+
 // Un turno completo: gestisce sia la conferma/rifiuto di una proposta in sospeso sia,
 // altrimenti, un giro completo del ciclo agentico con gli strumenti. `image`, se presente
 // (bot Telegram: foto ricevuta), va in aggiunta al testo — la cronologia salvata resta
@@ -470,46 +500,57 @@ export async function runAgentTurn(origin: string, message: string, history: Cha
   }
 
   const pending = { current: null as PendingAction | null };
-  const userContent: Anthropic.MessageParam['content'] = image
-    ? [{ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } }, { type: 'text', text: message || 'Guarda questa immagine e dimmi cosa vedi/cosa devo saperne.' }]
-    : message;
-  const workingMessages: Anthropic.MessageParam[] = [...history, { role: 'user', content: userContent }];
+  const userParts: Part[] = [];
+  if (image) userParts.push({ inlineData: { mimeType: image.mediaType, data: image.base64 } });
+  userParts.push({ text: message || (image ? 'Guarda questa immagine e dimmi cosa vedi/cosa devo saperne.' : '') });
+
+  const workingContents: Content[] = [...toGeminiContents(history), { role: 'user', parts: userParts }];
   const system = SYSTEM_PROMPT + currentDateTimeLine();
   let finalAnswer: string | null = null;
   let alreadyAnswered = false;
   let loopGuard = 0;
 
   while (loopGuard++ < 6) {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1536,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'low' },
-      system,
-      tools: TOOLS,
-      messages: workingMessages,
+    const response = await genai.models.generateContent({
+      model: MODEL,
+      contents: workingContents,
+      config: {
+        systemInstruction: system,
+        // Un po' più alto del vecchio limite Claude (1536): a differenza di Claude, i token
+        // di "pensiero" di Gemini rientrano nello stesso budget di output.
+        maxOutputTokens: 2048,
+        tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+      },
     });
-    workingMessages.push({ role: 'assistant', content: response.content });
-    if (response.stop_reason !== 'tool_use') {
-      finalAnswer = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    const calls = response.functionCalls;
+    if (!calls || !calls.length) {
+      finalAnswer = response.text ?? '';
       break;
     }
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of response.content) {
-      if (block.type !== 'tool_use') continue;
+    const modelParts = response.candidates?.[0]?.content?.parts ?? calls.map((c) => ({ functionCall: c }));
+    workingContents.push({ role: 'model', parts: modelParts });
+
+    const responseParts: Part[] = [];
+    for (const fc of calls) {
       let result: string;
       try {
-        result = await executeTool(block.name, block.input as Record<string, unknown>, origin, pending);
+        result = await executeTool(fc.name || '', (fc.args as Record<string, unknown>) || {}, origin, pending);
       } catch (err) {
-        result = `Errore eseguendo ${block.name}: ${err instanceof Error ? err.message : String(err)}`;
+        result = `Errore eseguendo ${fc.name}: ${err instanceof Error ? err.message : String(err)}`;
       }
       if (result.startsWith('__ANSWER__')) {
         finalAnswer = result.slice('__ANSWER__'.length);
         alreadyAnswered = true;
       }
-      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result.replace(/^__ANSWER__/, '') });
+      responseParts.push({
+        functionResponse: {
+          ...(fc.id ? { id: fc.id } : {}),
+          name: fc.name || '',
+          response: { output: result.replace(/^__ANSWER__/, '') },
+        },
+      });
     }
-    workingMessages.push({ role: 'user', content: toolResults });
+    workingContents.push({ role: 'user', parts: responseParts });
     if (alreadyAnswered) break;
   }
 

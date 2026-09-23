@@ -16,7 +16,7 @@ import { getDb } from './db/index';
 import { eventiLocali } from './db/schema';
 import { creaEventoLocale } from './db/mutations';
 import { eq, and } from 'drizzle-orm';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
 /** Invio con lo stesso schema a doppio tentativo (Markdown, poi testo semplice se fallisce)
  *  usato ovunque nel progetto — un posto solo invece di 6 copie identiche. */
@@ -161,7 +161,11 @@ export async function testoPulizieDomani(): Promise<string | null> {
 }
 
 // ── Nuovi eventi in zona (ex /api/cron/eventi-locali, gira una volta a settimana) ──
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Dal 23/09/2026 Gemini invece di Claude (credito Anthropic esaurito — vedi src/lib/assistantCore.ts
+// per il dettaglio). `googleSearch` è l'equivalente Gemini del web_search di Anthropic: ricerca
+// eseguita lato server, il testo di risposta arriva già "grounded" in un'unica chiamata, nessun
+// ciclo manuale di tool-call necessario.
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 type EventoTrovato = { titolo: string; dal: string; al: string; comune?: string; impatto?: string; note?: string };
 function estraiJson(testo: string): EventoTrovato[] {
   const m = testo.match(/```(?:json)?\s*([\s\S]*?)```/) || testo.match(/(\[[\s\S]*\])/);
@@ -177,14 +181,13 @@ export async function testoEventiLocali(dryRun: boolean): Promise<string | null>
   const fraDueMesi = new Date(oggi.getTime() + 60 * 24 * 60 * 60 * 1000);
   const oggiStr = oggi.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 2000,
-    tools: [{
-      type: 'web_search_20250305', name: 'web_search', max_uses: 6,
-      user_location: { type: 'approximate', city: 'Marcianise', region: 'Campania', country: 'IT', timezone: 'Europe/Rome' },
-    }],
-    system: `Cerchi eventi reali (sagre, fiere, mercatini, concerti, manifestazioni, ponti festivi) entro circa 30 km da Marcianise (CE), nei prossimi 60 giorni da oggi (${oggiStr}), utili a un B&B locale per capire quando la domanda di alloggio sale. Includi Marcianise, Caserta, Aversa, San Nicola la Strada, Recale, Capua, Napoli e comuni limitrofi.
+  const response = await genai.models.generateContent({
+    model: 'gemini-3.6-flash',
+    contents: `Eventi già tracciati (non ripeterli):\n${elencoTracciati}\n\nCerca eventi nuovi tra oggi (${oggiStr}) e ${fraDueMesi.toLocaleDateString('it-IT')}.`,
+    config: {
+      maxOutputTokens: 2000,
+      tools: [{ googleSearch: {} }],
+      systemInstruction: `Cerchi eventi reali (sagre, fiere, mercatini, concerti, manifestazioni, ponti festivi) entro circa 30 km da Marcianise (CE), nei prossimi 60 giorni da oggi (${oggiStr}), utili a un B&B locale per capire quando la domanda di alloggio sale. Includi Marcianise, Caserta, Aversa, San Nicola la Strada, Recale, Capua, Napoli e comuni limitrofi.
 
 Non inventare eventi: se non trovi nulla di verificabile con la ricerca web, restituisci una lista vuota. Non includere eventi già tracciati (elenco sotto) — cerca solo novità.
 
@@ -197,16 +200,13 @@ Rispondi ESCLUSIVAMENTE con un blocco \`\`\`json contenente un array di oggetti 
 - note (breve descrizione, 1 riga, cita da dove viene l'informazione)
 
 Se non trovi eventi validi, rispondi con \`\`\`json\n[]\n\`\`\`. Nessun testo fuori dal blocco json.`,
-    messages: [{
-      role: 'user',
-      content: `Eventi già tracciati (non ripeterli):\n${elencoTracciati}\n\nCerca eventi nuovi tra oggi (${oggiStr}) e ${fraDueMesi.toLocaleDateString('it-IT')}.`,
-    }],
+    },
   });
 
-  const testo = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  const testo = response.text ?? '';
   const trovati = estraiJson(testo);
   console.log(`[eventi-locali] risposta (${testo.length} caratteri): ${testo.slice(0, 500)}`);
-  console.log(`[eventi-locali] blocchi risposta: ${response.content.map((b) => b.type).join(', ')} — trovati: ${trovati.length}`);
+  console.log(`[eventi-locali] trovati: ${trovati.length}`);
 
   const db = getDb();
   const aggiunti: EventoTrovato[] = [];
