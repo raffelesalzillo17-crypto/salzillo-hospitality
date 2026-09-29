@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runAgentTurn, transcribeAudioViaGroq, type ImageInput } from '@/lib/assistantCore';
 import { loadBotState, saveBotState } from '@/lib/botState';
 import { logTurn } from '@/lib/telegramLog';
+import { TASTI, TASTIERA_FISSA, TASTI_CONFERMA, TESTO_MENU, TESTO_NUOVA, rispondiATasto, tastiCancellazione, trovaPrenotazione } from '@/lib/botTasti';
 
 // Bot Telegram di Raffaele, versione cloud (sempre acceso, gira su Vercel via webhook invece
 // che sul suo PC via polling). Stesso ciclo agentico della barra della dashboard — vedi
@@ -35,15 +36,62 @@ async function transcribeVoice(fileId: string): Promise<string> {
   return transcribeAudioViaGroq(buf, 'voice.ogg', 'audio/ogg');
 }
 
-async function sendTelegramMessage(chatId: number, text: string) {
+async function sendTelegramMessage(chatId: number, text: string, replyMarkup: object = TASTIERA_FISSA) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
   const send = (parseMode?: string) => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, ...(parseMode ? { parse_mode: parseMode } : {}) }),
+    body: JSON.stringify({ chat_id: chatId, text, reply_markup: replyMarkup, ...(parseMode ? { parse_mode: parseMode } : {}) }),
   });
   const res = await send('Markdown');
   if (!res.ok) await send(); // Markdown non valido per questo testo: rimando come testo semplice.
+}
+
+async function tg(metodo: string, body: object) {
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${metodo}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+type Update = {
+  message?: { chat: { id: number }; text?: string; caption?: string; photo?: { file_id: string }[]; voice?: { file_id: string } };
+  callback_query?: { id: string; data?: string; message?: { message_id: number; chat: { id: number } } };
+};
+
+// Tocco di un tasto sotto un messaggio: conferma/annulla di un'azione proposta, o scelta della
+// prenotazione da cancellare. Tutto deterministico tranne l'esecuzione della conferma, che
+// riusa lo stesso turno dell'assistente di un "sì"/"no" scritto.
+async function gestisciCallback(cb: NonNullable<Update['callback_query']>, origin: string) {
+  const chatId = cb.message?.chat.id;
+  await tg('answerCallbackQuery', { callback_query_id: cb.id });
+  if (!chatId || !ALLOWED_CHAT_ID || String(chatId) !== String(ALLOWED_CHAT_ID)) return;
+  // Toglie i tasti dal messaggio toccato: niente doppi tocchi su una conferma già data.
+  if (cb.message) await tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
+
+  const state = await loadBotState(chatId);
+  const data = cb.data || '';
+
+  if (data.startsWith('canc:')) {
+    const b = await trovaPrenotazione(Number(data.slice(5)));
+    if (!b) { await sendTelegramMessage(chatId, 'Non trovo più questa prenotazione 🤔 riprova dal tasto Cancella.'); return; }
+    const pendingAction = { type: 'cancel_booking' as const, data: { row: b.row, stanza: b.stanza, ospite: b.ospite, eventId: b.eventId || '', penaleType: 'nessuna' as const } };
+    await saveBotState(chatId, { history: state.history, pendingAction });
+    await sendTelegramMessage(chatId, `Cancello la prenotazione di *${b.ospite}* (${b.stanza}, ${b.checkin} → ${b.checkout}), senza penale?`, TASTI_CONFERMA);
+    return;
+  }
+
+  if (data === 'conf:si' || data === 'conf:no') {
+    if (!state.pendingAction) {
+      await sendTelegramMessage(chatId, data === 'conf:si' ? "Non c'è niente da confermare (forse l'hai già fatto) 👍" : 'Ok, lascio stare.');
+      return;
+    }
+    const result = await runAgentTurn(origin, data === 'conf:si' ? 'sì' : 'no', state.history, state.pendingAction);
+    await saveBotState(chatId, { history: result.history, pendingAction: result.pendingAction });
+    await sendTelegramMessage(chatId, result.answer);
+    await logTurn(chatId, 'assistant', result.answer);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -53,11 +101,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   }
 
-  let update: { message?: { chat: { id: number }; text?: string; caption?: string; photo?: { file_id: string }[]; voice?: { file_id: string } } };
+  let update: Update;
   try {
     update = await req.json();
   } catch {
     return NextResponse.json({ ok: true }); // body non valido, ack comunque a Telegram
+  }
+
+  if (update.callback_query) {
+    try { await gestisciCallback(update.callback_query, req.nextUrl.origin); } catch (err) {
+      console.error('Errore nel callback Telegram:', err);
+      const c = update.callback_query.message?.chat.id;
+      if (c) await sendTelegramMessage(c, 'Ops, non sono riuscito a eseguire questo tasto 😅 riprova.').catch(() => {});
+    }
+    return NextResponse.json({ ok: true });
   }
 
   const message = update.message;
@@ -68,7 +125,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }); // whitelist: ignora chiunque altro in silenzio
   }
 
+  const testoTasto = (message.text || '').trim();
   try {
+    if (testoTasto === '/start' || testoTasto === '/menu' || testoTasto === TASTI.MENU) {
+      await sendTelegramMessage(chatId, TESTO_MENU);
+      return NextResponse.json({ ok: true });
+    }
+    if (testoTasto === TASTI.NUOVA) {
+      await sendTelegramMessage(chatId, TESTO_NUOVA);
+      return NextResponse.json({ ok: true });
+    }
+    if (testoTasto === TASTI.CANCELLA) {
+      const c = await tastiCancellazione();
+      await sendTelegramMessage(chatId, c.testo, c.markup);
+      return NextResponse.json({ ok: true });
+    }
+    const rispostaTasto = await rispondiATasto(testoTasto);
+    if (rispostaTasto) {
+      await logTurn(chatId, 'user', testoTasto);
+      await sendTelegramMessage(chatId, rispostaTasto);
+      await logTurn(chatId, 'assistant', rispostaTasto);
+      return NextResponse.json({ ok: true });
+    }
+
     let image: ImageInput | undefined;
     let transcribedVoice: string | null = null;
 
@@ -113,7 +192,7 @@ export async function POST(req: NextRequest) {
     const result = await runAgentTurn(origin, textInput, state.history, state.pendingAction, image);
 
     await saveBotState(chatId, { history: result.history, pendingAction: result.pendingAction });
-    await sendTelegramMessage(chatId, result.answer);
+    await sendTelegramMessage(chatId, result.answer, result.pendingAction ? TASTI_CONFERMA : TASTIERA_FISSA);
     await logTurn(chatId, 'assistant', result.answer);
   } catch (err) {
     console.error('Errore nel webhook Telegram:', err);
