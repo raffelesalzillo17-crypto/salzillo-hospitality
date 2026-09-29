@@ -146,7 +146,9 @@ export async function testoRecapPersonale(origin: string): Promise<string | null
     return response.text ?? null;
   } catch (err) {
     console.error('[recap-personale] errore:', err instanceof Error ? err.message : err);
-    return null;
+    // DEBUG TEMPORANEO (29/09/2026): mostra l'errore vero nel digest invece di ingoiarlo, per
+    // capire perché falliva in silenzio — da togliere una volta trovata la causa.
+    return `⚠️ DEBUG recap-personale: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
