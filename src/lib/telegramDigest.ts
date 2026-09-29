@@ -184,6 +184,24 @@ export async function testoPulizieDomani(): Promise<string | null> {
 // eseguita lato server, il testo di risposta arriva già "grounded" in un'unica chiamata, nessun
 // ciclo manuale di tool-call necessario.
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Il tier gratuito di Gemini va spesso in overload (503 "high demand") negli orari di punta —
+// scoperto il 29/09/2026 dai fallimenti ripetuti del digest mattutino di plancia-raffaele, stessa
+// API. Non è un errore nostro, va solo ritentato con un po' di attesa.
+async function conRetry<T>(fn: () => Promise<T>, tentativi = 3, attesaMs = 3000): Promise<T> {
+  for (let i = 0; i < tentativi; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const riprovabile = /503|UNAVAILABLE|overloaded|high demand/i.test(msg);
+      if (!riprovabile || i === tentativi - 1) throw err;
+      await new Promise((r) => setTimeout(r, attesaMs * 2 ** i));
+    }
+  }
+  throw new Error('conRetry: mai raggiunto'); // inarrivabile, solo per TypeScript
+}
+
 type EventoTrovato = { titolo: string; dal: string; al: string; comune?: string; impatto?: string; note?: string };
 function estraiJson(testo: string): EventoTrovato[] {
   const m = testo.match(/```(?:json)?\s*([\s\S]*?)```/) || testo.match(/(\[[\s\S]*\])/);
@@ -199,7 +217,7 @@ export async function testoEventiLocali(dryRun: boolean): Promise<string | null>
   const fraDueMesi = new Date(oggi.getTime() + 60 * 24 * 60 * 60 * 1000);
   const oggiStr = oggi.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const response = await genai.models.generateContent({
+  const response = await conRetry(() => genai.models.generateContent({
     model: 'gemini-3.6-flash',
     contents: `Eventi già tracciati (non ripeterli):\n${elencoTracciati}\n\nCerca eventi nuovi tra oggi (${oggiStr}) e ${fraDueMesi.toLocaleDateString('it-IT')}.`,
     config: {
@@ -219,7 +237,7 @@ Rispondi ESCLUSIVAMENTE con un blocco \`\`\`json contenente un array di oggetti 
 
 Se non trovi eventi validi, rispondi con \`\`\`json\n[]\n\`\`\`. Nessun testo fuori dal blocco json.`,
     },
-  });
+  }));
 
   const testo = response.text ?? '';
   const trovati = estraiJson(testo);

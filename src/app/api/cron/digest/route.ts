@@ -19,6 +19,26 @@ import { leggiPrenotazioni } from '@/lib/prenotazioni';
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = 'gemini-3.6-flash';
 
+export const maxDuration = 60;
+
+// Il tier gratuito di Gemini va spesso in overload (503 "high demand") negli orari di punta —
+// scoperto il 29/09/2026 dai fallimenti ripetuti del digest delle 8:00 (in plancia-raffaele,
+// dove questa stessa route è davvero schedulata). Non è un errore nostro, va solo ritentato con
+// un po' di attesa: 3 tentativi, attesa raddoppiata ogni volta.
+async function conRetry<T>(fn: () => Promise<T>, tentativi = 3, attesaMs = 3000): Promise<T> {
+  for (let i = 0; i < tentativi; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const riprovabile = /503|UNAVAILABLE|overloaded|high demand/i.test(msg);
+      if (!riprovabile || i === tentativi - 1) throw err;
+      await new Promise((r) => setTimeout(r, attesaMs * 2 ** i));
+    }
+  }
+  throw new Error('conRetry: mai raggiunto'); // inarrivabile, solo per TypeScript
+}
+
 type Booking = { checkin: string; checkout: string; ospite: string; stanza: string; stato: string; telefono?: string };
 type CalEvent = { summary: string; start: string; allDay: boolean };
 
@@ -103,7 +123,7 @@ export async function GET(req: NextRequest) {
     const decisioniText = readDecisioni();
     const todayStr = today.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    const response = await genai.models.generateContent({
+    const response = await conRetry(() => genai.models.generateContent({
       model: MODEL,
       contents: `Oggi è ${todayStr}.\n\nCheck-in/check-out prossimi 7 giorni:\n\n${bookingsText || '(nessun movimento nei prossimi 7 giorni)'}\n\nEventi calendario prossimi 7 giorni:\n\n${calText || '(nessun evento)'}\n\nNotizie di oggi:\n\n${newsText || '(nessuna notizia disponibile)'}\n\nMercati di oggi:\n\n${marketsText || '(dati di mercato non disponibili)'}\n\nPAC di Raffaele (iShares Core MSCI World), riporta questi numeri esatti in una riga dedicata:\n\n${pacText || '(dati PAC non disponibili)'}\n\nDecisioni salvate di Raffaele (per controllo contraddizioni, non da riportare per intero):\n\n${decisioniText || '(nessuna)'}\n\nScrivi il recap mattutino.`,
       config: {
@@ -119,7 +139,7 @@ Struttura fissa, in quest'ordine:
 
 La data di oggi è ESATTAMENTE ${todayStr} — usala se la citi, non calcolarla né indovinarla mai da sola. Usa SOLO i dati forniti qui sotto, non inventare nulla — per il PAC in particolare riporta ESATTAMENTE i numeri già calcolati forniti, non rifare tu i calcoli, e i numeri sono già in formato italiano (virgola) — non convertirli. Le "decisioni salvate" sono il perché delle scelte ricorrenti di Raffaele: se qualcosa tra prenotazioni/eventi/notizie sembra andarci esplicitamente contro, segnalalo con una riga dedicata "⚠️ Attenzione:" — altrimenti non menzionarle affatto, non è una sezione fissa del digest. Per il grassetto usa un solo asterisco (*così*), mai il doppio. Se una sezione manca, omettila senza commentarlo.`,
       },
-    });
+    }));
     const text = response.text ?? '';
 
     if (chatId && token && !dryRun) {

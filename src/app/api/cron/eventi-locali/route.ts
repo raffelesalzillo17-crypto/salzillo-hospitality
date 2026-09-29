@@ -9,6 +9,8 @@ import { inviaTelegram, testoEventiLocali } from '@/lib/telegramDigest';
 // messaggi Telegram sparsi durante il giorno). Resta qui, richiamabile a mano (anche con
 // ?dryRun=1), per test/debug mirati; la logica vera è condivisa in src/lib/telegramDigest.ts.
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });

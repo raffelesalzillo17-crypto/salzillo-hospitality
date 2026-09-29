@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import Parser from 'rss-parser';
 
+// BBC World (inglese) sostituito con ANSA Mondo il 29/09/2026 — Raffaele vuole le notizie del
+// digest sempre in italiano, niente titoli/estratti in altre lingue.
 const FEEDS = [
   { url: 'https://www.ansa.it/sito/ansait_rss.xml', source: 'ANSA' },
-  { url: 'http://feeds.bbci.co.uk/news/world/rss.xml', source: 'BBC World' },
+  { url: 'https://www.ansa.it/sito/notizie/mondo/mondo_rss.xml', source: 'ANSA Mondo' },
   { url: 'https://www.ilsole24ore.com/rss/economia.xml', source: 'Il Sole 24 Ore' },
 ];
 
