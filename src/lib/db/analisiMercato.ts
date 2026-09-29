@@ -14,7 +14,11 @@ import { sql } from 'drizzle-orm';
 import { getDb } from './index';
 import { LOGO_SALZILLO_PNG_BASE64 } from './logoSalzillo';
 
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Chiave separata da GEMINI_API_KEY (usata da digest/bot/OCR) — aggiunta il 29/09/2026 dopo
+// aver scoperto che condividere la stessa chiave gratuita tra tutte le automazioni rischia di
+// esaurire la quota giornaliera nei giorni più attivi. Fallback alla chiave principale se quella
+// dedicata non è ancora configurata, così non si rompe nulla nel frattempo.
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_MERCATO || process.env.GEMINI_API_KEY });
 
 // Stesso helper di retry già in uso in telegramDigest.ts e nei digest — il tier gratuito di
 // Gemini va spesso in overload (503) negli orari di punta.

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { inviaTelegram, testoCheckinOggi, testoCheckoutOggi, testoControlloCalendari, testoPreventiviScadenza, testoPulizieDomani, testoSchedineInScadenza } from '@/lib/telegramDigest';
+import { inviaTelegram, testoRecapPersonale, testoCheckinOggi, testoCheckoutOggi, testoControlloCalendari, testoPreventiviScadenza, testoPulizieDomani, testoSchedineInScadenza } from '@/lib/telegramDigest';
 
 // Digest mattutino UNICO (06:00 Europe/Rome) — sostituisce dal 15/09/2026 quattro/cinque
 // messaggi Telegram separati sparsi tra le 7 e le 9:20 UTC (check-in, check-out, controllo
@@ -10,6 +10,12 @@ import { inviaTelegram, testoCheckinOggi, testoCheckoutOggi, testoControlloCalen
 // 21"). Ogni blocco resta condizionale (compare solo se c'è qualcosa da segnalare) — la logica
 // vera è in src/lib/telegramDigest.ts, condivisa con le vecchie route individuali (rimaste per
 // test manuale via ?dryRun=1, non più schedulate da sole in vercel.json).
+//
+// Dal 29/09/2026 include anche il recap personale (notizie/mercati/PAC/agenda settimana) che
+// prima arrivava come messaggio separato dal digest di plancia-raffaele — Raffaele ha chiesto
+// di ridurre tutto a due soli messaggi al giorno (mattina/sera), non tre. Vedi
+// testoRecapPersonale() in telegramDigest.ts; il cron gemello in plancia-raffaele è stato
+// rimosso da vercel.json lì.
 //
 // Fuso orario (corretto il 23/09/2026): Vercel Cron accetta solo orari UTC, senza fuso orario
 // nativo — un singolo "0 4 * * *" era corretto solo durante l'ora legale (CEST) e sarebbe
@@ -26,9 +32,13 @@ export const maxDuration = 60;
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1';
+  const origin = process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : req.nextUrl.origin;
 
   try {
     const blocchi = (await Promise.all([
+      testoRecapPersonale(origin),
       testoCheckinOggi(),
       testoCheckoutOggi(),
       testoControlloCalendari(),
@@ -41,7 +51,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, sent: false, note: 'Niente da segnalare stamattina', dryRun });
     }
 
-    const text = blocchi.join('\n\n━━━━━━━━━━\n\n');
+    const text = ['☀️ *Buongiorno Raffaele!*', ...blocchi].join('\n\n━━━━━━━━━━\n\n');
     if (!dryRun) await inviaTelegram(text);
     return NextResponse.json({ ok: true, sent: !dryRun, blocchi: blocchi.length, text, dryRun });
   } catch (err) {
