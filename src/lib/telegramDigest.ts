@@ -145,10 +145,15 @@ export async function testoRecapPersonale(origin: string): Promise<string | null
     }));
     return response.text ?? null;
   } catch (err) {
-    console.error('[recap-personale] errore:', err instanceof Error ? err.message : err);
-    // DEBUG TEMPORANEO (29/09/2026): mostra l'errore vero nel digest invece di ingoiarlo, per
-    // capire perché falliva in silenzio — da togliere una volta trovata la causa.
-    return `⚠️ DEBUG recap-personale: ${err instanceof Error ? err.message : String(err)}`;
+    // Fallisce in silenzio di proposito (a differenza degli altri blocchi, che sono B&B/dati
+    // critici): se Gemini è sotto sovraccarico quella mattina, meglio un digest senza
+    // notizie/mercati/PAC che nessun digest — gli altri blocchi (check-in/checkout/pulizie)
+    // arrivano comunque. Confermato il 29/09/2026 con un test diretto contro l'API Gemini
+    // (bypassando del tutto questo codice): stesso 503 "high demand" anche con una chiave API
+    // completamente diversa — sovraccarico reale del modello, non un problema di questa chiave
+    // né un bug di retry. console.error qui sotto resta per poterlo vedere nei log se serve.
+    console.error('[recap-personale] errore (digest continua senza questo blocco):', err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
