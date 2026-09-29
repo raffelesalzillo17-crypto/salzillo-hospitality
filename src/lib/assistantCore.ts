@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { GoogleGenAI, FunctionCallingConfigMode, type FunctionDeclaration, type Content, type Part } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
@@ -135,13 +134,11 @@ function searchWiki(query: string): string {
 // Elenco strutture ora centralizzato in src/lib/strutture.ts (09/09/2026).
 const STANZE_VALIDE = NOMI_STRUTTURE;
 const CANALI_VALIDI = ['Airbnb', 'Booking', 'Diretto', 'No Tax'];
-const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 export type PendingAction =
   | { type: 'new_booking'; data: { checkin: string; checkout: string; ospite: string; stanza: string; canale: string; lordo: number; telefono?: string } }
-  | { type: 'cancel_booking'; data: { row: number; stanza: string; ospite: string; eventId: string; penaleType: 'nessuna' | 'penale'; importoPenale?: number } }
-  | { type: 'calendar_event'; data: { summary: string; start: string; end: string; description: string; allDay: boolean } };
+  | { type: 'cancel_booking'; data: { row: number; stanza: string; ospite: string; eventId: string; penaleType: 'nessuna' | 'penale'; importoPenale?: number } };
 
 function isAffirmative(text: string) {
   const t = text.trim().toLowerCase().replace(/[.!]+$/, '');
@@ -150,14 +147,6 @@ function isAffirmative(text: string) {
 function isNegative(text: string) {
   const t = text.trim().toLowerCase().replace(/[.!]+$/, '');
   return ['no', 'annulla', 'stop', 'lascia stare', 'no grazie', 'cancella', 'niente'].includes(t);
-}
-
-// Stesso client OAuth di Gmail (GMAIL_OAUTH_CLIENT_ID/SECRET) dall'08/09/2026 — vedi
-// src/app/api/calendario/route.ts per il perché. Solo il refresh token resta separato.
-function getCalendarOAuthClient() {
-  const client = new google.auth.OAuth2(process.env.GMAIL_OAUTH_CLIENT_ID, process.env.GMAIL_OAUTH_CLIENT_SECRET);
-  client.setCredentials({ refresh_token: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN });
-  return client;
 }
 
 // ---- Esecuzione delle azioni confermate ----
@@ -182,21 +171,6 @@ async function cancelBookingViaApi(origin: string, data: { row: number; stanza: 
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
   return json as { ok: true; stato: string; calResult: string };
-}
-
-async function createCalendarEvent(data: { summary: string; start: string; end: string; description: string; allDay: boolean }) {
-  const auth = getCalendarOAuthClient();
-  const calendar = google.calendar({ version: 'v3', auth });
-  const res = await calendar.events.insert({
-    calendarId: CALENDAR_ID,
-    requestBody: {
-      summary: data.summary,
-      description: data.description,
-      start: data.allDay ? { date: data.start } : { dateTime: data.start },
-      end: data.allDay ? { date: data.end } : { dateTime: data.end },
-    },
-  });
-  return res.data;
 }
 
 // ---- Strumenti "propose_*": chiamano Gemini con un tool forzato (toolConfig ANY) per ottenere JSON pulito ----
@@ -285,76 +259,32 @@ Non inventare mai un numero di riga che non è nell'elenco fornito.`;
   return fc.args as unknown as { found: boolean; row?: number; ospite?: string; stanza?: string; eventId?: string; penale_type?: 'nessuna' | 'penale'; importo_penale?: number; summary_for_user: string };
 }
 
-async function proposeCalendarEventFn(question: string, existingEventsText: string) {
-  const now = new Date();
-  const system = `Sei l'assistente che crea eventi/promemoria sul Google Calendar di Raffaele Salzillo, a partire da richieste in linguaggio naturale italiano.
-Data e ora attuali: ${now.toISOString()} (fuso orario Europe/Rome).
-Se Raffaele non specifica un orario preciso, crea un evento per l'intera giornata (all_day: true). Se specifica un'ora ma non una durata, usa 1 ora. Se non specifica l'anno, assumi l'anno corrente o il prossimo se già passato.
-Non inventare dettagli che Raffaele non ha detto.`;
-  const declaration: FunctionDeclaration = {
-    name: 'propose_calendar_event',
-    description: 'Proponi un nuovo evento/promemoria sul calendario.',
-    parametersJsonSchema: {
-      type: 'object',
-      properties: {
-        summary: { type: 'string' },
-        all_day: { type: 'boolean' },
-        start: { type: 'string', description: 'Se all_day: "YYYY-MM-DD". Altrimenti ISO 8601 con offset, es "2026-09-05T15:00:00+02:00".' },
-        end: { type: 'string' },
-        description: { type: 'string' },
-        summary_for_user: { type: 'string' },
-      },
-      required: ['summary', 'all_day', 'start', 'end', 'summary_for_user'],
-    },
-  };
-  const response = await genai.models.generateContent({
-    model: MODEL,
-    contents: `Eventi già presenti nei prossimi giorni (per evitare doppioni ovvi):\n${existingEventsText || '(nessuno)'}\n\nRichiesta di Raffaele: "${question}"`,
-    config: {
-      systemInstruction: system,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: 0 },
-      tools: [{ functionDeclarations: [declaration] }],
-      toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: ['propose_calendar_event'] } },
-    },
-  });
-  const fc = response.functionCalls?.[0];
-  if (!fc?.args) throw new Error('Nessuna proposta di evento valida.');
-  return fc.args as unknown as { summary: string; all_day: boolean; start: string; end: string; description?: string; summary_for_user: string };
-}
-
 // ---- Tool "di lettura", tutti basati sulle stesse API già live della dashboard ----
 
 type ToolSpec = { name: string; description: string; input_schema: Record<string, unknown> };
 
 const TOOLS: ToolSpec[] = [
-  { name: 'search_wiki', description: 'Cerca nel wiki personale di Raffaele (il suo "secondo cervello": pagine su di lui, la sua famiglia, la sua carriera, il B&B/Salzillo Hospitality, ecc.). Usalo per qualsiasi domanda su fatti/dati/storia personale o del business che potrebbero essere documentati lì.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Parole chiave da cercare, in italiano.' } }, required: ['query'] } },
+  { name: 'search_wiki', description: 'Cerca nel wiki di Salzillo Hospitality (pagine su B&B, strutture, famiglia proprietaria, regole e decisioni del business). Usalo per qualsiasi domanda su fatti/dati/storia del business che potrebbero essere documentati lì.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Parole chiave da cercare, in italiano.' } }, required: ['query'] } },
   { name: 'get_bookings', description: 'Recupera i dati LIVE delle prenotazioni del B&B (ospiti in casa, partenze di oggi, prossimi arrivi nei 14 giorni). Usa SEMPRE questo per domande su ospiti/prenotazioni/occupazione.', input_schema: { type: 'object', properties: {}, required: [] } },
-  { name: 'get_calendar_events', description: 'Recupera gli eventi dal Google Calendar di Raffaele (personale + B&B). Usa SEMPRE questo per domande su agenda/impegni/appuntamenti.', input_schema: { type: 'object', properties: { days: { type: 'number', description: 'Giorni in avanti da oggi, default 14.' } }, required: [] } },
-  { name: 'get_news', description: 'Recupera le notizie più fresche (ANSA, BBC World, Il Sole 24 Ore).', input_schema: { type: 'object', properties: {}, required: [] } },
-  { name: 'get_markets', description: 'Recupera una panoramica di mercato aggiornata (S&P 500, Nasdaq, FTSE MIB, EUR/USD, il PAC di Raffaele).', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'get_weather', description: 'Recupera la temperatura attuale. Senza specificare una città restituisce sia Marcianise sia Feltre (le due città di Raffaele). Usa SEMPRE questo per domande sul meteo, mai a memoria.', input_schema: { type: 'object', properties: { city: { type: 'string', description: 'Nome città. Vuoto per Marcianise+Feltre.' } }, required: [] } },
   { name: 'propose_new_booking_from_chat', description: 'Prepara una nuova prenotazione da registrare, a partire da una richiesta in linguaggio naturale. Mostra la proposta e aspetta conferma sì/no — dopo averlo chiamato non aggiungere altro testo.', input_schema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } },
   { name: 'propose_cancel_booking_from_chat', description: 'Prepara la cancellazione di una prenotazione esistente. Mostra la proposta e aspetta conferma sì/no — dopo averlo chiamato non aggiungere altro testo (eccetto se serve chiarimento).', input_schema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } },
-  { name: 'propose_calendar_event_from_chat', description: 'Prepara un nuovo evento/promemoria sul calendario. Mostra la proposta e aspetta conferma sì/no — dopo averlo chiamato non aggiungere altro testo.', input_schema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } },
 ];
 
 const TOOL_DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema }));
 
-const SYSTEM_PROMPT = `Sei l'assistente digitale personale di Raffaele Salzillo. Tono amichevole e diretto, frasi brevi, elenchi puntati invece di prosa lunga quando elenchi più cose.
+const SYSTEM_PROMPT = `Sei l'assistente digitale del B&B / Salzillo Hospitality, l'attività di affitti brevi di famiglia Salzillo — lavori per Raffaele, che la gestisce. NON gestisci la sua vita personale (agenda personale, notizie, mercati, patrimonio, scuola): quelle stanno in un altro assistente, se te le chiede digli di usare il suo bot personale. Tono amichevole e diretto, frasi brevi, elenchi puntati invece di prosa lunga quando elenchi più cose.
 Per il grassetto usa un solo asterisco, es. *così*. Non usare mai [[pagina]] con doppie parentesi quadre.
 
-IMPORTANTE: da qui NON puoi mandare file (serve il PC locale di Raffaele) — se te lo chiede, digli gentilmente che al momento non è disponibile da qui. Hai invece accesso in sola lettura a una copia ridotta del suo wiki personale (search_wiki): alcuni dettagli di accesso ai suoi account sono stati tolti apposta da questa copia, quindi se servono digli che sono disponibili solo dal wiki sul PC.
+IMPORTANTE: da qui NON puoi mandare file (serve il PC locale di Raffaele) — se te lo chiede, digli gentilmente che al momento non è disponibile da qui. Hai invece accesso in sola lettura a una copia ridotta del wiki di Salzillo Hospitality (search_wiki): alcuni dettagli di accesso ai suoi account sono stati tolti apposta da questa copia, quindi se servono digli che sono disponibili solo dal wiki sul PC.
 
 Hai questi strumenti per dati veri e aggiornati, usali sempre quando la domanda li richiede:
-- Fatti su Raffaele, la sua famiglia, la sua carriera, Salzillo Hospitality → search_wiki.
+- Fatti su Salzillo Hospitality, le strutture, la famiglia proprietaria, regole e decisioni del business → search_wiki.
 - Ospiti/prenotazioni/occupazione → SEMPRE get_bookings.
-- Agenda/calendario/impegni → SEMPRE get_calendar_events.
-- Notizie → get_news. Mercati finanziari → get_markets. Meteo → get_weather.
+- Meteo → get_weather.
 - Registrare una nuova prenotazione → propose_new_booking_from_chat.
 - Cancellare una prenotazione esistente → propose_cancel_booking_from_chat.
-- Nuovo promemoria/evento in calendario → propose_calendar_event_from_chat.
-Questi tre mostrano già una proposta e aspettano conferma: dopo averli chiamati non scrivere altro testo (eccezione: propose_cancel_booking_from_chat può chiedere chiarimento se non è chiaro a quale prenotazione riferirsi).
+Questi due mostrano già una proposta e aspettano conferma: dopo averli chiamati non scrivere altro testo (eccezione: propose_cancel_booking_from_chat può chiedere chiarimento se non è chiaro a quale prenotazione riferirsi).
 Usa solo informazioni verificate dagli strumenti, mai a memoria e mai inventate.`;
 
 function currentDateTimeLine() {
@@ -388,29 +318,6 @@ async function executeTool(name: string, input: Record<string, unknown>, origin:
       return searchWiki((input.query as string) || '');
     case 'get_bookings':
       return await buildBookingsContext().catch((e: Error) => `Errore: ${e.message}`);
-    case 'get_calendar_events': {
-      const days = (input.days as number) || 14;
-      const res = await fetch(`${origin}/api/calendario?days=${days}`);
-      const data = await res.json();
-      if (!data.ok) return `Errore calendario: ${data.error}`;
-      type Ev = { start: string; summary: string; allDay: boolean; calendarName: string };
-      const fmt = (e: Ev) => `${e.allDay ? e.start : new Date(e.start).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })} — ${e.summary} (${e.calendarName})`;
-      return data.events.length ? data.events.map(fmt).join('\n') : '(nessun evento in programma)';
-    }
-    case 'get_news': {
-      const res = await fetch(`${origin}/api/notizie`);
-      const data = await res.json();
-      if (!data.ok) return 'Notizie non disponibili.';
-      type N = { source: string; title: string; snippet: string; link: string };
-      return data.news.map((n: N, i: number) => `${i + 1}. [${n.source}] ${n.title} — ${n.snippet} (${n.link})`).join('\n');
-    }
-    case 'get_markets': {
-      const res = await fetch(`${origin}/api/mercati`);
-      const data = await res.json();
-      if (!data.ok) return 'Dati di mercato non disponibili.';
-      type M = { label: string; price?: number; currency?: string; changePercent?: number };
-      return data.markets.map((m: M) => `${m.label}: ${m.price?.toFixed(2)} ${m.currency} (${(m.changePercent ?? 0) >= 0 ? '+' : ''}${m.changePercent?.toFixed(2)}% oggi)`).join('\n');
-    }
     case 'get_weather': {
       const fetchTemp = async (lat: number, lon: number) => {
         const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m&timezone=auto`);
@@ -444,15 +351,6 @@ async function executeTool(name: string, input: Record<string, unknown>, origin:
       pending.current = { type: 'cancel_booking', data: { row: proposed.row!, stanza: proposed.stanza!, ospite: proposed.ospite!, eventId: proposed.eventId || '', penaleType: proposed.penale_type || 'nessuna', importoPenale: proposed.importo_penale } };
       return `__ANSWER__${proposed.summary_for_user}\n\nConfermi? Rispondi *sì* per cancellare, *no* per annullare.`;
     }
-    case 'propose_calendar_event_from_chat': {
-      const evRes = await fetch(`${origin}/api/calendario?days=14`);
-      const evData = await evRes.json();
-      type Ev = { start: string; summary: string; allDay: boolean };
-      const existingText = evData.ok ? (evData.events as Ev[]).map((e) => `${e.allDay ? e.start : e.start} — ${e.summary}`).join('\n') : '';
-      const proposed = await proposeCalendarEventFn((input.request as string) || '', existingText);
-      pending.current = { type: 'calendar_event', data: { summary: proposed.summary, start: proposed.start, end: proposed.end, description: proposed.description || '', allDay: proposed.all_day } };
-      return `__ANSWER__${proposed.summary_for_user}\n\nConfermi? Rispondi *sì* per salvare, *no* per annullare.`;
-    }
     default:
       return `Strumento sconosciuto: ${name}`;
   }
@@ -478,12 +376,9 @@ export async function runAgentTurn(origin: string, message: string, history: Cha
           const result = await createBookingViaApi(origin, pendingAction.data);
           const calNote = result.calWarning ? `\n⚠️ ${result.calWarning}` : '';
           answer = `✅ Fatto! Prenotazione di *${pendingAction.data.ospite}* registrata (utile stimato: €${result.utile}).${calNote}`;
-        } else if (pendingAction.type === 'cancel_booking') {
+        } else {
           const result = await cancelBookingViaApi(origin, pendingAction.data);
           answer = `✅ Fatto! Prenotazione di *${pendingAction.data.ospite}* segnata come "${result.stato}".`;
-        } else {
-          await createCalendarEvent(pendingAction.data);
-          answer = `✅ Fatto! Ho aggiunto *${pendingAction.data.summary}* al calendario.`;
         }
       } catch (err) {
         answer = `⚠️ Non sono riuscito a salvare: ${err instanceof Error ? err.message : String(err)}`;
