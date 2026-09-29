@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { inviaTelegram, eseguiSyncEmailPrenotazioni, testoEventiLocali, testoSchedineInScadenza } from '@/lib/telegramDigest';
+import { inviaTelegram } from '@/lib/telegramDigest';
+import { sezioneSera, SEPARATORE_BLOCCHI } from '@/lib/digestSezioni';
 
-// Digest serale UNICO (21:00 Europe/Rome) — sostituisce dal 15/09/2026 il sync email
-// prenotazioni delle 12:15 UTC e la ricerca eventi locali del lunedì mattina, uniti in un solo
-// messaggio invece di due sparsi durante il giorno (stessa richiesta di Raffaele del digest
-// mattutino — vedi /api/cron/digest-mattina). Gli eventi locali restano cercati una volta a
-// settimana (il lunedì) per non sprecare chiamate a Claude+ricerca web ogni sera per nulla.
+// Digest serale del SOLO B&B — richiamabile a mano / in dryRun per test, NON schedulato.
 //
-// Stesso fix di fuso orario di digest-mattina (vedi lì per i dettagli, corretto il 23/09/2026):
-// due voci cron in vercel.json sullo stesso path, 19:00 UTC nei mesi CEST (aprile-ottobre) e
-// 20:00 UTC nei mesi CET (novembre-marzo), entrambe 21:00 locali.
+// Dal 29/09/2026 il messaggio unico della sera lo invia il bot personale di plancia-raffaele
+// (cron `/api/cron/digest-sera` lì), che chiede la sezione B&B a /api/digest/sezione. Questa
+// route resta per provare la sezione da sola (sync email prenotazioni, eventi locali il lunedì,
+// schedine in scadenza): senza dryRun invia con il bot di QUESTO progetto.
 
 export const maxDuration = 90;
 
@@ -23,23 +21,13 @@ export async function GET(req: NextRequest) {
     : req.nextUrl.origin;
 
   try {
-    const blocchi: string[] = [];
-    blocchi.push(...await eseguiSyncEmailPrenotazioni(origin, dryRun));
-
-    const oggiLunedi = new Date().getDay() === 1;
-    if (oggiLunedi) {
-      const testoEventi = await testoEventiLocali(dryRun);
-      if (testoEventi) blocchi.push(testoEventi);
-    }
-
-    const testoSchedine = await testoSchedineInScadenza();
-    if (testoSchedine) blocchi.push(testoSchedine);
+    const blocchi = await sezioneSera(origin, dryRun);
 
     if (blocchi.length === 0) {
       return NextResponse.json({ ok: true, sent: false, note: 'Niente da segnalare stasera', dryRun });
     }
 
-    const text = blocchi.join('\n\n━━━━━━━━━━\n\n');
+    const text = blocchi.join(SEPARATORE_BLOCCHI);
     if (!dryRun) await inviaTelegram(text);
     return NextResponse.json({ ok: true, sent: !dryRun, blocchi: blocchi.length, text, dryRun });
   } catch (err) {

@@ -7,8 +7,6 @@
 // così i digest possono incollare più blocchi in un unico messaggio.
 
 import { google } from 'googleapis';
-import fs from 'fs';
-import path from 'path';
 import { leggiPrenotazioni } from './prenotazioni';
 import { getStruttura } from './strutture';
 import { leggiPulizieDb, leggiPreventiviDb, leggiEventiLocaliDb } from './db/queries';
@@ -20,39 +18,6 @@ import { eventiLocali } from './db/schema';
 import { creaEventoLocale } from './db/mutations';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
-
-const genaiRecap = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// Stesso helper di retry di analisiMercato.ts — il tier gratuito di Gemini va spesso in
-// overload (503) negli orari di punta.
-async function conRetryRecap<T>(fn: () => Promise<T>, tentativi = 3, attesaMs = 3000): Promise<T> {
-  for (let i = 0; i < tentativi; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const riprovabile = /503|UNAVAILABLE|overloaded|high demand/i.test(msg);
-      if (!riprovabile || i === tentativi - 1) throw err;
-      await new Promise((r) => setTimeout(r, attesaMs * 2 ** i));
-    }
-  }
-  throw new Error('conRetryRecap: mai raggiunto');
-}
-
-function readDecisioniPerRecap(): string {
-  const dir = path.join(process.cwd(), 'data', 'wiki', 'decisioni');
-  if (!fs.existsSync(dir)) return '';
-  return fs.readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && f !== 'decisioni.md')
-    .map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
-    .join('\n\n---\n\n');
-}
-
-const PAC_QUOTE = 43.709478;
-const PAC_PREZZO_MEDIO = 108.24;
-function fmtEuroRecap(n: number): string {
-  return n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 /** Invio con lo stesso schema a doppio tentativo (Markdown, poi testo semplice se fallisce)
  *  usato ovunque nel progetto — un posto solo invece di 6 copie identiche. */
@@ -88,74 +53,6 @@ function toWaNumber(raw: string): string | null {
   return n;
 }
 
-// ── Recap personale: notizie/mercati/PAC/agenda (ex digest di plancia-raffaele) ─
-// Spostato qui il 29/09/2026 su richiesta di Raffaele ("togliamo tutti questi digest, uno la
-// mattina e uno la sera") — prima viveva come cron separato in plancia-raffaele
-// (/api/cron/digest), un terzo messaggio Telegram indipendente che si sovrapponeva a questo
-// digest mattutino. Ora è solo un altro blocco di questo stesso messaggio, stesso schema degli
-// altri: ritorna il testo o null, l'invio resta a chi chiama. Non include check-in/check-out
-// (già coperti dai blocchi dedicati sotto, con i link WhatsApp azionabili) né gli eventi del
-// giorno stesso — solo agenda dei prossimi giorni, notizie, mercati, PAC.
-export async function testoRecapPersonale(origin: string): Promise<string | null> {
-  try {
-    const [newsRes, marketsRes, calRes] = await Promise.all([
-      fetch(`${origin}/api/notizie`),
-      fetch(`${origin}/api/mercati`),
-      fetch(`${origin}/api/calendario?days=7`),
-    ]);
-    const newsData = await newsRes.json();
-    const marketsData = await marketsRes.json();
-    const calData = await calRes.json();
-
-    type N = { source: string; title: string; snippet: string; link: string };
-    type M = { label: string; price?: number; currency?: string; changePercent?: number };
-    type CalEvent = { summary: string; start: string; allDay: boolean };
-    const newsText = newsData.ok ? (newsData.news as N[]).map((n, i) => `${i + 1}. [${n.source}] ${n.title} — ${n.snippet} (${n.link})`).join('\n') : '';
-    const marketsText = marketsData.ok ? (marketsData.markets as M[]).map((m) => `${m.label}: ${m.price != null ? fmtEuroRecap(m.price) : '?'} ${m.currency} (${(m.changePercent ?? 0) >= 0 ? '+' : ''}${m.changePercent?.toFixed(2).replace('.', ',')}% oggi)`).join('\n') : '';
-
-    let pacText = '';
-    const pacMarket = marketsData.ok ? (marketsData.markets as M[]).find((m) => m.label.includes('PAC')) : null;
-    if (pacMarket?.price) {
-      const valoreAttuale = PAC_QUOTE * pacMarket.price;
-      const capitaleVersato = PAC_QUOTE * PAC_PREZZO_MEDIO;
-      const guadagno = valoreAttuale - capitaleVersato;
-      const guadagnoPct = (guadagno / capitaleVersato) * 100;
-      pacText = `Quota: ${fmtEuroRecap(pacMarket.price)} €. Valore attuale: ${fmtEuroRecap(valoreAttuale)} €. Versato: ${fmtEuroRecap(capitaleVersato)} €. Profitto: ${guadagno >= 0 ? '+' : ''}${fmtEuroRecap(guadagno)} € (${guadagnoPct >= 0 ? '+' : ''}${guadagnoPct.toFixed(1).replace('.', ',')}%).`;
-    }
-
-    const oggi = new Date();
-    const settimanaAvanti = new Date(oggi.getTime() + 7 * 24 * 60 * 60 * 1000);
-    let calText = '';
-    if (calData.ok) {
-      calText = (calData.events as CalEvent[])
-        .filter((e) => new Date(e.start) > oggi && new Date(e.start) <= settimanaAvanti)
-        .map((e) => `${e.allDay ? e.start : new Date(e.start).toLocaleString('it-IT')}: ${e.summary}`).join('\n');
-    }
-    const todayStr = oggi.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    const decisioniText = readDecisioniPerRecap();
-
-    const response = await conRetryRecap(() => genaiRecap.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: `Oggi è ${todayStr}.\n\nEventi calendario prossimi 7 giorni (esclusi quelli di oggi):\n\n${calText || '(nessun evento)'}\n\nNotizie di oggi:\n\n${newsText || '(nessuna notizia disponibile)'}\n\nMercati di oggi:\n\n${marketsText || '(dati di mercato non disponibili)'}\n\nPAC di Raffaele (iShares Core MSCI World), riporta questi numeri esatti in una riga dedicata:\n\n${pacText || '(dati PAC non disponibili)'}\n\nDecisioni salvate di Raffaele (per controllo contraddizioni, non da riportare per intero):\n\n${decisioniText || '(nessuna)'}\n\nScrivi il recap.`,
-      config: {
-        maxOutputTokens: 800,
-        thinkingConfig: { thinkingBudget: 0 },
-        systemInstruction: `Sei l'assistente digitale personale di Raffaele Salzillo. Scrivi un breve recap come messaggio Telegram, da leggere a colazione: a punti elenco con qualche emoji pertinente. NON parlare di check-in/check-out/pulizie del B&B — quelli sono in un altro blocco dello stesso messaggio, li riceve già separatamente. Struttura: *Prossimi giorni* (agenda, solo se c'è qualcosa), poi notizie/mercati/PAC. Usa SOLO i dati forniti, non inventare nulla — per il PAC riporta ESATTAMENTE i numeri già calcolati, non ricalcolarli, sono già in formato italiano (virgola). Le "decisioni salvate" sono il perché delle scelte ricorrenti di Raffaele: se qualcosa tra eventi/notizie sembra andarci esplicitamente contro, segnalalo con "⚠️ Attenzione:" — altrimenti non menzionarle. Grassetto con un solo asterisco (*così*), mai il doppio. Se una sezione manca, omettila senza commentarlo. Non scrivere un saluto iniziale ("Buongiorno" ecc.) — lo mette già il messaggio che ospita questo blocco.`,
-      },
-    }));
-    return response.text ?? null;
-  } catch (err) {
-    // Fallisce in silenzio di proposito (a differenza degli altri blocchi, che sono B&B/dati
-    // critici): se Gemini è sotto sovraccarico quella mattina, meglio un digest senza
-    // notizie/mercati/PAC che nessun digest — gli altri blocchi (check-in/checkout/pulizie)
-    // arrivano comunque. Confermato il 29/09/2026 con un test diretto contro l'API Gemini
-    // (bypassando del tutto questo codice): stesso 503 "high demand" anche con una chiave API
-    // completamente diversa — sovraccarico reale del modello, non un problema di questa chiave
-    // né un bug di retry. console.error qui sotto resta per poterlo vedere nei log se serve.
-    console.error('[recap-personale] errore (digest continua senza questo blocco):', err instanceof Error ? err.message : err);
-    return null;
-  }
-}
 
 // ── Check-in di oggi (ex /api/cron/checkin-reminder) ───────────────────────────
 function guideMessage(stanza: string): string | null {

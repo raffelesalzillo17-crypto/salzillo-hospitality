@@ -1,57 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { inviaTelegram, testoRecapPersonale, testoCheckinOggi, testoCheckoutOggi, testoControlloCalendari, testoPreventiviScadenza, testoPulizieDomani, testoSchedineInScadenza } from '@/lib/telegramDigest';
+import { inviaTelegram } from '@/lib/telegramDigest';
+import { sezioneMattina, SEPARATORE_BLOCCHI } from '@/lib/digestSezioni';
 
-// Digest mattutino UNICO (06:00 Europe/Rome) — sostituisce dal 15/09/2026 quattro/cinque
-// messaggi Telegram separati sparsi tra le 7 e le 9:20 UTC (check-in, check-out, controllo
-// calendari, preventivi in scadenza, pulizie di domani): troppi messaggi durante la giornata,
-// richiesta esplicita di Raffaele ("uniamoli dove possibile, un messaggio alle 6 e uno alle
-// 21"). Ogni blocco resta condizionale (compare solo se c'è qualcosa da segnalare) — la logica
-// vera è in src/lib/telegramDigest.ts, condivisa con le vecchie route individuali (rimaste per
-// test manuale via ?dryRun=1, non più schedulate da sole in vercel.json).
+// Digest mattutino del SOLO B&B — richiamabile a mano / in dryRun per test, NON schedulato.
 //
-// Dal 29/09/2026 include anche il recap personale (notizie/mercati/PAC/agenda settimana) che
-// prima arrivava come messaggio separato dal digest di plancia-raffaele — Raffaele ha chiesto
-// di ridurre tutto a due soli messaggi al giorno (mattina/sera), non tre. Vedi
-// testoRecapPersonale() in telegramDigest.ts; il cron gemello in plancia-raffaele è stato
-// rimosso da vercel.json lì.
-//
-// Fuso orario (corretto il 23/09/2026): Vercel Cron accetta solo orari UTC, senza fuso orario
-// nativo — un singolo "0 4 * * *" era corretto solo durante l'ora legale (CEST) e sarebbe
-// scattato un'ora troppo presto per 5 mesi l'anno con l'ora solare (CET), lo stesso bug già
-// scoperto e "risolto" disattivando /api/cron/report-notturno. Soluzione: due voci cron in
-// vercel.json sullo stesso path, una per i mesi CEST (aprile-ottobre, 04:00 UTC = 06:00 locali)
-// e una per i mesi CET (novembre-marzo, 05:00 UTC = 06:00 locali). Resta un'imprecisione di
-// un'ora per le settimane di transizione effettiva (fine marzo/fine ottobre, il cambio non
-// cade mai esattamente a inizio/fine mese) — inevitabile senza fuso orario nativo, ma molto
-// meglio di 5 mesi sbagliati l'anno.
+// Dal 29/09/2026 il messaggio unico della mattina lo invia il bot personale di plancia-raffaele
+// (cron `/api/cron/digest-mattina` lì), che chiede la sezione B&B a /api/digest/sezione e ci
+// aggiunge il recap personale. Questa route resta solo per provare la sezione B&B da sola:
+// se la chiami senza dryRun invia un messaggio Telegram con il bot di QUESTO progetto.
+// Storia (15/09/2026): unisce check-in, check-out, controllo calendari, preventivi in scadenza,
+// pulizie di domani, schedine in scadenza in un unico messaggio invece di cinque.
 
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1';
-  const origin = process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : req.nextUrl.origin;
-
+  
   try {
-    const blocchi = (await Promise.all([
-      testoRecapPersonale(origin),
-      testoCheckinOggi(),
-      testoCheckoutOggi(),
-      testoControlloCalendari(),
-      testoPreventiviScadenza(),
-      testoPulizieDomani(),
-      testoSchedineInScadenza(),
-    ])).filter((b): b is string => !!b);
+    const blocchi = await sezioneMattina();
 
     if (blocchi.length === 0) {
       return NextResponse.json({ ok: true, sent: false, note: 'Niente da segnalare stamattina', dryRun });
     }
 
-    const text = ['☀️ *Buongiorno Raffaele!*', ...blocchi].join('\n\n━━━━━━━━━━\n\n');
+    const text = ['☀️ *B&B — solo sezione Hospitality*', ...blocchi].join(SEPARATORE_BLOCCHI);
     if (!dryRun) await inviaTelegram(text);
     return NextResponse.json({ ok: true, sent: !dryRun, blocchi: blocchi.length, text, dryRun });
   } catch (err) {
