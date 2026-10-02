@@ -9,10 +9,14 @@ import { NextRequest } from 'next/server';
 //    apposta: se un domani va rigenerato/revocato, non tocca l'automazione interna di Vercel.
 export function isAuthorizedCron(req: NextRequest): boolean {
   const header = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && header === `Bearer ${process.env.CRON_SECRET}`) return true;
+  const cron = process.env.CRON_SECRET?.trim();
+  if (cron && header === `Bearer ${cron}`) return true;
 
   const key = req.nextUrl.searchParams.get('key');
-  if (process.env.EXTERNAL_PING_SECRET && key === process.env.EXTERNAL_PING_SECRET) return true;
+  // .trim(): un a-capo finito per errore in fondo al valore su Vercel (successo il 02/10/2026) non
+  // deve far rifiutare la chiave giusta.
+  const ping = process.env.EXTERNAL_PING_SECRET?.trim();
+  if (ping && key === ping) return true;
 
   return false;
 }
