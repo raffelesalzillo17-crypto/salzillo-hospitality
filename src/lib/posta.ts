@@ -126,6 +126,7 @@ async function classifica(mittente: string, oggetto: string, corpo: string, invi
       break;
     } catch (err) {
       ultimoErrore = err;
+      console.error(`[posta] Gemini, tentativo ${tentativo}/3 fallito:`, (err instanceof Error ? err.message : String(err)).slice(0, 300));
       if (tentativo < 3) await new Promise((r) => setTimeout(r, tentativo * 2500));
     }
   }
