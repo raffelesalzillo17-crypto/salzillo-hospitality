@@ -228,7 +228,7 @@ export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number
     }
 
     if (primaEsecuzione && ricevuta.getTime() < limiteVecchia) {
-      if (!dryRun) await db.insert(postaEmail).values({ message_id: id, thread_id: full.data.threadId, mittente, oggetto, ricevuta_il: ricevuta, categoria: 'altro', importanza: 'bassa', riassunto: 'Email precedente all'attivazione, non riassunta', stato: 'ignorata' }).onConflictDoNothing();
+      if (!dryRun) await db.insert(postaEmail).values({ message_id: id, thread_id: full.data.threadId, mittente, oggetto, ricevuta_il: ricevuta, categoria: 'altro', importanza: 'bassa', riassunto: 'Email precedente all attivazione, non riassunta', stato: 'ignorata' }).onConflictDoNothing();
       dettagli.push(`(precedente all'attivazione) ${oggetto}`);
       continue;
     }
