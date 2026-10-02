@@ -13,6 +13,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   }
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1';
+  // Dal 02/10/2026 non è più chiamata dal pinger cron-job.org (i messaggi sono nel digest unico di
+  // Plancia): senza ?manuale=1 non invia nulla, così i vecchi job rimasti su cron-job.org sono innocui.
+  if (!dryRun && req.nextUrl.searchParams.get('manuale') !== '1') {
+    return NextResponse.json({ ok: true, sent: false, note: 'Route non più schedulata: aggiungi ?manuale=1 per un invio a mano o ?dryRun=1 per provarla' });
+  }
   try {
     const text = await testoCheckoutOggi();
     if (!text) return NextResponse.json({ ok: true, sent: false, note: 'Nessun check-out oggi', dryRun });
