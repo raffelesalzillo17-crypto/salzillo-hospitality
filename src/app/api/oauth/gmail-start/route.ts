@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 // Punto di partenza per autorizzare l'accesso alla casella Gmail (salzillohospitality@gmail.com):
-// lettura (riconoscere le prenotazioni Airbnb/Booking) + invio (report PDF automatici, aggiunto
+// lettura e segnare le email come lette (gmail.modify, dal 02/10/2026) + invio (report PDF automatici, aggiunto
 // il 29/09/2026 per l'analisi di mercato settimanale e il rendiconto mensile — vedi
 // wiki/decisioni/). Visitare questo indirizzo da loggati sull'account giusto, poi confermare su
 // Google (compare l'avviso "app non verificata": normale per un progetto a uso personale, si
@@ -25,7 +25,7 @@ export async function GET() {
     client_id: clientId ?? '',
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
+    scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
     access_type: 'offline',
     prompt: 'consent',
   });

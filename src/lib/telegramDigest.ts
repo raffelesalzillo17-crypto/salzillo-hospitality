@@ -7,6 +7,7 @@
 // così i digest possono incollare più blocchi in un unico messaggio.
 
 import { google } from 'googleapis';
+import { gmailClientBnb } from './gmailAuth';
 import { leggiPrenotazioni } from './prenotazioni';
 import { getStruttura } from './strutture';
 import { leggiPulizieDb, leggiPreventiviDb, leggiEventiLocaliDb } from './db/queries';
@@ -276,9 +277,7 @@ const MESI_FULL: Record<string, string> = {
   luglio: '07', agosto: '08', settembre: '09', ottobre: '10', novembre: '11', dicembre: '12',
 };
 function getGmailClient() {
-  const client = new google.auth.OAuth2(process.env.GMAIL_OAUTH_CLIENT_ID, process.env.GMAIL_OAUTH_CLIENT_SECRET);
-  client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-  return google.gmail({ version: 'v1', auth: client });
+  return gmailClientBnb();
 }
 function decodeBody(payload: unknown): string {
   type Part = { mimeType?: string; body?: { data?: string }; parts?: Part[] };
@@ -371,7 +370,7 @@ function parseBookingSubject(subject: string): { reservationId?: string; arrival
 }
 export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolean): Promise<string[]> {
   const testi: string[] = [];
-  const gmail = getGmailClient();
+  const gmail = await getGmailClient();
   const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   await ensureTrackingSheet(sheets);
   const processed = await getProcessedIds(sheets);

@@ -15,6 +15,7 @@ import { GoogleGenAI } from '@google/genai';
 import { eq, inArray, and, desc, sql } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { postaEmail, oauthToken } from './db/schema';
+import { gmailClientBnb } from './gmailAuth';
 
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = 'gemini-3.6-flash';
@@ -24,9 +25,7 @@ const TZ = 'Europe/Rome';
 // ── Gmail ──────────────────────────────────────────────────────────────────────
 
 function gmailClient() {
-  const client = new google.auth.OAuth2(process.env.GMAIL_OAUTH_CLIENT_ID, process.env.GMAIL_OAUTH_CLIENT_SECRET);
-  client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-  return google.gmail({ version: 'v1', auth: client });
+  return gmailClientBnb();
 }
 
 type Part = { mimeType?: string; filename?: string; body?: { data?: string; attachmentId?: string }; parts?: Part[] };
@@ -213,6 +212,32 @@ const eRispondibile = (mittente: string | null) => !!mittente && !NON_RISPONDIBI
 
 // ── Scansione ──────────────────────────────────────────────────────────────────
 
+// Dopo che il sistema ha letto e registrato un'email (e, se serviva, avvisato Raffaele su Telegram)
+// la segna come LETTA su Gmail, così non resta il contatore delle notifiche (richiesta di Raffaele,
+// 02/10/2026). Serve il permesso gmail.modify; se manca, si registra l'errore e si va avanti.
+let avvisatoPermessoMancante = false;
+export async function segnaLetta(gmail: Awaited<ReturnType<typeof gmailClient>>, id: string): Promise<boolean> {
+  try {
+    await gmail.users.messages.modify({ userId: 'me', id, requestBody: { removeLabelIds: ['UNREAD'] } });
+    return true;
+  } catch (err) {
+    if (!avvisatoPermessoMancante) {
+      avvisatoPermessoMancante = true;
+      console.error('[posta] non riesco a segnare le email come lette (manca gmail.modify?):', err instanceof Error ? err.message : err);
+    }
+    return false;
+  }
+}
+
+/** Segna come lette tutte le email già registrate (una tantum, dopo aver dato il permesso gmail.modify). */
+export async function segnaLetteRegistrate(): Promise<{ provate: number; riuscite: number }> {
+  const gmail = await gmailClient();
+  const righe = await getDb().select({ id: postaEmail.message_id }).from(postaEmail);
+  let riuscite = 0;
+  for (const r of righe) if (await segnaLetta(gmail, r.id)) riuscite++;
+  return { provate: righe.length, riuscite };
+}
+
 // Email già gestite da altri flussi (conferme di prenotazione): registrate, non riavvisate.
 const GIA_GESTITE = /(automated@airbnb\.com|noreply@booking\.com)/i;
 const OGGETTI_PRENOTAZIONE = /(prenotazione confermata|hai una nuova prenotazione)/i;
@@ -220,7 +245,7 @@ const MAX_AVVISI_PER_ESECUZIONE = 8; // oltre, le email restano "da gestire" e c
 
 export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number } = {}): Promise<{ casella?: string; nuove: number; avvisate: number; dettagli: string[] }> {
   const dryRun = !!opts.dryRun;
-  const gmail = gmailClient();
+  const gmail = await gmailClient();
   const db = getDb();
   const casella = (await gmail.users.getProfile({ userId: 'me' })).data.emailAddress ?? undefined;
   const lista = await gmail.users.messages.list({ userId: 'me', q: 'in:inbox newer_than:3d', maxResults: opts.maxEmail ?? 40 });
@@ -246,12 +271,14 @@ export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number
     // Conferme di prenotazione: già gestite dal flusso dedicato.
     if (GIA_GESTITE.test(mittente) && OGGETTI_PRENOTAZIONE.test(oggetto)) {
       if (!dryRun) await db.insert(postaEmail).values({ message_id: id, thread_id: full.data.threadId, mittente, oggetto, ricevuta_il: ricevuta, categoria: 'prenotazione', importanza: 'bassa', riassunto: 'Conferma di prenotazione (gestita dal flusso prenotazioni)', stato: 'gestita' }).onConflictDoNothing();
+      if (!dryRun) await segnaLetta(gmail, id);
       dettagli.push(`(prenotazione già gestita) ${oggetto}`);
       continue;
     }
 
     if (primaEsecuzione && ricevuta.getTime() < limiteVecchia) {
       if (!dryRun) await db.insert(postaEmail).values({ message_id: id, thread_id: full.data.threadId, mittente, oggetto, ricevuta_il: ricevuta, categoria: 'altro', importanza: 'bassa', riassunto: 'Email precedente all attivazione, non riassunta', stato: 'ignorata' }).onConflictDoNothing();
+      if (!dryRun) await segnaLetta(gmail, id);
       dettagli.push(`(precedente all'attivazione) ${oggetto}`);
       continue;
     }
@@ -292,6 +319,9 @@ export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number
       await inviaConTasti(testoAvviso(riga), tastiPer(riga.id, !!invito, eRispondibile(riga.mittente)));
       avvisate++;
     }
+    // Registrata (e avvisata, se importante): ora è "letta" anche su Gmail. Le email importanti oltre
+    // il limite di avvisi per esecuzione restano da leggere finché non vengono avvisate.
+    if (riga && (inviaOra || !avvisare)) await segnaLetta(gmail, id);
   }
   return { casella, nuove: daFare.length, avvisate, dettagli };
 }
@@ -415,7 +445,7 @@ async function aggiornaDati(id: string, patch: Record<string, unknown>, extra: {
 type Originale = { destinatario: string; oggetto: string; messageIdHeader?: string; threadId?: string | null; corpo: string };
 
 async function leggiOriginale(messageId: string): Promise<Originale> {
-  const gmail = gmailClient();
+  const gmail = await gmailClient();
   const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
   const h = (n: string) => full.data.payload?.headers?.find((x) => x.name?.toLowerCase() === n.toLowerCase())?.value ?? '';
   const indirizzo = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim();
@@ -474,7 +504,7 @@ async function inviaRisposta(riga: NonNullable<Awaited<ReturnType<typeof leggiRi
     'Content-Transfer-Encoding: base64',
   ];
   const raw = Buffer.from(`${intestazioni.join('\r\n')}\r\n\r\n${Buffer.from(bozza, 'utf8').toString('base64')}`).toString('base64url');
-  await gmailClient().users.messages.send({ userId: 'me', requestBody: { raw, threadId: orig.threadId ?? undefined } });
+  await (await gmailClient()).users.messages.send({ userId: 'me', requestBody: { raw, threadId: orig.threadId ?? undefined } });
   return orig.destinatario;
 }
 

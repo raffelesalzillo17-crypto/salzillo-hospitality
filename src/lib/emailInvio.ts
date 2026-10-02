@@ -5,14 +5,12 @@
  * (src/lib/telegramDigest.ts): il refresh token deve avere anche lo scope gmail.send, non solo
  * gmail.readonly — va rifatta l'autorizzazione da /api/oauth/gmail-start dopo questo cambio.
  */
-import { google } from 'googleapis';
+import { gmailClientBnb } from './gmailAuth';
 
 const MITTENTE = 'salzillohospitality@gmail.com';
 
 function getGmailClient() {
-  const client = new google.auth.OAuth2(process.env.GMAIL_OAUTH_CLIENT_ID, process.env.GMAIL_OAUTH_CLIENT_SECRET);
-  client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-  return google.gmail({ version: 'v1', auth: client });
+  return gmailClientBnb();
 }
 
 type Allegato = { nome: string; contentType: string; bytes: Uint8Array | Buffer };
@@ -53,7 +51,7 @@ function buildRawMessage(opts: { to: string; from: string; subject: string; test
 }
 
 export async function inviaEmailConAllegati(opts: { to: string; subject: string; testo: string; allegati: Allegato[] }): Promise<void> {
-  const gmail = getGmailClient();
+  const gmail = await getGmailClient();
   const raw = buildRawMessage({ ...opts, from: MITTENTE });
   const encoded = Buffer.from(raw, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
