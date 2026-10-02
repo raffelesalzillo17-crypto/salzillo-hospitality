@@ -194,15 +194,21 @@ function testoAvviso(riga: { id: string; mittente: string | null; oggetto: strin
   ].join('\n');
 }
 
-function tastiPer(id: string, invito: boolean) {
+function tastiPer(id: string, invito: boolean, rispondibile = false) {
   if (invito) {
     return [
       [{ text: '✅ Partecipo', callback_data: `posta:${id}:si` }, { text: '❌ No', callback_data: `posta:${id}:no` }, { text: '🤔 Forse', callback_data: `posta:${id}:forse` }],
       [{ text: '🔕 Ignora', callback_data: `posta:${id}:ignora` }],
     ];
   }
-  return [[{ text: '👀 Visto', callback_data: `posta:${id}:visto` }, { text: '⏰ Ricordamelo', callback_data: `posta:${id}:dopo` }]];
+  const righe = [[{ text: '👀 Visto', callback_data: `posta:${id}:visto` }, { text: '⏰ Ricordamelo', callback_data: `posta:${id}:dopo` }]];
+  if (rispondibile) righe.unshift([{ text: '✉️ Rispondi', callback_data: `posta:${id}:rispondi` }]);
+  return righe;
 }
+
+// Mittenti automatici a cui non ha senso rispondere per email.
+const NON_RISPONDIBILE = /(no-?reply|do-?not-?reply|noreply|mailer-daemon|automated@|notifications?@|newsletter)/i;
+const eRispondibile = (mittente: string | null) => !!mittente && !NON_RISPONDIBILE.test(mittente);
 
 // ── Scansione ──────────────────────────────────────────────────────────────────
 
@@ -282,7 +288,7 @@ export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number
       stato: avvisare ? 'notificata' : 'ignorata', dati: invito ? { ics: invito } : null,
     }).onConflictDoNothing().returning();
     if (riga && inviaOra) {
-      await inviaConTasti(testoAvviso(riga), tastiPer(riga.id, !!invito));
+      await inviaConTasti(testoAvviso(riga), tastiPer(riga.id, !!invito, eRispondibile(riga.mittente)));
       avvisate++;
     }
   }
@@ -301,7 +307,7 @@ async function calendarioUtente() {
 
 const ESITO: Record<string, string> = { si: 'accepted', no: 'declined', forse: 'tentative' };
 
-export async function rispondiAlTasto(id: string, azione: string): Promise<string> {
+async function rispondiAlTastoBase(id: string, azione: string): Promise<string> {
   const db = getDb();
   const [riga] = await db.select().from(postaEmail).where(eq(postaEmail.id, id)).limit(1);
   if (!riga) return 'Non trovo più questa email 🤔';
@@ -379,5 +385,147 @@ export async function verificaCalendario(): Promise<{ ok: boolean; account?: str
     return { ok: true, account: principale.data.id ?? undefined };
   } catch (err) {
     return { ok: false, errore: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+
+// ── Rispondere alle email da Telegram (02/10/2026) ─────────────────────────────
+// Flusso: tasto ✉️ Rispondi → Raffaele scrive/detta cosa vuole dire → bozza (Gemini) con il
+// destinatario ben visibile → può correggerla scrivendo altre indicazioni → ✅ Invia. L'email parte
+// SOLO dopo il tocco su ✅ Invia, mai da sola. Lo stato della conversazione sta in
+// posta_email.dati.fase ('attesa_testo' | 'attesa_conferma') e scade dopo 45 minuti.
+
+export type RispostaBot = { testo: string; tasti?: { text: string; callback_data: string }[][] };
+
+type DatiPosta = { ics?: DatiInvito; risposta?: string; fase?: 'attesa_testo' | 'attesa_conferma'; bozza?: string; destinatario?: string; avviata?: number };
+
+async function leggiRiga(id: string) {
+  const [riga] = await getDb().select().from(postaEmail).where(eq(postaEmail.id, id)).limit(1);
+  return riga;
+}
+
+async function aggiornaDati(id: string, patch: Record<string, unknown>, extra: { stato?: string } = {}) {
+  const riga = await leggiRiga(id);
+  const dati: Record<string, unknown> = { ...((riga?.dati as Record<string, unknown> | null) ?? {}), ...patch };
+  for (const k of Object.keys(dati)) if (dati[k] === undefined) delete dati[k];
+  await getDb().update(postaEmail).set({ dati, aggiornato_il: new Date(), ...extra }).where(eq(postaEmail.id, id));
+}
+
+type Originale = { destinatario: string; oggetto: string; messageIdHeader?: string; threadId?: string | null; corpo: string };
+
+async function leggiOriginale(messageId: string): Promise<Originale> {
+  const gmail = gmailClient();
+  const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+  const h = (n: string) => full.data.payload?.headers?.find((x) => x.name?.toLowerCase() === n.toLowerCase())?.value ?? '';
+  const indirizzo = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim();
+  const parti = { testo: [] as string[], html: [] as string[], ics: [] as Part[] };
+  raccogliParti(full.data.payload as Part, parti);
+  const corpo = parti.testo.join('\n').trim() || htmlInTesto(parti.html.join('\n'));
+  return {
+    destinatario: indirizzo(h('Reply-To') || h('From')),
+    oggetto: h('Subject'),
+    messageIdHeader: h('Message-ID') || undefined,
+    threadId: full.data.threadId,
+    corpo: corpo.slice(0, 3000),
+  };
+}
+
+async function scriviBozza(orig: Originale, istruzioni: string, bozzaPrecedente?: string): Promise<string> {
+  const richiesta = bozzaPrecedente
+    ? `BOZZA PRECEDENTE:\n${bozzaPrecedente}\n\nMODIFICA RICHIESTA DA RAFFAELE: ${istruzioni}`
+    : `INDICAZIONI DI RAFFAELE (cosa vuole rispondere): ${istruzioni}`;
+  const prompt = `Sei Raffaele Salzillo, titolare del B&B "Il Tulipano" (affitti brevi). Scrivi in prima persona la risposta a questa email.
+
+Regole: segui SOLO le indicazioni di Raffaele; non inventare date, prezzi, orari, promesse o dati che non sono nelle indicazioni o nell'email originale. Tono cortese e diretto, frasi brevi. Rispondi nella stessa lingua dell'email originale. Inizia con un saluto adeguato e termina con "Raffaele Salzillo". Restituisci SOLO il testo dell'email, senza oggetto, senza virgolette e senza commenti.
+
+EMAIL ORIGINALE (da ${orig.destinatario}, oggetto "${orig.oggetto}"):
+${orig.corpo}
+
+${richiesta}`;
+  let ultimoErrore: unknown;
+  for (let t = 1; t <= 3; t++) {
+    try {
+      const res = await genai.models.generateContent({ model: MODEL, contents: prompt, config: { temperature: 0.4 } });
+      const testo = (res.text ?? '').trim();
+      if (testo) return testo;
+    } catch (err) { ultimoErrore = err; }
+    await new Promise((r) => setTimeout(r, t * 2500));
+  }
+  throw ultimoErrore ?? new Error('bozza vuota');
+}
+
+const TASTI_BOZZA = (id: string) => [[{ text: '✅ Invia', callback_data: `posta:${id}:invia` }, { text: '❌ Annulla', callback_data: `posta:${id}:annulla` }]];
+
+function anteprima(destinatario: string, oggetto: string, bozza: string): string {
+  const ogg = /^re:/i.test(oggetto) ? oggetto : `Re: ${oggetto}`;
+  return `✉️ *Bozza di risposta*\nA: ${esc(destinatario)}\nOggetto: ${esc(ogg)}\n\n${esc(bozza)}\n\n_Scrivimi cosa cambiare (es. "più breve", "aggiungi che...") oppure premi Invia._`;
+}
+
+async function inviaRisposta(riga: NonNullable<Awaited<ReturnType<typeof leggiRiga>>>, bozza: string): Promise<string> {
+  const orig = await leggiOriginale(riga.message_id);
+  const ogg = /^re:/i.test(orig.oggetto) ? orig.oggetto : `Re: ${orig.oggetto}`;
+  const intestazioni = [
+    `To: ${orig.destinatario}`,
+    `Subject: =?UTF-8?B?${Buffer.from(ogg, 'utf8').toString('base64')}?=`,
+    ...(orig.messageIdHeader ? [`In-Reply-To: ${orig.messageIdHeader}`, `References: ${orig.messageIdHeader}`] : []),
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+  ];
+  const raw = Buffer.from(`${intestazioni.join('\r\n')}\r\n\r\n${Buffer.from(bozza, 'utf8').toString('base64')}`).toString('base64url');
+  await gmailClient().users.messages.send({ userId: 'me', requestBody: { raw, threadId: orig.threadId ?? undefined } });
+  return orig.destinatario;
+}
+
+export async function rispondiAlTasto(id: string, azione: string): Promise<RispostaBot> {
+  if (azione === 'rispondi') {
+    const riga = await leggiRiga(id);
+    if (!riga) return { testo: 'Non trovo più questa email 🤔' };
+    await aggiornaDati(id, { fase: 'attesa_testo', avviata: Date.now(), bozza: undefined });
+    return {
+      testo: `✉️ Rispondo a *${esc(riga.oggetto ?? '(senza oggetto)')}*.\nDimmi in poche parole cosa vuoi comunicare: scrivimelo o mandami un vocale.`,
+      tasti: [[{ text: '❌ Annulla', callback_data: `posta:${id}:annulla` }]],
+    };
+  }
+  if (azione === 'annulla') {
+    await aggiornaDati(id, { fase: undefined, bozza: undefined });
+    return { testo: '❌ Ok, non rispondo.' };
+  }
+  if (azione === 'invia') {
+    const riga = await leggiRiga(id);
+    const dati = (riga?.dati as DatiPosta | null) ?? {};
+    if (!riga || dati.fase !== 'attesa_conferma' || !dati.bozza) return { testo: "Non c'è nessuna bozza da inviare (forse è già partita o è scaduta) 🤔" };
+    try {
+      const a = await inviaRisposta(riga, dati.bozza);
+      await aggiornaDati(id, { fase: undefined, bozza: undefined, risposta: 'inviata' }, { stato: 'gestita' });
+      return { testo: `✅ Risposta inviata a ${esc(a)}.` };
+    } catch (err) {
+      console.error('[posta] invio risposta fallito:', err instanceof Error ? err.message : err);
+      return { testo: '😅 Non sono riuscito a inviare la risposta. La bozza resta qui: riprova con Invia tra poco.', tasti: TASTI_BOZZA(id) };
+    }
+  }
+  return { testo: await rispondiAlTastoBase(id, azione) };
+}
+
+/** Se c'è una risposta in corso (ultimi 45 minuti), il messaggio di Raffaele è un'indicazione per la bozza. */
+export async function gestisciTestoPosta(testo: string): Promise<RispostaBot | null> {
+  const db = getDb();
+  const [riga] = await db.select().from(postaEmail)
+    .where(sql`${postaEmail.dati}->>'fase' in ('attesa_testo','attesa_conferma') and ${postaEmail.aggiornato_il} > now() - interval '45 minutes'`)
+    .orderBy(desc(postaEmail.aggiornato_il)).limit(1);
+  if (!riga) return null;
+  const dati = riga.dati as DatiPosta;
+  if (/^(annulla|stop|lascia stare)$/i.test(testo.trim())) {
+    await aggiornaDati(riga.id, { fase: undefined, bozza: undefined });
+    return { testo: '❌ Ok, non rispondo.' };
+  }
+  try {
+    const orig = await leggiOriginale(riga.message_id);
+    const bozza = await scriviBozza(orig, testo, dati.fase === 'attesa_conferma' ? dati.bozza : undefined);
+    await aggiornaDati(riga.id, { fase: 'attesa_conferma', bozza, destinatario: orig.destinatario });
+    return { testo: anteprima(orig.destinatario, orig.oggetto, bozza), tasti: TASTI_BOZZA(riga.id) };
+  } catch (err) {
+    console.error('[posta] bozza fallita:', err instanceof Error ? err.message : err);
+    return { testo: '😅 Non sono riuscito a scrivere la bozza, riprova a dirmi cosa vuoi rispondere.', tasti: [[{ text: '❌ Annulla', callback_data: `posta:${riga.id}:annulla` }]] };
   }
 }

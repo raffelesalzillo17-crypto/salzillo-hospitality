@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runAgentTurn, transcribeAudioViaGroq, type ImageInput } from '@/lib/assistantCore';
 import { loadBotState, saveBotState } from '@/lib/botState';
 import { logTurn } from '@/lib/telegramLog';
-import { rispondiAlTasto } from '@/lib/posta';
+import { rispondiAlTasto, gestisciTestoPosta } from '@/lib/posta';
 import { TASTI, TASTIERA_FISSA, TASTI_CONFERMA, TESTO_MENU, TESTO_NUOVA, rispondiATasto, tastiCancellazione, trovaPrenotazione } from '@/lib/botTasti';
 
 // Bot Telegram di Raffaele, versione cloud (sempre acceso, gira su Vercel via webhook invece
@@ -77,8 +77,8 @@ async function gestisciCallback(cb: NonNullable<Update['callback_query']>, origi
   if (data.startsWith('posta:')) {
     const [, id, azione] = data.split(':');
     const risposta = await rispondiAlTasto(id, azione);
-    await sendTelegramMessage(chatId, risposta);
-    await logTurn(chatId, 'assistant', risposta);
+    await sendTelegramMessage(chatId, risposta.testo, risposta.tasti ? { inline_keyboard: risposta.tasti } : TASTIERA_FISSA);
+    await logTurn(chatId, 'assistant', risposta.testo);
     return;
   }
 
@@ -190,6 +190,19 @@ export async function POST(req: NextRequest) {
     } else if (!message.text) {
       await sendTelegramMessage(chatId, 'Da qui (versione cloud) non gestisco ancora questo tipo di messaggio 🙏 se ti serve, per ora funziona solo sul bot quando il tuo PC è acceso.');
       return NextResponse.json({ ok: true });
+    }
+
+    // Risposta a un'email in corso (tasto ✉️ Rispondi): il messaggio, scritto o detto a voce, è
+    // l'indicazione per la bozza (o una correzione della bozza già mostrata).
+    const istruzionePosta = message.text || transcribedVoice || '';
+    if (istruzionePosta && !image) {
+      const r = await gestisciTestoPosta(istruzionePosta);
+      if (r) {
+        await logTurn(chatId, 'user', istruzionePosta);
+        await sendTelegramMessage(chatId, r.testo, r.tasti ? { inline_keyboard: r.tasti } : TASTIERA_FISSA);
+        await logTurn(chatId, 'assistant', r.testo);
+        return NextResponse.json({ ok: true });
+      }
     }
 
     const state = await loadBotState(chatId);
