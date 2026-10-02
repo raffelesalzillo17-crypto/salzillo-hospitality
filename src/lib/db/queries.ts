@@ -267,10 +267,8 @@ export async function richiesteNuoveDb() {
     .orderBy(desc(richiestePubbliche.creato_il));
 }
 
-// Le query "Vita personale" (checkinRecentiDb, abitudiniConLogDb, obiettiviTrimestraliDb)
-// sono state spostate in plancia-raffaele il 18/09/2026 — la feature era finita per errore
-// in questo progetto. Le tabelle restano in schema.ts (stesso database condiviso), ma le
-// query vivono ora solo in plancia-raffaele/src/lib/db/queries.ts.
+// Le query e le tabelle "Vita personale" sono passate a plancia-raffaele (query il 18/09/2026,
+// tabelle e database il 01/10/2026): qui non esistono più.
 
 /** Documenti veri salvati su Drive (contratti, ricevute...) — per la scheda Documenti,
  *  accanto ai preventivi. Solo quelli generati dopo il 13/09/2026: vedi registraDocumento

@@ -502,35 +502,6 @@ export const notifiche = pgTable('notifiche', {
   letta_il: timestamp('letta_il', { withTimezone: true }),
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vita personale (Motore Rafilu — check-in, abitudini, obiettivi trimestrali)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const statoObiettivo = pgEnum('stato_obiettivo', ['In corso', 'Raggiunto', 'Abbandonato']);
-
-export const checkinPersonale = pgTable('checkin_personale', {
-  ...base,
-  data: date('data').notNull().unique(),
-  nota: text('nota').notNull(),
-});
-
-export const abitudini = pgTable('abitudini', {
-  ...base,
-  nome: text('nome').notNull(),
-  attiva: boolean('attiva').notNull().default(true),
-});
-
-export const abitudiniLog = pgTable('abitudini_log', {
-  ...base,
-  abitudine_id: uuid('abitudine_id').notNull().references(() => abitudini.id),
-  data: date('data').notNull(),
-}, (t) => ({
-  unico: unique().on(t.abitudine_id, t.data),
-}));
-
-export const obiettiviTrimestrali = pgTable('obiettivi_trimestrali', {
-  ...base,
-  trimestre: text('trimestre').notNull(), // es. "Q4 2026"
-  testo: text('testo').notNull(),
-  stato: statoObiettivo('stato').notNull().default('In corso'),
-});
+// Le tabelle "Vita personale" e "Conti" (checkin_personale, abitudini, abitudini_log,
+// obiettivi_trimestrali, conti_*, log_personale) sono passate il 01/10/2026 al database
+// Neon di plancia-raffaele e tolte da qui (vedi wiki: decisione-separazione-plancia-hospitality).
