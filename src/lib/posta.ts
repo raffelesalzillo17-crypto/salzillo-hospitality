@@ -211,13 +211,14 @@ const GIA_GESTITE = /(automated@airbnb\.com|noreply@booking\.com)/i;
 const OGGETTI_PRENOTAZIONE = /(prenotazione confermata|hai una nuova prenotazione)/i;
 const MAX_AVVISI_PER_ESECUZIONE = 8; // oltre, le email restano "da gestire" e compaiono nel riepilogo del mattino
 
-export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number } = {}): Promise<{ nuove: number; avvisate: number; dettagli: string[] }> {
+export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number } = {}): Promise<{ casella?: string; nuove: number; avvisate: number; dettagli: string[] }> {
   const dryRun = !!opts.dryRun;
   const gmail = gmailClient();
   const db = getDb();
+  const casella = (await gmail.users.getProfile({ userId: 'me' })).data.emailAddress ?? undefined;
   const lista = await gmail.users.messages.list({ userId: 'me', q: 'in:inbox newer_than:3d', maxResults: opts.maxEmail ?? 40 });
   const ids = (lista.data.messages ?? []).map((m) => m.id!).filter(Boolean);
-  if (!ids.length) return { nuove: 0, avvisate: 0, dettagli: [] };
+  if (!ids.length) return { casella, nuove: 0, avvisate: 0, dettagli: [] };
 
   const giaViste = new Set((await db.select({ id: postaEmail.message_id }).from(postaEmail).where(inArray(postaEmail.message_id, ids))).map((r) => r.id));
   const daFare = ids.filter((id) => !giaViste.has(id));
@@ -285,7 +286,7 @@ export async function scansionaPosta(opts: { dryRun?: boolean; maxEmail?: number
       avvisate++;
     }
   }
-  return { nuove: daFare.length, avvisate, dettagli };
+  return { casella, nuove: daFare.length, avvisate, dettagli };
 }
 
 // ── Risposte ai tasti di Telegram ──────────────────────────────────────────────
