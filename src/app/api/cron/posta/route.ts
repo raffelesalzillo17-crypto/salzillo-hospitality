@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { alertCronFailure } from '@/lib/cronAlert';
-import { scansionaPosta } from '@/lib/posta';
+import { scansionaPosta, verificaCalendario } from '@/lib/posta';
 
 // Legge TUTTE le email in arrivo nella casella del B&B, le riassume e avvisa su Telegram (inviti
 // con tasti Partecipo/No/Forse). Pensato per essere chiamato spesso (ogni ~30 minuti) dal pinger
@@ -14,6 +14,7 @@ export const maxDuration = 90;
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1';
+  if (req.nextUrl.searchParams.get('verificaCalendario') === '1') return NextResponse.json({ ok: true, calendario: await verificaCalendario() });
   try {
     const esito = await scansionaPosta({ dryRun });
     return NextResponse.json({ ok: true, dryRun, ...esito });

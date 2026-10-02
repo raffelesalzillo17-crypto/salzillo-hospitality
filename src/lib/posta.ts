@@ -369,3 +369,15 @@ export async function testoPostaInSospeso(): Promise<string | null> {
   });
   return `📬 *Email del B&B ancora da gestire* (${righe.length})\n${elenco.join('\n')}`;
 }
+
+/** Verifica di sola lettura: il token del calendario esiste e a quale account appartiene. */
+export async function verificaCalendario(): Promise<{ ok: boolean; account?: string; errore?: string }> {
+  try {
+    const cal = await calendarioUtente();
+    if (!cal) return { ok: false, errore: 'token del calendario assente' };
+    const principale = await cal.calendarList.get({ calendarId: 'primary' });
+    return { ok: true, account: principale.data.id ?? undefined };
+  } catch (err) {
+    return { ok: false, errore: err instanceof Error ? err.message : String(err) };
+  }
+}
