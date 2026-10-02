@@ -110,12 +110,27 @@ async function classifica(mittente: string, oggetto: string, corpo: string, invi
     invito ? `INVITO CALENDARIO: ${JSON.stringify(invito)}` : '',
     `Testo:\n${corpo.slice(0, 3500)}`,
   ].filter(Boolean).join('\n');
-  const res = await genai.models.generateContent({
-    model: MODEL,
-    contents: `${PROMPT}\n\n---\n${contenuto}`,
-    config: { responseMimeType: 'application/json', temperature: 0.2 },
-  });
-  const j = JSON.parse(res.text ?? '{}');
+  // Il tier gratuito di Gemini ogni tanto risponde con errore/limite: fino a 3 tentativi, con pausa.
+  let ultimoErrore: unknown;
+  let testo = '';
+  for (let tentativo = 1; tentativo <= 3; tentativo++) {
+    try {
+      const res = await genai.models.generateContent({
+        model: MODEL,
+        contents: `${PROMPT}\n\n---\n${contenuto}`,
+        config: { responseMimeType: 'application/json', temperature: 0.2 },
+      });
+      testo = res.text ?? '';
+      JSON.parse(testo);
+      ultimoErrore = undefined;
+      break;
+    } catch (err) {
+      ultimoErrore = err;
+      if (tentativo < 3) await new Promise((r) => setTimeout(r, tentativo * 2500));
+    }
+  }
+  if (ultimoErrore) throw ultimoErrore;
+  const j = JSON.parse(testo || '{}');
   const importanza = ['alta', 'media', 'bassa'].includes(j.importanza) ? j.importanza : 'media';
   return {
     categoria: typeof j.categoria === 'string' ? j.categoria : 'altro',
