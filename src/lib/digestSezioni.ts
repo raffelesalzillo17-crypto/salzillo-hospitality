@@ -18,6 +18,8 @@ import {
   testoSchedineInScadenza,
 } from './telegramDigest';
 
+import { testoPostaInSospeso } from './posta';
+
 export const SEPARATORE_BLOCCHI = '\n\n━━━━━━━━━━\n\n';
 
 export async function sezioneMattina(): Promise<string[]> {
@@ -28,6 +30,7 @@ export async function sezioneMattina(): Promise<string[]> {
     testoPreventiviScadenza(),
     testoPulizieDomani(),
     testoSchedineInScadenza(),
+    testoPostaInSospeso(),
   ]);
   return blocchi.filter((b): b is string => !!b);
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runAgentTurn, transcribeAudioViaGroq, type ImageInput } from '@/lib/assistantCore';
 import { loadBotState, saveBotState } from '@/lib/botState';
 import { logTurn } from '@/lib/telegramLog';
+import { rispondiAlTasto } from '@/lib/posta';
 import { TASTI, TASTIERA_FISSA, TASTI_CONFERMA, TESTO_MENU, TESTO_NUOVA, rispondiATasto, tastiCancellazione, trovaPrenotazione } from '@/lib/botTasti';
 
 // Bot Telegram di Raffaele, versione cloud (sempre acceso, gira su Vercel via webhook invece
@@ -70,8 +71,18 @@ async function gestisciCallback(cb: NonNullable<Update['callback_query']>, origi
   // Toglie i tasti dal messaggio toccato: niente doppi tocchi su una conferma già data.
   if (cb.message) await tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
 
-  const state = await loadBotState(chatId);
   const data = cb.data || '';
+
+  // Posta del B&B (inviti e avvisi): tasti Partecipo/No/Forse, Ignora, Visto, Ricordamelo.
+  if (data.startsWith('posta:')) {
+    const [, id, azione] = data.split(':');
+    const risposta = await rispondiAlTasto(id, azione);
+    await sendTelegramMessage(chatId, risposta);
+    await logTurn(chatId, 'assistant', risposta);
+    return;
+  }
+
+  const state = await loadBotState(chatId);
 
   if (data.startsWith('canc:')) {
     const b = await trovaPrenotazione(Number(data.slice(5)));

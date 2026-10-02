@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
-// Punto di partenza per (ri)autorizzare l'accesso a Google Calendar dell'account personale
-// di Raffaele (raffaele.salzillo02@gmail.com — dove sono consolidati sia il calendario
-// personale sia quello del B&B). Visitare questo indirizzo da loggati sull'account
-// PERSONALE (non salzillohospitality@gmail.com, quello è per /api/oauth/gmail-start),
+// Punto di partenza per autorizzare l'accesso a Google Calendar dell'account del B&B
+// (salzillohospitality@gmail.com): serve a rispondere agli inviti ricevuti nella casella del
+// B&B (src/lib/posta.ts). Dal 29/09/2026 il calendario PERSONALE di Raffaele non è più qui: sta in
+// plancia-raffaele. Visitare questo indirizzo da loggati su salzillohospitality@gmail.com,
 // poi confermare su Google (compare l'avviso "app non verificata": normale, si prosegue
 // da "Avanzate" → "Vai a ... (non sicuro)").
 //

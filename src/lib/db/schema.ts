@@ -505,3 +505,32 @@ export const notifiche = pgTable('notifiche', {
 // Le tabelle "Vita personale" e "Conti" (checkin_personale, abitudini, abitudini_log,
 // obiettivi_trimestrali, conti_*, log_personale) sono passate il 01/10/2026 al database
 // Neon di plancia-raffaele e tolte da qui (vedi wiki: decisione-separazione-plancia-hospitality).
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Posta (dal 02/10/2026): tutte le email della casella salzillohospitality@gmail.com, lette,
+// classificate e riassunte; per gli inviti si chiede a Raffaele su Telegram se partecipare.
+// Stato come testo (non enum, per evitare i rischi di DROP TYPE di drizzle-kit): 'nuova',
+// 'notificata', 'gestita', 'ignorata'.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const postaEmail = pgTable('posta_email', {
+  ...base,
+  message_id: text('message_id').notNull().unique(), // id Gmail
+  thread_id: text('thread_id'),
+  mittente: text('mittente'),
+  oggetto: text('oggetto'),
+  ricevuta_il: timestamp('ricevuta_il', { withTimezone: true }),
+  categoria: text('categoria'), // invito | prenotazione | ospite | piattaforma | pagamento | adempimento | promozione | altro
+  importanza: text('importanza'), // alta | media | bassa
+  riassunto: text('riassunto'),
+  azione_suggerita: text('azione_suggerita'),
+  stato: text('stato').notNull().default('nuova'),
+  dati: jsonb('dati'), // per gli inviti: {ics:{uid,summary,start,end,organizer,location,url}, risposta}
+});
+
+// Token OAuth salvati dal server (come in plancia-raffaele): niente copia a mano su Vercel.
+export const oauthToken = pgTable('oauth_token', {
+  servizio: text('servizio').primaryKey(), // es. 'google_calendar_bnb'
+  refresh_token: text('refresh_token').notNull(),
+  aggiornato_il: timestamp('aggiornato_il', { withTimezone: true }).defaultNow().notNull(),
+});

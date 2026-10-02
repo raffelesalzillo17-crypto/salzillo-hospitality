@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/posta",
+      "schedule": "50 5 * * *"
+    },
+    {
       "path": "/api/cron/sync-db",
       "schedule": "45 5 * * *"
     },
