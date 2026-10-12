@@ -1767,6 +1767,93 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
   );
 }
 
+/** Documenti d'identità della prenotazione: li carica Raffaele (foto o PDF), non l'ospite.
+ *  Le foto vengono ridimensionate qui prima dell'invio (limite ~4 MB di Vercel). */
+async function ridimensiona(file: File, lato = 1800): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/heic' || file.type === 'image/heif') return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, lato / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob: Blob | null = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+
+function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazioneId: string; puoModificare: boolean }) {
+  type Doc = { id: string; nome: string; driveUrl: string | null; caricatoIl: string };
+  const [docs, setDocs] = useState<Doc[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function carica() {
+    try {
+      const r = await fetch(`/api/nuovo/documenti-prenotazione?prenotazione=${prenotazioneId}`);
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      setDocs(d.documenti);
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); setDocs([]); }
+  }
+  useEffect(() => {
+    fetch(`/api/nuovo/documenti-prenotazione?prenotazione=${prenotazioneId}`)
+      .then((x) => x.json())
+      .then((d) => { if (d.ok) setDocs(d.documenti); else { setErr(d.error || 'Errore'); setDocs([]); } })
+      .catch((e) => { setErr(String(e instanceof Error ? e.message : e)); setDocs([]); });
+  }, [prenotazioneId]);
+
+  async function invia(lista: FileList | null) {
+    if (!lista || !lista.length) return;
+    setBusy(true); setErr('');
+    try {
+      const fd = new FormData();
+      fd.append('prenotazione', prenotazioneId);
+      for (const f of Array.from(lista)) fd.append('file', await ridimensiona(f));
+      const r = await fetch('/api/nuovo/documenti-prenotazione', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      await carica();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
+  async function elimina(id: string) {
+    if (!confirm('Togliere questo documento? Il file va nel cestino di Drive.')) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch(`/api/nuovo/documenti-prenotazione?id=${id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      await carica();
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <b>📎 Documenti degli ospiti</b>
+      {docs === null && <p className="sub">Carico…</p>}
+      {docs && docs.length === 0 && <p className="sub">Nessun documento ancora.</p>}
+      {docs && docs.map((d) => (
+        <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0' }}>
+          {d.driveUrl
+            ? <a href={d.driveUrl} target="_blank" rel="noopener">{d.nome}</a>
+            : <span>{d.nome}</span>}
+          <span className="sub" style={{ marginLeft: 'auto' }}>{new Date(d.caricatoIl).toLocaleDateString('it-IT')}</span>
+          {puoModificare && <button className="mini" disabled={busy} onClick={() => elimina(d.id)} title="Togli il documento">✕</button>}
+        </div>
+      ))}
+      {puoModificare && (
+        <label className="sync" style={{ display: 'inline-block', marginTop: 6, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Carico…' : '＋ Aggiungi documenti (foto o PDF)'}
+          <input type="file" accept="image/*,application/pdf" multiple disabled={busy} style={{ display: 'none' }}
+            onChange={(e) => { invia(e.target.files); e.target.value = ''; }} />
+        </label>
+      )}
+      {err && <p style={{ color: '#d33' }}>{err}</p>}
+    </div>
+  );
+}
+
 function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito, onClose, onSalvato }: {
   p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; apriPagamentoSubito?: boolean; onClose: () => void; onSalvato: () => void;
 }) {
@@ -1827,6 +1914,7 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
             </tbody></table>
             {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
             {p.note && <p className="sub">{p.note}</p>}
+            <DocumentiPrenotazione prenotazioneId={p.id} puoModificare={puoModificare} />
 
             {p.pagamenti.length > 0 && (
               <table className="tbl" style={{ marginTop: 10 }}><tbody>

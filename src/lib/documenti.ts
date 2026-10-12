@@ -164,3 +164,10 @@ export async function elencaDocumenti(ospiteId: string, nomeOspite: string): Pro
   });
   return (res.data.files ?? []).map((f) => ({ id: f.id!, nome: f.name ?? '', link: f.webViewLink ?? '' }));
 }
+
+/** Sposta un file nel cestino di Drive (recuperabile per 30 giorni) — non lo cancella per sempre.
+ *  Aggiunta il 12/10/2026 per poter togliere un documento d'identità caricato per errore. */
+export async function eliminaDocumentoDrive(fileId: string): Promise<void> {
+  const drive = getDrive();
+  await drive.files.update({ fileId, requestBody: { trashed: true } });
+}
