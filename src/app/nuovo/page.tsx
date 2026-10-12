@@ -1601,7 +1601,7 @@ function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = 
               const we = d.getDay() === 0 || d.getDay() === 6;
               const ev = eventi.find((e) => e.dal <= g && e.al >= g);
               return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
-                <span>{d.getDate()}</span><small>{ev ? '🎉' : d.toLocaleDateString('it-IT', { weekday: 'narrow' })}</small>
+                <small>{d.toLocaleDateString('it-IT', { weekday: 'narrow' })}{ev ? '🎉' : ''}</small><span>{d.getDate()}</span>
               </div>;
             })}
             {prezzi.length > 0 && (
@@ -2603,7 +2603,7 @@ button{cursor:pointer;font-family:inherit}
 .cal-day{text-align:center;padding:4px 0;height:38px;box-sizing:border-box;border-bottom:1px solid var(--line);border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;line-height:1.1;}
 .cal-day.we{background:var(--coral-soft);}
 .cal-day.today{background:var(--coral);color:#fff;font-weight:800;border-radius:6px 6px 0 0;}
-.cal-day small{font-size:9px;color:var(--ink-muted);text-transform:uppercase;}
+.cal-day small{font-size:10px;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.02em;}
 .cal-day.today small{color:#fff;}
 .cal-room{background:var(--surface);font-weight:700;font-size:12px;padding:0 8px;display:flex;align-items:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line);height:46px;}
 .cal-track{position:relative;height:46px;border-bottom:1px solid var(--line);display:flex;}
