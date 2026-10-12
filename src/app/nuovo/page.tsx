@@ -15,6 +15,7 @@ type Prenotazione = {
   lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
   utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
   checkinConfermatoIl: string | null; waCheckinNumero: string | null; waCheckinMessaggio: string | null;
+  documentiIdentita: number;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
   schedine: { id: string; cognome: string; nome: string; tipoDocumento: string; numeroDocumento: string; rapporto: string; stato: string; creatoIl: string }[];
 };
@@ -1726,8 +1727,8 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
         return (
           <button key={p.id} className="cal-bar" onClick={() => onSel(p)}
             style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}
-            title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}`}>
-            <span>{p.ospite}</span>
+            title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}${mancanoDocumenti(p) ? ' · mancano i documenti' : ''}`}>
+            <span>{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
           </button>
         );
       })}
@@ -1767,6 +1768,12 @@ function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi =
   );
 }
 
+/** Prenotazione attiva, non ancora conclusa, senza nessun documento caricato né schedina (indicatore sul calendario). */
+const mancanoDocumenti = (p: Prenotazione) => {
+  const oggiLocale = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return p.stato === 'Attiva' && p.checkout >= oggiLocale && p.documentiIdentita === 0 && p.schedine.length === 0;
+};
+
 /** Documenti d'identità della prenotazione: li carica Raffaele (foto o PDF), non l'ospite.
  *  Le foto vengono ridimensionate qui prima dell'invio (limite ~4 MB di Vercel). */
 async function ridimensiona(file: File, lato = 1800): Promise<File> {
@@ -1782,11 +1789,26 @@ async function ridimensiona(file: File, lato = 1800): Promise<File> {
   } catch { return file; }
 }
 
+type DatiSch = {
+  cognome: string; nome: string; sesso: string; dataNascita: string; luogoNascita: string; statoNascita: string;
+  cittadinanza: string; tipoDocumento: string; numeroDocumento: string; luogoRilascioDocumento: string;
+  tipoAlloggiatoCodice: string; comuneNascitaCodice: string;
+};
+type TabelleAll = { stati: { codice: string; nome: string }[]; comuni: { codice: string; nome: string; provincia: string }[] };
+const SCH_VUOTA: DatiSch = {
+  cognome: '', nome: '', sesso: '', dataNascita: '', luogoNascita: '', statoNascita: '', cittadinanza: '', tipoDocumento: '',
+  numeroDocumento: '', luogoRilascioDocumento: '', tipoAlloggiatoCodice: '16', comuneNascitaCodice: '',
+};
+const normAll = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
 function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazioneId: string; puoModificare: boolean }) {
-  type Doc = { id: string; nome: string; driveUrl: string | null; caricatoIl: string };
+  type Doc = { id: string; nome: string; driveUrl: string | null; mime: string | null; caricatoIl: string };
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+  const [sch, setSch] = useState<DatiSch | null>(null);
+  const [tab, setTab] = useState<TabelleAll | null>(null);
 
   async function carica() {
     try {
@@ -1805,7 +1827,7 @@ function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazione
 
   async function invia(lista: FileList | null) {
     if (!lista || !lista.length) return;
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setOk('');
     try {
       const fd = new FormData();
       fd.append('prenotazione', prenotazioneId);
@@ -1819,7 +1841,7 @@ function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazione
 
   async function elimina(id: string) {
     if (!confirm('Togliere questo documento? Il file va nel cestino di Drive.')) return;
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setOk('');
     try {
       const r = await fetch(`/api/nuovo/documenti-prenotazione?id=${id}`, { method: 'DELETE' });
       const d = await r.json();
@@ -1828,27 +1850,120 @@ function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazione
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
 
+  async function leggi(docId: string) {
+    setBusy(true); setErr(''); setOk('');
+    try {
+      const r = await fetch('/api/nuovo/schedina-da-documento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentoId: docId }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      if (!tab) setTab(await fetch('/checkin/tabelle.json').then((x) => x.json()));
+      setSch({ ...SCH_VUOTA, ...d.dati, tipoAlloggiatoCodice: '16', comuneNascitaCodice: '' });
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
+  async function creaSchedina() {
+    if (!sch) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch('/api/nuovo/schedina', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prenotazioneId, ospite: sch }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      setOk(`✅ Schedina creata per ${sch.nome} ${sch.cognome}: la trovi tra i documenti check-in ricevuti e in Alloggiati Web.`);
+      setSch(null);
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  }
+
+  const set = (k: keyof DatiSch, v: string) => setSch((s) => (s ? { ...s, [k]: v } : s));
+  const nataInItalia = !!sch && normAll(sch.statoNascita) === 'ITALIA';
+  const candidati = sch && tab && nataInItalia ? tab.comuni.filter((c) => normAll(c.nome) === normAll(sch.luogoNascita)) : [];
+  const campo = (label: string, k: keyof DatiSch, extra: { list?: string; placeholder?: string } = {}) => (
+    <label style={{ display: 'block', margin: '5px 0' }}>
+      <span className="sub">{label}</span>
+      <input value={sch ? sch[k] : ''} onChange={(e) => set(k, e.target.value)} list={extra.list} placeholder={extra.placeholder}
+        style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
+    </label>
+  );
+
   return (
     <div style={{ marginTop: 14 }}>
       <b>📎 Documenti degli ospiti</b>
       {docs === null && <p className="sub">Carico…</p>}
       {docs && docs.length === 0 && <p className="sub">Nessun documento ancora.</p>}
       {docs && docs.map((d) => (
-        <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0' }}>
+        <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0', flexWrap: 'wrap' }}>
           {d.driveUrl
             ? <a href={d.driveUrl} target="_blank" rel="noopener">{d.nome}</a>
             : <span>{d.nome}</span>}
           <span className="sub" style={{ marginLeft: 'auto' }}>{new Date(d.caricatoIl).toLocaleDateString('it-IT')}</span>
+          {puoModificare && d.mime?.startsWith('image/') && (
+            <button className="mini" disabled={busy} onClick={() => leggi(d.id)} title="Leggi il documento e precompila la schedina Alloggiati">🔍 Leggi</button>
+          )}
           {puoModificare && <button className="mini" disabled={busy} onClick={() => elimina(d.id)} title="Togli il documento">✕</button>}
         </div>
       ))}
       {puoModificare && (
         <label className="sync" style={{ display: 'inline-block', marginTop: 6, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
-          {busy ? 'Carico…' : '＋ Aggiungi documenti (foto o PDF)'}
+          {busy ? 'Un attimo…' : '＋ Aggiungi documenti (foto o PDF)'}
           <input type="file" accept="image/*,application/pdf" multiple disabled={busy} style={{ display: 'none' }}
             onChange={(e) => { invia(e.target.files); e.target.value = ''; }} />
         </label>
       )}
+
+      {sch && tab && (
+        <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 8 }}>
+          <b>Schedina Alloggiati — controlla i dati letti</b>
+          <p className="sub">Compilati dalla lettura automatica: correggi se serve prima di creare la schedina.</p>
+          {campo('Cognome', 'cognome')}
+          {campo('Nome', 'nome')}
+          <label style={{ display: 'block', margin: '5px 0' }}>
+            <span className="sub">Sesso</span>
+            <select value={sch.sesso} onChange={(e) => set('sesso', e.target.value)} style={{ display: 'block' }}>
+              <option value="">—</option><option value="M">M</option><option value="F">F</option>
+            </select>
+          </label>
+          {campo('Data di nascita', 'dataNascita', { placeholder: 'GG/MM/AAAA' })}
+          {campo('Stato di nascita', 'statoNascita', { list: 'dl-stati-sch' })}
+          {campo('Comune / città di nascita', 'luogoNascita')}
+          {nataInItalia && candidati.length > 1 && (
+            <label style={{ display: 'block', margin: '5px 0' }}>
+              <span className="sub">Più comuni con questo nome: scegli la provincia</span>
+              <select value={sch.comuneNascitaCodice} onChange={(e) => set('comuneNascitaCodice', e.target.value)} style={{ display: 'block' }}>
+                <option value="">— scegli —</option>
+                {candidati.map((c) => <option key={c.codice} value={c.codice}>{c.nome} ({c.provincia})</option>)}
+              </select>
+            </label>
+          )}
+          {nataInItalia && candidati.length === 0 && sch.luogoNascita && <p className="sub" style={{ color: '#d33' }}>Comune non trovato nelle tabelle ufficiali: controlla il nome.</p>}
+          {campo('Cittadinanza', 'cittadinanza', { list: 'dl-stati-sch' })}
+          <label style={{ display: 'block', margin: '5px 0' }}>
+            <span className="sub">Tipo di documento</span>
+            <select value={sch.tipoDocumento} onChange={(e) => set('tipoDocumento', e.target.value)} style={{ display: 'block' }}>
+              <option value="">—</option><option value="Carta d'identità">Carta d&apos;identità</option>
+              <option value="Passaporto">Passaporto</option><option value="Patente">Patente</option>
+            </select>
+          </label>
+          {campo('Numero documento', 'numeroDocumento')}
+          {campo('Luogo di rilascio (facoltativo)', 'luogoRilascioDocumento')}
+          <label style={{ display: 'block', margin: '5px 0' }}>
+            <span className="sub">Tipo di ospite</span>
+            <select value={sch.tipoAlloggiatoCodice} onChange={(e) => set('tipoAlloggiatoCodice', e.target.value)} style={{ display: 'block' }}>
+              <option value="16">Ospite singolo</option><option value="17">Capofamiglia</option><option value="18">Capogruppo</option>
+              <option value="19">Familiare</option><option value="20">Membro gruppo</option>
+            </select>
+          </label>
+          <datalist id="dl-stati-sch">{tab.stati.map((s) => <option key={s.codice} value={s.nome} />)}</datalist>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="sync" disabled={busy} onClick={creaSchedina}>{busy ? 'Un attimo…' : 'Crea schedina'}</button>
+            <button className="mini" disabled={busy} onClick={() => setSch(null)}>Annulla</button>
+          </div>
+        </div>
+      )}
+      {ok && <p style={{ color: '#1FAA6E' }}>{ok}</p>}
       {err && <p style={{ color: '#d33' }}>{err}</p>}
     </div>
   );

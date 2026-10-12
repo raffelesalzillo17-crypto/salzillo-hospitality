@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
-import { alloggiVisibili, richiediSessione, type Sessione } from '@/lib/db/auth';
+import { richiediSessione } from '@/lib/db/auth';
+import { prenotazioneVisibile, puoScrivereDocumenti as puoScrivere } from '@/lib/db/accessoPrenotazione';
 import { getDb } from '@/lib/db';
-import { alloggi, documenti, ospiti, prenotazioni } from '@/lib/db/schema';
+import { documenti } from '@/lib/db/schema';
 import { eliminaDocumentoDrive, registraDocumento } from '@/lib/documenti';
 
 // Documenti d'identità degli ospiti, caricati da Raffaele/collaboratori dalla scheda della
@@ -23,23 +24,6 @@ const MAX_FILE = 8;
 const MIME_OK = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/i;
 
 const err = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
-const puoScrivere = (s: Sessione) => s.ruolo === 'Titolare' || s.ruolo === 'Collaboratore';
-
-/** La prenotazione, solo se la sessione può vederla. */
-async function prenotazioneVisibile(id: string, sess: Sessione) {
-  const db = getDb();
-  const [p] = await db.select({
-    id: prenotazioni.id, ospiteId: prenotazioni.ospite_id, alloggioId: prenotazioni.alloggio_id,
-    nome: ospiti.nome, cognome: ospiti.cognome,
-  }).from(prenotazioni)
-    .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
-    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
-    .where(eq(prenotazioni.id, id));
-  if (!p) return null;
-  const vis = await alloggiVisibili(sess);
-  if (vis !== 'tutti' && !vis.has(p.alloggioId)) return null;
-  return p;
-}
 
 export async function GET(req: NextRequest) {
   const check = await richiediSessione(req);

@@ -171,3 +171,10 @@ export async function eliminaDocumentoDrive(fileId: string): Promise<void> {
   const drive = getDrive();
   await drive.files.update({ fileId, requestBody: { trashed: true } });
 }
+
+/** Scarica il contenuto di un file da Drive (per rileggere un documento già caricato, es. OCR). */
+export async function scaricaDocumentoDrive(fileId: string): Promise<Buffer> {
+  const drive = getDrive();
+  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+  return Buffer.from(res.data as ArrayBuffer);
+}

@@ -70,6 +70,8 @@ export type PrenotazioneVista = {
     id: string; cognome: string; nome: string; tipoDocumento: string; numeroDocumento: string;
     rapporto: string; stato: string; creatoIl: string;
   }[];
+  /** Quanti documenti d'identità (foto/PDF) sono stati caricati per questa prenotazione. */
+  documentiIdentita: number;
 };
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
@@ -78,6 +80,7 @@ function mappaPrenotazione(
   r: Record<string, unknown>,
   pagamentiRiga: PrenotazioneVista['pagamenti'] = [],
   schedineRiga: PrenotazioneVista['schedine'] = [],
+  documentiIdentita = 0,
 ): PrenotazioneVista {
   return {
     id: String(r.id),
@@ -106,6 +109,7 @@ function mappaPrenotazione(
     note: String(r.note ?? ''),
     pagamenti: pagamentiRiga,
     schedine: schedineRiga,
+    documentiIdentita,
   };
 }
 
@@ -177,10 +181,16 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
     schedinePerPren.set(s.prenotazione_id, lista);
   }
 
+  const righeDoc = await db.select({ prenotazione_id: documenti.prenotazione_id }).from(documenti)
+    .where(eq(documenti.tipo, 'Documento identità'));
+  const docPerPren = new Map<string, number>();
+  for (const d of righeDoc) if (d.prenotazione_id) docPerPren.set(d.prenotazione_id, (docPerPren.get(d.prenotazione_id) ?? 0) + 1);
+
   return righe.map((r) => mappaPrenotazione(
     r as Record<string, unknown>,
     pagamentiPerPren.get(String(r.id)) ?? [],
     schedinePerPren.get(String(r.id)) ?? [],
+    docPerPren.get(String(r.id)) ?? 0,
   ));
 }
 
