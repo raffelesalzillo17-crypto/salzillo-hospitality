@@ -17,8 +17,8 @@ import { schedineDaInviareAlloggiati, schedineDaVerificare } from '@/lib/alloggi
 function datiWhatsappCheckin(alloggioNome: string, telefono: string) {
   const s = strutturaPerAlloggio(alloggioNome);
   const numero = telefono ? toWaNumber(telefono) : null;
-  if (!s?.checkinGuideUrl || !s.guideMessageText || !numero) return { waCheckinNumero: null, waCheckinMessaggio: null };
-  return { waCheckinNumero: numero, waCheckinMessaggio: `${s.guideMessageText}\n${s.emoji ?? ''} ${s.checkinGuideUrl}` };
+  if (!s?.infoGuideUrl || !s.guideMessageText || !numero) return { waCheckinNumero: null, waCheckinMessaggio: null };
+  return { waCheckinNumero: numero, waCheckinMessaggio: `${s.guideMessageText}\n${s.emoji ?? ''} ${s.infoGuideUrl}` };
 }
 
 // Tutti i dati per la nuova interfaccia (/nuovo), letti dal database, filtrati per quello

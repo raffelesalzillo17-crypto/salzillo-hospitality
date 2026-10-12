@@ -37,7 +37,7 @@ export type Struttura = {
   /** Testo esatto già in uso per il promemoria di check-in — copia guest-facing, non
    *  generata automaticamente per non rischiare di alterare un testo già confermato. */
   guideMessageText?: string;
-  /** Come guideMessageText ma per infoGuideUrl (scheda WiFi/regole mandata dopo il check-in). */
+  /** Stesso testo di guideMessageText (dal 12/10/2026 si manda un solo link, infoGuideUrl). */
   infoMessageText?: string;
   /** Indirizzo reale della struttura — Tulipano/Rosa a Via Clanio 60, Via Campania per le altre
    *  tre (indirizzo diverso, confermato in wiki/entita/salzillo-hospitality.md). */
@@ -58,8 +58,8 @@ export const STRUTTURE: Struttura[] = [
     checkinGuideUrl: `${BASE_URL}/checkin/tulipano.html`,
     infoGuideUrl: `${BASE_URL}/checkin/tulipano-info.html`,
     emoji: '🌷',
-    guideMessageText: "Ecco le info per arrivare al Tulipano — indirizzo, parcheggio e come entrare. Appena fatto il check-in ti mando anche WiFi, regole e consigli sui dintorni:",
-    infoMessageText: "Ecco WiFi, regole della casa e qualche consiglio sui dintorni per il tuo soggiorno al Tulipano:",
+    guideMessageText: "Ecco tutto quello che ti serve per il soggiorno al Tulipano — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
+    infoMessageText: "Ecco tutto quello che ti serve per il soggiorno al Tulipano — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
     indirizzo: 'Via Clanio 60, Marcianise (CE)',
     wifi: { ssid: 'Lella', password: 'Lella1978@' },
   },
@@ -70,8 +70,8 @@ export const STRUTTURE: Struttura[] = [
     checkinGuideUrl: `${BASE_URL}/checkin/rosa.html`,
     infoGuideUrl: `${BASE_URL}/checkin/rosa-info.html`,
     emoji: '🌸',
-    guideMessageText: "Ecco le info per arrivare alla Stanza Rosa — indirizzo e come entrare. Appena fatto il check-in ti mando anche WiFi, regole e consigli sui dintorni:",
-    infoMessageText: "Ecco WiFi, regole della casa e qualche consiglio sui dintorni per il tuo soggiorno alla Stanza Rosa:",
+    guideMessageText: "Ecco tutto quello che ti serve per il soggiorno alla Stanza Rosa — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
+    infoMessageText: "Ecco tutto quello che ti serve per il soggiorno alla Stanza Rosa — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
     indirizzo: 'Via Clanio 60, Marcianise (CE)',
     wifi: { ssid: 'Lella', password: 'Lella1978@' },
   },
@@ -82,8 +82,8 @@ export const STRUTTURE: Struttura[] = [
     checkinGuideUrl: `${BASE_URL}/checkin/piano-terra.html`,
     infoGuideUrl: `${BASE_URL}/checkin/piano-terra-info.html`,
     emoji: '🏠',
-    guideMessageText: "Ecco le info per arrivare — indirizzo e come entrare. Appena fatto il check-in ti mando anche WiFi, regole e consigli sui dintorni:",
-    infoMessageText: "Ecco WiFi, regole della casa e qualche consiglio sui dintorni per il tuo soggiorno:",
+    guideMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
+    infoMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
     indirizzo: 'Via Campania 36, Marcianise (CE)',
     // Nessun WiFi installato (confermato 09/09/2026) — resta undefined di proposito.
   },
@@ -94,8 +94,8 @@ export const STRUTTURE: Struttura[] = [
     checkinGuideUrl: `${BASE_URL}/checkin/primo-piano.html`,
     infoGuideUrl: `${BASE_URL}/checkin/primo-piano-info.html`,
     emoji: '🏠',
-    guideMessageText: "Ecco le info per arrivare — indirizzo e come entrare. Appena fatto il check-in ti mando anche WiFi, regole e consigli sui dintorni:",
-    infoMessageText: "Ecco WiFi, regole della casa e qualche consiglio sui dintorni per il tuo soggiorno:",
+    guideMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
+    infoMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
     indirizzo: 'Via Campania 36, Marcianise (CE)',
   },
   {
@@ -105,8 +105,8 @@ export const STRUTTURE: Struttura[] = [
     checkinGuideUrl: `${BASE_URL}/checkin/secondo-piano.html`,
     infoGuideUrl: `${BASE_URL}/checkin/secondo-piano-info.html`,
     emoji: '🏠',
-    guideMessageText: "Ecco le info per arrivare — indirizzo e come entrare. Appena fatto il check-in ti mando anche WiFi, regole e consigli sui dintorni:",
-    infoMessageText: "Ecco WiFi, regole della casa e qualche consiglio sui dintorni per il tuo soggiorno:",
+    guideMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
+    infoMessageText: "Ecco tutto quello che ti serve per il soggiorno — come arrivare, WiFi, regole della casa, dove mangiare e cosa fare nei dintorni:",
     indirizzo: 'Via Campania 36, Marcianise (CE)',
   },
 ];

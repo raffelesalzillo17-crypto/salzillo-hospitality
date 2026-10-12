@@ -1881,23 +1881,7 @@ function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito,
                   ].join('\n');
                   return <a className="sync" href={`https://wa.me/${num}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>💬 Manda conferma su WhatsApp</a>;
                 })()}
-                {p.telefono && (() => {
-                  const s = strutturaPerAlloggio(p.alloggio);
-                  if (!s?.infoGuideUrl) return null;
-                  const t = p.telefono.replace(/[^\d]/g, '');
-                  const num = t.length === 10 ? '39' + t : t;
-                  const primo = p.ospite.trim().split(/\s+/)[0];
-                  const msg = [
-                    `Ciao ${primo}!`,
-                    s.infoMessageText || 'Ecco tutte le informazioni per il tuo soggiorno:',
-                    s.infoGuideUrl,
-                    `Per qualsiasi dubbio scrivimi pure qui.`,
-                  ].join('\n');
-                  // Da mandare SOLO dopo aver controllato che il check-in digitale sia stato
-                  // compilato bene (arriva una notifica quando l'ospite lo invia) — mai prima,
-                  // altrimenti l'ospite ha WiFi/regole senza essere ancora registrato in Questura.
-                  return <a className="sync" href={`https://wa.me/${num}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" style={{ textDecoration: 'none' }}>📶 Manda scheda WiFi/regole</a>;
-                })()}
+                
                 {/* Solo Il Tulipano (unica struttura con link recensioni Google confermato, vedi
                     reviewMessage in src/lib/telegramDigest.ts) e solo da check-out avvenuto —
                     prima non ha senso chiedere una recensione. Riportata in dashboard il

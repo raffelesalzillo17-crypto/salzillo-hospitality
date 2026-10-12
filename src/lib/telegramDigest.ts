@@ -58,8 +58,8 @@ function toWaNumber(raw: string): string | null {
 // ── Check-in di oggi (ex /api/cron/checkin-reminder) ───────────────────────────
 function guideMessage(stanza: string): string | null {
   const s = getStruttura(stanza);
-  if (!s?.checkinGuideUrl || !s.guideMessageText) return null;
-  return `${s.guideMessageText}\n${s.emoji ?? ''} ${s.checkinGuideUrl}`;
+  if (!s?.infoGuideUrl || !s.guideMessageText) return null;
+  return `${s.guideMessageText}\n${s.emoji ?? ''} ${s.infoGuideUrl}`;
 }
 export async function testoCheckinOggi(): Promise<string | null> {
   const prenotazioni = await leggiPrenotazioni();
