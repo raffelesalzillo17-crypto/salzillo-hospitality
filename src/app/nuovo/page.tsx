@@ -1506,11 +1506,11 @@ function LinkUtiliBox({ link, puoModificare, onCambiato }: {
     const base = [
       { titolo: 'Sito vetrina pubblico', url: `${origin}/soggiorna`, descrizione: 'Richieste dirette senza commissioni, tutte e 5 le camere' },
       { titolo: 'Pannello gestionale (questo)', url: `${origin}/nuovo`, descrizione: 'Prenotazioni, calendario, tutto il resto' },
-      { titolo: 'Check-in — Il Tulipano', url: `${origin}/checkin/tulipano.html`, descrizione: 'Link da mandare agli ospiti del Tulipano' },
-      { titolo: 'Check-in — Stanza Rosa', url: `${origin}/checkin/rosa.html`, descrizione: '' },
-      { titolo: 'Check-in — Piano Terra', url: `${origin}/checkin/piano-terra.html`, descrizione: '' },
-      { titolo: 'Check-in — Primo Piano', url: `${origin}/checkin/primo-piano.html`, descrizione: '' },
-      { titolo: 'Check-in — Secondo Piano', url: `${origin}/checkin/secondo-piano.html`, descrizione: '' },
+      { titolo: 'Link ospite — Il Tulipano', url: `${origin}/checkin/tulipano-info.html`, descrizione: 'Un solo link da mandare all\'ospite: come arrivare, WiFi, regole, dove mangiare, cosa fare' },
+      { titolo: 'Link ospite — Stanza Rosa', url: `${origin}/checkin/rosa-info.html`, descrizione: '' },
+      { titolo: 'Link ospite — Piano Terra', url: `${origin}/checkin/piano-terra-info.html`, descrizione: '' },
+      { titolo: 'Link ospite — Primo Piano', url: `${origin}/checkin/primo-piano-info.html`, descrizione: '' },
+      { titolo: 'Link ospite — Secondo Piano', url: `${origin}/checkin/secondo-piano-info.html`, descrizione: '' },
       { titolo: 'WhatsApp Business Salzillo Hospitality', url: 'https://wa.me/393522203806', descrizione: 'Il numero ufficiale' },
     ];
     setBusy(true);
@@ -1527,7 +1527,7 @@ function LinkUtiliBox({ link, puoModificare, onCambiato }: {
       <div className="cardhead"><h2>Link utili <small>({link.length})</small></h2></div>
       <p className="sub" style={{ marginTop: -4 }}>Una rubrica di link comodi da avere a portata di mano — anche da condividere. Tienila aggiornata tu: aggiungi qui il foglio Google, gli annunci Airbnb/Booking, o qualunque altro link che usi spesso.</p>
       {link.length === 0 && puoModificare && (
-        <button className="add" disabled={busy} onClick={aggiungiLinkDiBase} style={{ marginBottom: 10 }}>✨ Aggiungi i link di base (sito, check-in, WhatsApp)</button>
+        <button className="add" disabled={busy} onClick={aggiungiLinkDiBase} style={{ marginBottom: 10 }}>✨ Aggiungi i link di base (sito, link ospite, WhatsApp)</button>
       )}
       {puoModificare && (
         <div className="filtri" style={{ marginTop: 10 }}>
