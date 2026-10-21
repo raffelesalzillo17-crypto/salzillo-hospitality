@@ -8,6 +8,7 @@ import { AlloggiatiWebBox, CalendariBox, SinfoniaBox } from './componenti/integr
 import { DettaglioPrenotazione, FormPrenotazione } from './componenti/prenotazione';
 import { FormPreventivo } from './componenti/preventivo';
 import { RigaPulizia } from './componenti/pulizie';
+import { PromemoriaBox } from './componenti/promemoria';
 import { Rendiconti } from './componenti/rendiconti';
 import { FormModale, TemaToggle } from './componenti/ui';
 import { CSS } from './stili';
@@ -31,7 +32,7 @@ export default function Nuovo() {
   const [paOk, setPaOk] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'alloggiati' | 'rendiconti' | 'link' | 'guida'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -167,8 +168,9 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'alloggiati', 'rendiconti', 'link', 'guida'] as const)
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .filter((t) => t !== 'promemoria' || !!dati.promemoria)
           .map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
               {TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}
@@ -270,6 +272,8 @@ export default function Nuovo() {
         </div>
         </>
       )}
+
+      {tab === 'promemoria' && dati.promemoria && <PromemoriaBox promemoria={dati.promemoria} alloggi={dati.alloggi} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} />}
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} documenti={dati.documenti ?? []} />}
 

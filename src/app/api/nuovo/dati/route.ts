@@ -10,6 +10,7 @@ import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
 import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati, schedineDaVerificare } from '@/lib/alloggiatiInvio';
+import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -52,6 +53,19 @@ export async function GET(req: NextRequest) {
       leggiTuttiIBlocchiDb(),
     ]);
     const [eventi, prezzi, tuttiUtenti, linkUtili] = await Promise.all([leggiEventiLocaliDb(), leggiPrezziPeriodoDb(), leggiUtentiDb(), leggiLinkUtiliDb()]);
+    // Promemoria e messaggi automatici: solo per chi gestisce (Titolare/Collaboratore). Si riconcilia
+    // prima di leggere, così la lista è sempre allineata alle prenotazioni di adesso; se qualcosa va
+    // storto la scheda si nasconde ma il resto del gestionale funziona.
+    const vedePromemoria = sess.ruolo === 'Titolare' || sess.ruolo === 'Collaboratore';
+    const promemoria = vedePromemoria
+      ? await (async () => {
+          try {
+            await riconcilia();
+            const [aperte, chiuse, regole] = await Promise.all([attivitaAperte(), attivitaChiuse(), leggiRegole()]);
+            return { aperte, chiuse, regole };
+          } catch (e) { console.error('[nuovo/dati] promemoria non disponibili:', e instanceof Error ? e.message : e); return undefined; }
+        })()
+      : undefined;
     const operatoriPulizie = tuttiUtenti.filter((u) => u.ruolo === 'Pulizie' && u.attivo).map((u) => ({ id: u.id, nome: u.nome }));
 
     // Filtro di visibilità
@@ -96,6 +110,7 @@ export async function GET(req: NextRequest) {
       eventi,
       prezzi,
       linkUtili,
+      promemoria,
       blocchi: blocchiFiltr,
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,

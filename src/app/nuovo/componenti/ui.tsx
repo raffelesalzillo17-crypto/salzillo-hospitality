@@ -41,6 +41,8 @@ export function FormModale({ titolo, campi, iniziali = {}, onInvia, onClose }: {
                 ? <select value={String(v[c.k] ?? '')} onChange={(e) => setV({ ...v, [c.k]: e.target.value })}>
                     {(c.opzioni ?? []).map((o) => <option key={o.v} value={o.v}>{o.t}</option>)}
                   </select>
+                : c.tipo === 'textarea'
+                ? <textarea rows={6} value={String(v[c.k] ?? '')} onChange={(e) => setV({ ...v, [c.k]: e.target.value })} />
                 : c.tipo === 'checkbox'
                 ? <input type="checkbox" checked={!!v[c.k]} onChange={(e) => setV({ ...v, [c.k]: e.target.checked })} style={{ width: 'auto', alignSelf: 'flex-start' }} />
                 : <input type={c.tipo === 'number' ? 'number' : c.tipo === 'date' ? 'date' : 'text'} step={c.tipo === 'number' ? '0.01' : undefined}

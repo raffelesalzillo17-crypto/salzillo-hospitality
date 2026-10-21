@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     : req.nextUrl.origin;
 
   try {
-    const blocchi = tipo === 'mattina' ? await sezioneMattina() : await sezioneSera(origin, dryRun);
+    const blocchi = tipo === 'mattina' ? await sezioneMattina(dryRun) : await sezioneSera(origin, dryRun);
     return NextResponse.json({ ok: true, tipo, dryRun, blocchi, testo: blocchi.join(SEPARATORE_BLOCCHI) });
   } catch (err) {
     console.error(`Errore nella sezione digest ${tipo}:`, err);

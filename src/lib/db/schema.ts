@@ -16,7 +16,7 @@
  */
 
 import {
-  pgTable, pgEnum, uuid, text, boolean, integer, numeric, date, timestamp, jsonb, unique,
+  pgTable, pgEnum, uuid, text, boolean, integer, numeric, date, timestamp, jsonb, unique, index,
 } from 'drizzle-orm/pg-core';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -534,3 +534,43 @@ export const oauthToken = pgTable('oauth_token', {
   refresh_token: text('refresh_token').notNull(),
   aggiornato_il: timestamp('aggiornato_il', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Motore di regole per promemoria e messaggi (dal 21/10/2026) — vedi src/lib/regole.ts.
+// Tabelle create con drizzle/manuali/0002_regole_automazione.sql (stato/azione come testo, non enum).
+// Un'attività è identificata da regola + alloggio + data di check-in (NON dall'id prenotazione:
+// il sync dal foglio ricrea ogni notte le prenotazioni con id nuovi, e lo stato "Fatta" si perderebbe).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const regoleAutomazione = pgTable('regole_automazione', {
+  ...base,
+  nome: text('nome').notNull(),
+  attiva: boolean('attiva').notNull().default(true),
+  evento: text('evento').notNull(),                 // 'Conferma prenotazione' | 'Check-in' | 'Check-out'
+  offset_giorni: integer('offset_giorni').notNull().default(0), // negativo = prima dell'evento
+  ora: text('ora').notNull().default('10:00'),      // ora italiana HH:MM
+  azione: text('azione').notNull(),                 // 'Messaggio ospite' | 'Promemoria per me'
+  modello: text('modello').notNull(),               // testo con segnaposto {nome}, {alloggio}, ...
+  alloggio_id: uuid('alloggio_id').references(() => alloggi.id),
+  canale: text('canale'),
+  min_notti: integer('min_notti'),
+});
+
+export const attivitaPianificate = pgTable('attivita_pianificate', {
+  ...base,
+  regola_id: uuid('regola_id').notNull().references(() => regoleAutomazione.id, { onDelete: 'cascade' }),
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  checkin: date('checkin').notNull(),
+  checkout: date('checkout').notNull(),
+  prenotazione_id: uuid('prenotazione_id'),         // informativo, volutamente senza FK (vedi sopra)
+  ospite_nome: text('ospite_nome').notNull().default(''),
+  telefono: text('telefono'),
+  azione: text('azione').notNull(),
+  scadenza: timestamp('scadenza', { withTimezone: true }).notNull(),
+  stato: text('stato').notNull().default('Da fare'), // 'Da fare' | 'Notificata' | 'Fatta' | 'Saltata' | 'Annullata'
+  testo: text('testo').notNull(),
+  fatta_il: timestamp('fatta_il', { withTimezone: true }),
+}, (t) => ({
+  unico: unique().on(t.regola_id, t.alloggio_id, t.checkin),
+  perStato: index('attivita_pianificate_stato_scadenza_idx').on(t.stato, t.scadenza),
+}));

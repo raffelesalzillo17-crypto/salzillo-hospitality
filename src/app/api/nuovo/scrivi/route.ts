@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { richiediSessione } from '@/lib/db/auth';
 import * as M from '@/lib/db/mutations';
 import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
+import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } from '@/lib/db/regole';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
 // (è un gestionale interno, non un'API pubblica — semplice e sufficiente).
@@ -10,7 +11,10 @@ import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola']);
+
+// Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
+const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -81,8 +85,19 @@ export async function POST(req: NextRequest) {
         r = await M.calcolaImportiPrenotazione(dati as Parameters<typeof M.calcolaImportiPrenotazione>[0]); break;
       case 'risolvi-schedina-ambigua':
         r = await risolviSchedinaAmbigua(id!, dati.esito === 'Inviata' ? 'Inviata' : 'Da inviare'); break;
+      case 'segna-attivita': {
+        const stato = String(dati.stato);
+        if (stato !== 'Fatta' && stato !== 'Saltata' && stato !== 'Da fare') throw new Error('Stato non valido');
+        r = await segnaAttivita(id!, stato); break;
+      }
+      case 'crea-regola': r = await creaRegola(dati as Parameters<typeof creaRegola>[0]); break;
+      case 'aggiorna-regola': r = await aggiornaRegola(id!, dati); break;
+      case 'elimina-regola': r = await eliminaRegola(id!); break;
       default:
         return NextResponse.json({ ok: false, error: `Azione sconosciuta: ${azione}` }, { status: 400 });
+    }
+    if (azione && CAMBIANO_PRENOTAZIONI.has(azione)) {
+      await riconcilia().catch((e) => console.error('[nuovo/scrivi] riconciliazione promemoria fallita (non bloccante):', e instanceof Error ? e.message : e));
     }
     return NextResponse.json({ ok: true, risultato: r });
   } catch (err) {

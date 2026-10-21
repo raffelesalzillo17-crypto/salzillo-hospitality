@@ -19,10 +19,11 @@ import {
 } from './telegramDigest';
 
 import { testoPostaInSospeso } from './posta';
+import { testoPromemoriaAutomatici } from './db/regole';
 
 export const SEPARATORE_BLOCCHI = '\n\n━━━━━━━━━━\n\n';
 
-export async function sezioneMattina(): Promise<string[]> {
+export async function sezioneMattina(dryRun = false): Promise<string[]> {
   const blocchi = await Promise.all([
     testoCheckinOggi(),
     testoCheckoutOggi(),
@@ -31,6 +32,9 @@ export async function sezioneMattina(): Promise<string[]> {
     testoPulizieDomani(),
     testoSchedineInScadenza(),
     testoPostaInSospeso(),
+    // Promemoria e messaggi preparati dalle regole (src/lib/regole.ts). Se il motore ha un problema
+    // non deve far saltare il resto del digest.
+    testoPromemoriaAutomatici(dryRun).catch((e) => { console.error('[digest] promemoria automatici non disponibili:', e instanceof Error ? e.message : e); return null; }),
   ]);
   return blocchi.filter((b): b is string => !!b);
 }

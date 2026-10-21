@@ -12,7 +12,7 @@ export const CANALE_COLOR: Record<string, string> = {
 
 // La scheda 'documenti' mostra soprattutto i preventivi (più le richieste dal sito e i file
 // veri su Drive) — il nome in tab riflette quello che ci si trova davvero.
-export const TAB_LABEL: Partial<Record<string, string>> = { documenti: 'Preventivi', alloggiati: 'Alloggiati Web', link: 'Link utili' };
+export const TAB_LABEL: Partial<Record<string, string>> = { documenti: 'Preventivi', alloggiati: 'Alloggiati Web', link: 'Link utili', promemoria: 'Promemoria' };
 
 export function applicaTema(t: Tema) {
   const el = document.documentElement;

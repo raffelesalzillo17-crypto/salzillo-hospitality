@@ -94,6 +94,7 @@ export type Dati = {
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
   blocchi?: { id: string; alloggioId: string; alloggio: string; checkin: string; checkout: string; nota: string | null }[];
   linkUtili?: LinkUtile[];
+  promemoria?: Promemoria;
 };
 
 export type LinkUtile = { id: string; titolo: string; url: string; descrizione: string | null; ordine: number };
@@ -115,7 +116,7 @@ export type Rendiconto = {
   };
 };
 
-export type Campo = { k: string; label: string; tipo?: 'text' | 'number' | 'date' | 'select' | 'checkbox'; opzioni?: { v: string; t: string }[]; req?: boolean };
+export type Campo = { k: string; label: string; tipo?: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'textarea'; opzioni?: { v: string; t: string }[]; req?: boolean };
 
 // ── Tema chiaro/scuro ──────────────────────────────────────────────────────
 export type Tema = 'auto' | 'light' | 'dark';
@@ -134,3 +135,13 @@ export type DatiSch = {
 };
 
 export type TabelleAll = { stati: { codice: string; nome: string }[]; comuni: { codice: string; nome: string; provincia: string }[] };
+
+export type AttivitaPromemoria = {
+  id: string; regolaId: string; regola: string; azione: string; alloggio: string; checkin: string; checkout: string;
+  ospite: string; scadenza: string; stato: string; testo: string; linkWhatsapp: string | null; fattaIl: string | null;
+};
+export type RegolaPromemoria = {
+  id: string; nome: string; attiva: boolean; evento: string; offsetGiorni: number; ora: string;
+  azione: string; modello: string; alloggioId: string | null; canale: string | null; minNotti: number | null;
+};
+export type Promemoria = { aperte: AttivitaPromemoria[]; chiuse: AttivitaPromemoria[]; regole: RegolaPromemoria[] };

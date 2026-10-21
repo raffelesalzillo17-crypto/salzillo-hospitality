@@ -154,7 +154,7 @@ button{cursor:pointer;font-family:inherit}
 .danger{background:none;border:1px solid #E5484D;color:#E5484D;border-radius:100px;padding:8px 12px;font-size:12px;font-weight:700;}
 .form{display:flex;flex-direction:column;gap:10px;margin:12px 0;}
 .form label{display:flex;flex-direction:column;font-size:12px;font-weight:600;color:var(--ink-muted);gap:4px;}
-.form input,.form select{padding:9px 11px;font-size:16px;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-family:inherit;}
+.form input,.form select,.form textarea{padding:9px 11px;font-size:16px;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-family:inherit;}
 .modalactions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
 .modalactions button{padding:9px 16px;border-radius:100px;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
 .modal{max-height:90vh;overflow-y:auto;}
