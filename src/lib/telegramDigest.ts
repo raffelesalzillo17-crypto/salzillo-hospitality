@@ -392,6 +392,16 @@ export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolea
           body: JSON.stringify({ checkin: parsed.checkinISO, checkout: parsed.checkoutISO, ospite: parsed.ospite, stanza: parsed.stanza, canale: 'Airbnb', lordo: parsed.lordo }),
         });
         const json = await res.json();
+        if (res.status === 409 && json.sovrapposizione) {
+          // Airbnb ha già confermato questa prenotazione ma le date risultano occupate da noi:
+          // è un possibile overbooking, da risolvere a mano. Non si blocca il sync (altrimenti
+          // ripeterebbe l'errore ogni notte): si segnala una volta e si segna come gestita.
+          await markProcessed(sheets, m.id, 'Airbnb', 'alert-sovrapposizione');
+          testi.push(`🚨 *Possibile doppia prenotazione!*
+Airbnb ha confermato ${parsed.ospite} — ${parsed.stanza}, ${parsed.checkinIt} → ${parsed.checkoutIt} (${parsed.lordo}€), ma ${json.error}
+👉 Non l'ho registrata. Controlla subito il calendario e decidi quale prenotazione tenere.`);
+          continue;
+        }
         if (!res.ok || json.error) throw new Error(`Creazione prenotazione Airbnb fallita (${parsed.ospite}): ${json.error || res.status}`);
         await markProcessed(sheets, m.id, 'Airbnb', 'creata');
         testi.push(`✅ *Nuova prenotazione Airbnb aggiunta*\n👤 ${parsed.ospite} — ${parsed.stanza}\n📅 ${parsed.checkinIt} → ${parsed.checkoutIt}\n💶 ${parsed.lordo}€`);

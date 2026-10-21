@@ -11,9 +11,10 @@
  * Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomBytes, scryptSync } from 'crypto';
 import { getDb } from './index';
+import { eErroreVincoloSovrapposizione } from './disponibilita';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, categorieSpesa, spese, scadenze,
   pulizie, schedine, documenti, botState, telegramLog, emailProcessate, utenti,
@@ -82,7 +83,7 @@ const STATO_MAP: Record<string, string> = {
   'No-show': 'No-show', 'No show': 'No-show', 'In attesa': 'In attesa di conferma',
 };
 
-const ALLOGGI_SEED = [
+export const ALLOGGI_SEED = [
   { nome: 'Il Tulipano', immobile: 'Via Clanio 60', foglio: 'Tulipano', regime: 'Con cedolare' as const, self: true, emoji: '🌷', wifi: ['Lella', 'Lella1978@'], trasm: true, sogg: 'Marcianise' },
   { nome: 'Stanza Rosa', immobile: 'Via Clanio 60', foglio: 'Rosa', regime: 'No tax' as const, self: false, emoji: '🌸', wifi: ['Lella', 'Lella1978@'], trasm: false, sogg: null },
   { nome: 'Piano Terra', immobile: 'Via Campania 36', foglio: 'Piano Terra', regime: 'No tax' as const, self: false, emoji: '🏠', wifi: null, trasm: false, sogg: null },
@@ -96,6 +97,8 @@ export type RisultatoImport = {
   prenotazioni: number; sommaLordo: number; sommaUtile: number;
   spese: number; scadenze: number; pulizie: number; schedine: number; contratti: number;
   botState: number; telegramLog: number; emailProcessate: number;
+  /** Righe prenotazione del foglio non importate (date già occupate o riga malformata). */
+  prenotazioniScartate: string[];
 };
 
 export async function importaDaSheets(): Promise<RisultatoImport> {
@@ -249,6 +252,7 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   );
   const dbRows = await leggi('prenotazioni', 'DATABASE', 'B1:K100000');
   let nPren = 0, sommaLordo = 0, sommaUtile = 0;
+  const scartate: string[] = [];
   for (let i = 1; i < dbRows.length; i++) {
     const [checkin, checkout, ospite, stanza, canaleRaw, lordoRaw, statoRaw, penaleRaw, eventId, telefono] = dbRows[i];
     if (!checkin || !ospite || !stanza || !canaleRaw) continue;
@@ -261,17 +265,35 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     if (!alloggio_id) continue;
     const ospite_id = await trovaOCreaOspite(ospite, telefono);
     const c = componenti(lordo, canale, regimePerFoglio[String(stanza).trim()] ?? 'No tax');
-    await db.insert(prenotazioni).values({
-      origine: 'Foglio',
-      alloggio_id, ospite_id, checkin: ci, checkout: itToIso(checkout) ?? ci, numero_ospiti: 1,
-      canale: canale as 'Airbnb', lordo: String(lordo), commissione: String(c.commissione),
-      cedolare: String(c.cedolare), costo_pulizia: String(c.costo_pulizia), fee_gestione: String(c.fee_gestione),
-      utile: String(c.utile), netto_proprietario: String(c.netto_proprietario),
-      stato: stato as 'Attiva',
-      penale_importo: /penale/i.test(String(statoRaw)) ? String(num(penaleRaw) || 0) : null,
-      calendar_event_id: eventId ? String(eventId) : null,
-    });
-    nPren++; sommaLordo += lordo; sommaUtile += c.utile;
+    const co = itToIso(checkout) ?? ci;
+    // Un conflitto di date (vincolo anti-doppia-prenotazione) o una riga malformata non deve
+    // mai interrompere il sync a metà, dopo che le righe del foglio sono già state cancellate:
+    // la riga viene scartata e segnalata, il resto continua.
+    try {
+      await db.insert(prenotazioni).values({
+        origine: 'Foglio',
+        alloggio_id, ospite_id, checkin: ci, checkout: co, numero_ospiti: 1,
+        canale: canale as 'Airbnb', lordo: String(lordo), commissione: String(c.commissione),
+        cedolare: String(c.cedolare), costo_pulizia: String(c.costo_pulizia), fee_gestione: String(c.fee_gestione),
+        utile: String(c.utile), netto_proprietario: String(c.netto_proprietario),
+        stato: stato as 'Attiva',
+        penale_importo: /penale/i.test(String(statoRaw)) ? String(num(penaleRaw) || 0) : null,
+        calendar_event_id: eventId ? String(eventId) : null,
+      });
+      nPren++; sommaLordo += lordo; sommaUtile += c.utile;
+    } catch (e) {
+      const stanzaNome = String(stanza).trim();
+      if (eErroreVincoloSovrapposizione(e)) {
+        // Se esiste già una prenotazione identica (stesso alloggio e date) è lo specchio di una
+        // prenotazione creata nel nuovo sistema: non è un problema, si salta senza avvisare.
+        const [gemella] = await db.select({ id: prenotazioni.id }).from(prenotazioni).where(and(
+          eq(prenotazioni.alloggio_id, alloggio_id), eq(prenotazioni.checkin, ci), eq(prenotazioni.checkout, co),
+        )).limit(1);
+        if (!gemella) scartate.push(`${stanzaNome} ${ci} → ${co} (${String(ospite)}): date già occupate da un'altra prenotazione`);
+      } else {
+        scartate.push(`${stanzaNome} ${ci} → ${co} (${String(ospite)}): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   }
 
   // Categorie + spese
@@ -421,5 +443,6 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     prenotazioni: nPren, sommaLordo: Math.round(sommaLordo * 100) / 100, sommaUtile: Math.round(sommaUtile * 100) / 100,
     spese: nSpese, scadenze: nScad, pulizie: nPul, schedine: nSched, contratti: nContr,
     botState: nBot, telegramLog: nTg, emailProcessate: nEm,
+    prenotazioniScartate: scartate,
   };
 }

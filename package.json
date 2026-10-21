@@ -10,7 +10,9 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",
     "db:studio": "dotenv -e .env.local -- drizzle-kit studio",
-    "db:import": "dotenv -e .env.local -- tsx scripts/importa.ts"
+    "db:import": "dotenv -e .env.local -- tsx scripts/importa.ts",
+    "test": "vitest run",
+    "test:db": "vitest run tests/vincolo.db.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
@@ -35,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

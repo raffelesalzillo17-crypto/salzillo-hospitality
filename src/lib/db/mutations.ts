@@ -15,7 +15,12 @@ import {
 } from './schema';
 import { hashPassword } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
-import { COMM_RATE, ALIQUOTA_CEDOLARE } from '../tariffe';
+import { randomUUID } from 'node:crypto';
+import { calcolaImportiPuri } from '../importi';
+import {
+  ErroreSovrapposizione, validaPeriodo, verificaPeriodoLibero, statoBlocca,
+  eErroreVincoloSovrapposizione,
+} from './disponibilita';
 import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
   scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
@@ -51,14 +56,9 @@ export async function calcolaImportiPrenotazione(opts: {
   )) : [];
   const percFee = contratti.length ? Number(contratti[0].percentuale_fee) : 0;
 
-  const lordo = opts.lordo;
-  const commissione = Math.round(lordo * (COMM_RATE[opts.canale] ?? 0) * 100) / 100;
-  const cedolare = (a.regime === 'Con cedolare' && opts.canale !== 'No Tax') ? Math.round(lordo * ALIQUOTA_CEDOLARE * 100) / 100 : 0;
-  const costoPulizia = Number(a.costoPulizia);
-  const feeGestione = Math.round(lordo * (percFee / 100) * 100) / 100;
-  const utile = Math.round((lordo - commissione - cedolare - costoPulizia) * 100) / 100;
-  const nettoProprietario = Math.round((utile - feeGestione) * 100) / 100;
-  return { commissione, cedolare, costoPulizia, feeGestione, utile, nettoProprietario };
+  return calcolaImportiPuri({
+    canale: opts.canale, lordo: opts.lordo, regimeFiscale: a.regime, costoPulizia: Number(a.costoPulizia), percentualeFee: percFee,
+  });
 }
 
 // ── Anagrafica ───────────────────────────────────────────────────────────────
@@ -255,43 +255,73 @@ export async function creaPrenotazione(d: {
   codiceConfermaCanale?: string; note?: string; creataDa?: string; stato?: string;
 }) {
   const db = getDb();
-  let ospiteId = d.ospiteId;
-  if (!ospiteId) {
-    if (!d.ospiteNome || !d.ospiteCognome) throw new Error('Serve un ospite (id, oppure nome + cognome)');
-    const o = await creaOspite({ nome: d.ospiteNome, cognome: d.ospiteCognome, telefono: d.ospiteTelefono });
-    ospiteId = o.id;
-  }
+  validaPeriodo(d.checkin, d.checkout);
+  const stato = (d.stato as 'Attiva') || 'Attiva';
+
+  // 1) Niente doppie prenotazioni: controllo con messaggio chiaro (include i blocchi manuali).
+  //    Il vincolo nel database (vedi disponibilita.ts) copre anche le scritture simultanee.
+  if (statoBlocca(stato)) await verificaPeriodoLibero(d.alloggioId, d.checkin, d.checkout);
+
+  const nuovoOspite = !d.ospiteId;
+  if (nuovoOspite && (!d.ospiteNome || !d.ospiteCognome)) throw new Error('Serve un ospite (id, oppure nome + cognome)');
+  const ospiteId = d.ospiteId ?? randomUUID();
   const imp = await calcolaImportiPrenotazione({ alloggioId: d.alloggioId, canale: d.canale, lordo: d.lordo });
 
-  // evento Google Calendar (best-effort — un calendario per immobile se impostato)
-  const [ctx] = await db.select({
-    alloggio: alloggi.nome, immobileId: alloggi.immobile_id, calendarId: immobili.calendar_id, telefono: ospiti.telefono,
-  }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
-    .leftJoin(ospiti, eq(ospiti.id, ospiteId!)).where(eq(alloggi.id, d.alloggioId));
-  const [o] = await db.select({ nome: ospiti.nome, cognome: ospiti.cognome }).from(ospiti).where(eq(ospiti.id, ospiteId!));
-  const eventId = await creaEventoPrenotazione({
-    calendarId: ctx?.calendarId ?? null, alloggio: ctx?.alloggio ?? '', ospite: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim(),
-    canale: d.canale, checkin: d.checkin, checkout: d.checkout, lordo: d.lordo, utile: imp.utile, telefono: ctx?.telefono,
-  });
-
-  const [r] = await db.insert(prenotazioni).values({
+  // 2) Scrittura atomica nel database: ospite (se nuovo) + prenotazione + pulizia agganciata al
+  //    check-out, in un'unica transazione. Prima erano tre scritture separate e un errore a metà
+  //    lasciava un ospite o un evento Calendar senza prenotazione. Solo dopo, gli effetti esterni.
+  const insOspite = nuovoOspite ? db.insert(ospiti).values({
+    id: ospiteId, nome: d.ospiteNome!.trim(), cognome: d.ospiteCognome!.trim(), telefono: d.ospiteTelefono || null,
+  }) : null;
+  const prenotazioneId = randomUUID();
+  const insPren = db.insert(prenotazioni).values({
+    id: prenotazioneId,
     origine: 'Database', alloggio_id: d.alloggioId, ospite_id: ospiteId,
     checkin: d.checkin, checkout: d.checkout, numero_ospiti: d.numeroOspiti ?? 1,
     canale: d.canale as 'Airbnb', codice_conferma_canale: d.codiceConfermaCanale || null,
     lordo: s(d.lordo), commissione: s(imp.commissione), cedolare: s(imp.cedolare),
     costo_pulizia: s(imp.costoPulizia), fee_gestione: s(imp.feeGestione), utile: s(imp.utile),
-    netto_proprietario: s(imp.nettoProprietario), calendar_event_id: eventId,
-    stato: (d.stato as 'Attiva') || 'Attiva', note: d.note || null, creata_da: d.creataDa || null,
+    netto_proprietario: s(imp.nettoProprietario),
+    stato, note: d.note || null, creata_da: d.creataDa || null,
   }).returning();
+  // Pulizia agganciata al check-out — creata in automatico, non deve essere aggiunta a mano.
+  const insPul = db.insert(pulizie).values({ alloggio_id: d.alloggioId, prenotazione_id: prenotazioneId, data: d.checkout });
 
+  let r: typeof prenotazioni.$inferSelect;
+  try {
+    if (insOspite) { const [, p] = await db.batch([insOspite, insPren, insPul]); r = p[0]; }
+    else { const [p] = await db.batch([insPren, insPul]); r = p[0]; }
+  } catch (e) {
+    if (eErroreVincoloSovrapposizione(e)) {
+      throw new ErroreSovrapposizione("Date non disponibili: l'alloggio è appena stato occupato da un'altra prenotazione per queste date.");
+    }
+    throw e;
+  }
+
+  // 3) Effetti esterni, tutti best-effort (non bloccano e non annullano la prenotazione già salvata).
+  const [ctx] = await db.select({
+    alloggio: alloggi.nome, calendarId: immobili.calendar_id, nome: ospiti.nome, cognome: ospiti.cognome,
+    telefono: ospiti.telefono, codiceFiscale: ospiti.codice_fiscale, note: ospiti.note,
+  }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
+    .innerJoin(ospiti, eq(ospiti.id, ospiteId)).where(eq(alloggi.id, d.alloggioId));
+  const ospiteNomeCompleto = `${ctx?.nome ?? ''} ${ctx?.cognome ?? ''}`.trim();
+  if (nuovoOspite) {
+    await scriviOspiteSuFoglio({ id: ospiteId, nomeCompleto: ospiteNomeCompleto, telefono: ctx?.telefono ?? null, codiceFiscale: ctx?.codiceFiscale ?? null, note: ctx?.note ?? null });
+  }
+  // evento Google Calendar (un calendario per immobile se impostato)
+  const eventId = await creaEventoPrenotazione({
+    calendarId: ctx?.calendarId ?? null, alloggio: ctx?.alloggio ?? '', ospite: ospiteNomeCompleto,
+    canale: d.canale, checkin: d.checkin, checkout: d.checkout, lordo: d.lordo, utile: imp.utile, telefono: ctx?.telefono,
+  });
+  if (eventId) {
+    await db.update(prenotazioni).set({ calendar_event_id: eventId }).where(eq(prenotazioni.id, r.id));
+    r = { ...r, calendar_event_id: eventId };
+  }
   await scriviNuovaPrenotazioneSuFoglio({
     alloggioNome: ctx?.alloggio ?? '', checkin: d.checkin, checkout: d.checkout,
-    ospiteNomeCompleto: `${o?.nome ?? ''} ${o?.cognome ?? ''}`.trim(), canale: d.canale, lordo: d.lordo,
+    ospiteNomeCompleto, canale: d.canale, lordo: d.lordo,
     stato: r.stato, eventId, telefono: ctx?.telefono,
   });
-
-  // Pulizia agganciata al check-out — creata in automatico, non deve essere aggiunta a mano.
-  await db.insert(pulizie).values({ alloggio_id: d.alloggioId, prenotazione_id: r.id, data: r.checkout });
 
   return r;
 }
@@ -331,7 +361,40 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
       costo_pulizia: s(imp.costoPulizia), fee_gestione: s(imp.feeGestione), utile: s(imp.utile), netto_proprietario: s(imp.nettoProprietario),
     });
   }
-  const [r] = await db.update(prenotazioni).set(set).where(eq(prenotazioni.id, id)).returning();
+
+  // Niente doppie prenotazioni anche quando si spostano le date, si cambia alloggio o si
+  // riattiva una prenotazione cancellata.
+  const nuovoCheckin = (d.checkin as string | undefined) ?? attuale.checkin;
+  const nuovoCheckout = (d.checkout as string | undefined) ?? attuale.checkout;
+  const nuovoAlloggio = (d.alloggioId as string | undefined) ?? attuale.alloggio_id;
+  const nuovoStato = (d.stato as string | undefined) ?? attuale.stato;
+  if (d.checkin !== undefined || d.checkout !== undefined || d.alloggioId !== undefined || d.stato !== undefined) {
+    validaPeriodo(nuovoCheckin, nuovoCheckout);
+    if (statoBlocca(nuovoStato)) await verificaPeriodoLibero(nuovoAlloggio, nuovoCheckin, nuovoCheckout, id);
+  }
+
+  // Aggiornamento e pulizia agganciata nella stessa transazione:
+  // cambio check-out o alloggio → sposta la pulizia, se non è già stata fatta;
+  // cancellazione → la pulizia agganciata non serve più.
+  const upd = db.update(prenotazioni).set(set).where(eq(prenotazioni.id, id)).returning();
+  const pulizieDaCancellare = !!d.stato && nuovoStato !== 'Attiva';
+  const pulizieDaSpostare = !pulizieDaCancellare && (nuovoCheckout !== attuale.checkout || nuovoAlloggio !== attuale.alloggio_id);
+  const nonFatte = and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il));
+  let r: typeof prenotazioni.$inferSelect;
+  try {
+    if (pulizieDaCancellare) {
+      const [rr] = await db.batch([upd, db.delete(pulizie).where(nonFatte)]); r = rr[0];
+    } else if (pulizieDaSpostare) {
+      const [rr] = await db.batch([upd, db.update(pulizie).set({ data: nuovoCheckout, alloggio_id: nuovoAlloggio, aggiornato_il: new Date() }).where(nonFatte)]); r = rr[0];
+    } else {
+      [r] = await upd;
+    }
+  } catch (e) {
+    if (eErroreVincoloSovrapposizione(e)) {
+      throw new ErroreSovrapposizione("Date non disponibili: l'alloggio è appena stato occupato da un'altra prenotazione per queste date.");
+    }
+    throw e;
+  }
 
   if (r.origine === 'Database') {
     const ctx = await contestoPrenotazionePerFoglio(attuale);
@@ -342,17 +405,6 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
       eventId: r.calendar_event_id, telefono: ctx.telefono,
     });
   }
-
-  // Cambio check-out o alloggio → sposta la pulizia agganciata, se non è già stata fatta.
-  // Cancellazione → la pulizia agganciata non serve più.
-  if (r.checkout !== attuale.checkout || r.alloggio_id !== attuale.alloggio_id || (d.stato && r.stato !== 'Attiva')) {
-    if (d.stato && r.stato !== 'Attiva') {
-      await db.delete(pulizie).where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
-    } else {
-      await db.update(pulizie).set({ data: r.checkout, alloggio_id: r.alloggio_id, aggiornato_il: new Date() })
-        .where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
-    }
-  }
   return r;
 }
 
@@ -360,16 +412,23 @@ export async function cancellaPrenotazione(id: string, conPenale: boolean, impor
   const db = getDb();
   const [attuale] = await db.select().from(prenotazioni).where(eq(prenotazioni.id, id));
   if (!attuale) throw new Error('Prenotazione non trovata');
+  // Prima il database (prenotazione cancellata + pulizia agganciata, in una transazione), poi
+  // l'evento Calendar: se il database fallisce, l'evento resta com'è invece di sparire da solo.
+  const [res] = await db.batch([
+    db.update(prenotazioni).set({
+      stato: conPenale ? 'Cancellata con penale' : 'Cancellata',
+      penale_importo: conPenale && importoPenale ? s(importoPenale) : null,
+      calendar_event_id: null,
+      aggiornato_il: new Date(),
+    }).where(eq(prenotazioni.id, id)).returning(),
+    // La pulizia agganciata al check-out non serve più se non è già stata fatta.
+    db.delete(pulizie).where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il))),
+  ]);
+  const r = res[0];
   if (attuale.calendar_event_id) {
     const [im] = await db.select({ calendarId: immobili.calendar_id }).from(alloggi).innerJoin(immobili, eq(immobili.id, alloggi.immobile_id)).where(eq(alloggi.id, attuale.alloggio_id));
     await eliminaEventoPrenotazione(im?.calendarId ?? null, attuale.calendar_event_id);
   }
-  const [r] = await db.update(prenotazioni).set({
-    stato: conPenale ? 'Cancellata con penale' : 'Cancellata',
-    penale_importo: conPenale && importoPenale ? s(importoPenale) : null,
-    calendar_event_id: null,
-    aggiornato_il: new Date(),
-  }).where(eq(prenotazioni.id, id)).returning();
 
   if (r.origine === 'Database') {
     const ctx = await contestoPrenotazionePerFoglio(attuale);
@@ -380,8 +439,6 @@ export async function cancellaPrenotazione(id: string, conPenale: boolean, impor
       eventId: attuale.calendar_event_id, telefono: ctx.telefono,
     });
   }
-  // La pulizia agganciata al check-out non serve più se non è già stata fatta.
-  await db.delete(pulizie).where(and(eq(pulizie.prenotazione_id, id), isNull(pulizie.confermata_il)));
   return r;
 }
 

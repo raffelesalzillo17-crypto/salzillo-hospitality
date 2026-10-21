@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { getAuth, fileIdForTab } from '@/lib/sheets';
 import { calcUtile } from '@/lib/prenotazioni';
+import { getDb } from '@/lib/db';
+import { alloggi } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { ALLOGGI_SEED } from '@/lib/db/importDaSheets';
+import { ErroreDate, ErroreSovrapposizione, validaPeriodo, verificaPeriodoLibero } from '@/lib/db/disponibilita';
 
 // Autenticazione RIMOSSA il 10/09/2026 su richiesta di Raffaele (vedi src/app/page.tsx).
 
@@ -40,6 +45,23 @@ export async function POST(req: NextRequest) {
 
   const lordoNum = Number(lordo);
   const utile    = calcUtile(lordoNum, canale as string);
+
+  // Niente doppie prenotazioni: il foglio non ha vincoli, quindi si controlla qui contro il
+  // database. Se le date sono già occupate si risponde 409 senza scrivere nulla (né Calendar né
+  // foglio). Se il database non risponde non si blocca la prenotazione (meglio registrarla che
+  // perderla), ma resta traccia nei log.
+  try {
+    validaPeriodo(checkin as string, checkout as string);
+    const seed = ALLOGGI_SEED.find((a) => a.foglio === String(stanza).trim());
+    if (seed) {
+      const [al] = await getDb().select({ id: alloggi.id }).from(alloggi).where(eq(alloggi.nome, seed.nome));
+      if (al) await verificaPeriodoLibero(al.id, checkin as string, checkout as string);
+    }
+  } catch (e) {
+    if (e instanceof ErroreSovrapposizione) return NextResponse.json({ error: e.message, sovrapposizione: true }, { status: 409 });
+    if (e instanceof ErroreDate) return NextResponse.json({ error: e.message }, { status: 400 });
+    console.error('[prenotazione] ⚠️ controllo disponibilità non riuscito (si prosegue):', e instanceof Error ? e.message : e);
+  }
 
   try {
     const scopes = [

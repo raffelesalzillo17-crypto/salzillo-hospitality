@@ -18,6 +18,11 @@ export async function GET(req: NextRequest) {
   }
   try {
     const r = await importaDaSheets();
+    if (r.prenotazioniScartate.length > 0) {
+      const elenco = r.prenotazioniScartate.join(' | ');
+      await alertCronFailure('sincronizzazione database (prenotazioni scartate)',
+        new Error(`${r.prenotazioniScartate.length} prenotazione/i del foglio non importate: ${elenco}`));
+    }
     return NextResponse.json({ ok: true, ...r });
   } catch (err) {
     console.error('[sync-db] ERRORE:', err);

@@ -6,6 +6,7 @@
 import { eq, and, lt, gt, notInArray } from 'drizzle-orm';
 import { getDb } from './index';
 import { alloggi, immobili, prenotazioni, blocchiCalendario } from './schema';
+import { STATI_NON_BLOCCANTI } from './disponibilita';
 
 export type StrutturaVetrina = {
   id: string;
@@ -27,8 +28,6 @@ export async function struttureVetrinaDb(): Promise<StrutturaVetrina[]> {
     .where(eq(alloggi.attivo, true))
     .orderBy(alloggi.nome);
 }
-
-const STATI_NON_BLOCCANTI = ['Cancellata', 'Cancellata con penale', 'No-show'] as const;
 
 /** true se il periodo [checkin, checkout) è libero per quell'alloggio. */
 export async function disponibileDb(alloggioId: string, checkinISO: string, checkoutISO: string): Promise<boolean> {
