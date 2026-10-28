@@ -19,7 +19,7 @@ import { eventiLocali } from './db/schema';
 import { creaEventoLocale } from './db/mutations';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
-import { parseAirbnbEmail } from './airbnbEmail';
+import { parseAirbnbEmail, estrattoDiagnostico } from './airbnbEmail';
 import { registraPrenotazioneAirbnb } from './db/prenotazioneDaEmail';
 import { ErroreSovrapposizione } from './db/disponibilita';
 
@@ -330,7 +330,8 @@ export async function eseguiSyncEmailPrenotazioni(_origin: string, dryRun: boole
     const headers = full.data.payload?.headers ?? [];
     const dateHeader = headers.find((h) => h.name === 'Date')?.value;
     const emailDate = dateHeader ? new Date(dateHeader) : new Date();
-    const parsed = parseAirbnbEmail(body, emailDate);
+    const oggetto = headers.find((h) => h.name === 'Subject')?.value ?? undefined;
+    const parsed = parseAirbnbEmail(body, emailDate, oggetto);
     if (parsed.complete) {
       if (!dryRun) {
         try {
@@ -356,7 +357,8 @@ export async function eseguiSyncEmailPrenotazioni(_origin: string, dryRun: boole
         }
       }
     } else if (!dryRun) {
-      await markProcessed(sheets, m.id, 'Airbnb', `alert-dati-incompleti (${parsed.missing.join('; ')})`);
+      // L'estratto del testo grezzo resta nel foglio: così si vede com'è fatta davvero l'email che non si è letta.
+      await markProcessed(sheets, m.id, 'Airbnb', `alert-dati-incompleti (${parsed.missing.join('; ')}) | ${estrattoDiagnostico(body)}`);
       testi.push(`📩 *Email Airbnb trovata, ma non tutti i dati sono leggibili con sicurezza*\nCapito finora: ${parsed.ospite ?? '?'} — ${parsed.stanza ?? '?'} — ${parsed.checkinIt ?? '?'} → ${parsed.checkoutIt ?? '?'} — ${parsed.lordo != null ? parsed.lordo + '€' : '?'}\nMancano: ${parsed.missing.join(', ')}\nAggiungila a mano su Motore Rafilu.`);
     }
     } catch (err) {
