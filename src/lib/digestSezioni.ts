@@ -43,13 +43,21 @@ export async function sezioneSera(origin: string, dryRun: boolean): Promise<stri
   const blocchi: string[] = [];
   blocchi.push(...(await eseguiSyncEmailPrenotazioni(origin, dryRun)));
 
-  // Eventi locali: una ricerca a settimana (lunedì), per non sprecare chiamate ogni sera.
-  if (new Date().getDay() === 1) {
-    const testoEventi = await testoEventiLocali(dryRun);
-    if (testoEventi) blocchi.push(testoEventi);
-  }
+  // I passi qui sotto sono accessori: se falliscono (es. Gemini 429 il lunedì, 19/10/2026) NON devono far
+  // perdere gli avvisi del sync email, che a questo punto ha già creato prenotazioni e segnato le email come
+  // gestite. Si segnala il guasto in un blocco e si va avanti.
+  const accessorio = async (nome: string, passo: () => Promise<string | null>) => {
+    try {
+      const testo = await passo();
+      if (testo) blocchi.push(testo);
+    } catch (err) {
+      console.error(`[digest sera] ${nome} non disponibile:`, err instanceof Error ? err.message : err);
+      blocchi.push(`⚠️ ${nome} non disponibile stasera (${err instanceof Error ? err.message.slice(0, 120) : 'errore'}).`);
+    }
+  };
 
-  const testoSchedine = await testoSchedineInScadenza();
-  if (testoSchedine) blocchi.push(testoSchedine);
+  // Eventi locali: una ricerca a settimana (lunedì), per non sprecare chiamate ogni sera.
+  if (new Date().getDay() === 1) await accessorio('Ricerca eventi in zona', () => testoEventiLocali(dryRun));
+  await accessorio('Controllo schedine in scadenza', () => testoSchedineInScadenza());
   return blocchi;
 }

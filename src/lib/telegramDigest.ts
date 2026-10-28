@@ -19,6 +19,7 @@ import { eventiLocali } from './db/schema';
 import { creaEventoLocale } from './db/mutations';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
+import { parseAirbnbEmail } from './airbnbEmail';
 
 /** Invio con lo stesso schema a doppio tentativo (Markdown, poi testo semplice se fallisce)
  *  usato ovunque nel progetto — un posto solo invece di 6 copie identiche. */
@@ -268,10 +269,6 @@ Se non trovi eventi validi, rispondi con \`\`\`json\n[]\n\`\`\`. Nessun testo fu
 // blocco singolo — il chiamante li unisce agli altri.
 const TRACKING_SHEET = 'EmailProcessate';
 const TRACKING_HEADERS = ['MessageID', 'Tipo', 'Data', 'Esito'] as const;
-const MESI_ABBR: Record<string, string> = {
-  gen: '01', feb: '02', mar: '03', apr: '04', mag: '05', giu: '06',
-  lug: '07', ago: '08', set: '09', ott: '10', nov: '11', dic: '12',
-};
 const MESI_FULL: Record<string, string> = {
   gennaio: '01', febbraio: '02', marzo: '03', aprile: '04', maggio: '05', giugno: '06',
   luglio: '07', agosto: '08', settembre: '09', ottobre: '10', novembre: '11', dicembre: '12',
@@ -303,62 +300,6 @@ async function markProcessed(sheets: SheetsClient, id: string, tipo: string, esi
     requestBody: { values: [[id, tipo, new Date().toISOString(), esito]] },
   });
 }
-type DataYMD = { year: number; month: number; day: number };
-function buildDateFromAbbrev(day: string, meseAbbr: string, refDate: Date): DataYMD | null {
-  const mm = MESI_ABBR[meseAbbr.toLowerCase()];
-  if (!mm) return null;
-  const dayNum = parseInt(day, 10);
-  const monthNum = parseInt(mm, 10);
-  let year = refDate.getUTCFullYear();
-  let ts = Date.UTC(year, monthNum - 1, dayNum);
-  const refMidnightTs = Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), refDate.getUTCDate());
-  if (ts < refMidnightTs - 3 * 24 * 60 * 60 * 1000) { year += 1; ts = Date.UTC(year, monthNum - 1, dayNum); }
-  return { year, month: monthNum, day: dayNum };
-}
-function toISO(d: DataYMD): string { return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`; }
-function toItFmt(d: DataYMD): string { return `${String(d.day).padStart(2, '0')}/${String(d.month).padStart(2, '0')}/${d.year}`; }
-function extractGuestName(body: string): string | undefined {
-  const markerMatch = body.match(/Identità verificata|Nuovo su Airbnb|\d+\s+recension/);
-  if (!markerMatch || markerMatch.index == null) return undefined;
-  const windowStart = Math.max(0, markerMatch.index - 500);
-  const before = body.slice(windowStart, markerMatch.index);
-  const lines = before.split(/\r?\n/).map((l) => l.trim())
-    .filter((l) => l.length > 0 && !/^</.test(l) && !/^https?:/i.test(l) && !/^\[image:/i.test(l));
-  const last = lines[lines.length - 1];
-  if (last && /^[A-ZÀ-Ù][a-zà-ù'’-]+(?: [A-ZÀ-Ù][a-zà-ù'’-]+){0,3}$/.test(last)) return last;
-  return undefined;
-}
-type AirbnbParsed = {
-  complete: boolean; missing: string[]; ospite?: string; stanza?: string;
-  checkinISO?: string; checkoutISO?: string; checkinIt?: string; checkoutIt?: string; lordo?: number;
-};
-function parseAirbnbEmail(body: string, emailDate: Date): AirbnbParsed {
-  const missing: string[] = [];
-  let stanza: string | undefined;
-  if (/tulipano/i.test(body)) stanza = 'Tulipano';
-  else if (/\brosa\b/i.test(body)) stanza = 'Rosa';
-  if (!stanza) missing.push('stanza (né "Tulipano" né "Rosa" trovati nel testo)');
-  const ospite = extractGuestName(body);
-  if (!ospite) missing.push('nome ospite');
-  let checkinD: DataYMD | null = null;
-  let checkoutD: DataYMD | null = null;
-  const datesMatch = body.match(/Check-in\s+\w{3}\s+(\d{1,2})\s+(\w{3})\s+(\d{1,2}:\d{2})\s+Check-out\s+\w{3}\s+(\d{1,2})\s+(\w{3})\s+(\d{1,2}:\d{2})/i);
-  if (datesMatch) {
-    checkinD = buildDateFromAbbrev(datesMatch[1], datesMatch[2], emailDate);
-    checkoutD = checkinD ? buildDateFromAbbrev(datesMatch[4], datesMatch[5], emailDate) : null;
-  }
-  if (!checkinD) missing.push('check-in');
-  if (!checkoutD) missing.push('check-out');
-  let lordo: number | undefined;
-  const priceMatch = body.match(/Totale \(EUR\)\s+([\d.,]+)\s*€/i);
-  if (priceMatch) lordo = parseFloat(priceMatch[1].replace(/\./g, '').replace(',', '.'));
-  if (lordo == null || Number.isNaN(lordo)) missing.push('prezzo');
-  return {
-    complete: missing.length === 0, missing, ospite, stanza,
-    checkinISO: checkinD ? toISO(checkinD) : undefined, checkoutISO: checkoutD ? toISO(checkoutD) : undefined,
-    checkinIt: checkinD ? toItFmt(checkinD) : undefined, checkoutIt: checkoutD ? toItFmt(checkoutD) : undefined, lordo,
-  };
-}
 function parseBookingSubject(subject: string): { reservationId?: string; arrivalIt?: string } {
   const m = subject.match(/\((\d+),\s*([^)]+)\)/);
   if (!m) return {};
@@ -378,6 +319,9 @@ export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolea
   const airbnbList = await gmail.users.messages.list({ userId: 'me', q: 'from:automated@airbnb.com subject:"Prenotazione confermata" newer_than:30d', maxResults: 20 });
   for (const m of airbnbList.data.messages ?? []) {
     if (!m.id || processed.has(m.id)) continue;
+    // Un guasto su UNA email (rete, Google, rotta di creazione) non deve bloccare le altre né far
+    // fallire tutta la sezione: l'email resta "non gestita" e si riprova al giro dopo, con un avviso.
+    try {
     const full = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
     const body = decodeBody(full.data.payload);
     const headers = full.data.payload?.headers ?? [];
@@ -391,7 +335,7 @@ export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolea
           headers: { 'Content-Type': 'application/json', 'x-plancia-key': process.env.PLANCIA_ACCESS_KEY || '' },
           body: JSON.stringify({ checkin: parsed.checkinISO, checkout: parsed.checkoutISO, ospite: parsed.ospite, stanza: parsed.stanza, canale: 'Airbnb', lordo: parsed.lordo }),
         });
-        const json = await res.json();
+        const json = await res.json().catch(() => ({} as { error?: string; sovrapposizione?: boolean }));
         if (res.status === 409 && json.sovrapposizione) {
           // Airbnb ha già confermato questa prenotazione ma le date risultano occupate da noi:
           // è un possibile overbooking, da risolvere a mano. Non si blocca il sync (altrimenti
@@ -409,6 +353,11 @@ Airbnb ha confermato ${parsed.ospite} — ${parsed.stanza}, ${parsed.checkinIt} 
     } else if (!dryRun) {
       await markProcessed(sheets, m.id, 'Airbnb', `alert-dati-incompleti (${parsed.missing.join('; ')})`);
       testi.push(`📩 *Email Airbnb trovata, ma non tutti i dati sono leggibili con sicurezza*\nCapito finora: ${parsed.ospite ?? '?'} — ${parsed.stanza ?? '?'} — ${parsed.checkinIt ?? '?'} → ${parsed.checkoutIt ?? '?'} — ${parsed.lordo != null ? parsed.lordo + '€' : '?'}\nMancano: ${parsed.missing.join(', ')}\nAggiungila a mano su Motore Rafilu.`);
+    }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sync-email] email Airbnb ${m.id} non elaborata:`, msg);
+      if (!dryRun) testi.push(`⚠️ *Email Airbnb non elaborata* (${msg.slice(0, 150)})\nRiprovo al prossimo controllo. Se una prenotazione manca, aggiungila a mano.`);
     }
   }
 
