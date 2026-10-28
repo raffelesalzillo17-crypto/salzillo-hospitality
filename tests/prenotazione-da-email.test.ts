@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Registrazione nel database di una prenotazione letta dall'email Airbnb — con database, Calendar e
 // foglio FINTI: nessuna scrittura vera.
-const { risultati, creaPrenotazione } = vi.hoisted(() => ({ risultati: [] as unknown[][], creaPrenotazione: vi.fn(async (..._a: unknown[]) => ({ id: 'p1' })) }));
+const { risultati, aggiornamenti, creaPrenotazione } = vi.hoisted(() => ({ risultati: [] as unknown[][], aggiornamenti: [] as unknown[], creaPrenotazione: vi.fn(async (..._a: unknown[]) => ({ id: 'p1' })) }));
 vi.mock('../src/lib/db/index', () => ({
   getDb: () => ({
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => risultati.shift() ?? [], then: (f: (v: unknown) => unknown) => f(risultati.shift() ?? []) }) }) }),
+    select: () => ({ from: () => { const w = { where: () => ({ limit: async () => risultati.shift() ?? [], then: (f: (v: unknown) => unknown) => f(risultati.shift() ?? []) }) }; return { ...w, innerJoin: () => w }; } }),
+    update: () => ({ set: (v: unknown) => { aggiornamenti.push(v); return { where: async () => undefined }; } }),
   }),
 }));
 vi.mock('../src/lib/db/mutations', () => ({ creaPrenotazione }));
@@ -17,11 +18,11 @@ import { registraPrenotazioneAirbnb, dividiNomeOspite } from '../src/lib/db/pren
 import { parseAirbnbEmail } from '../src/lib/airbnbEmail';
 
 const dati = { ospite: 'Giuseppe Zampella', stanza: 'Tulipano', checkinISO: '2026-10-24', checkoutISO: '2026-10-25', lordo: 60, codice: 'HM353YWJXC' };
-beforeEach(() => { risultati.length = 0; creaPrenotazione.mockClear(); });
+beforeEach(() => { risultati.length = 0; aggiornamenti.length = 0; creaPrenotazione.mockClear(); });
 
 describe('registraPrenotazioneAirbnb', () => {
   it('crea la prenotazione con codice di conferma e canale Airbnb', async () => {
-    risultati.push([], [{ id: 'alloggio-1' }], []); // nessun codice già presente, alloggio trovato, ospite nuovo
+    risultati.push([], [{ id: 'alloggio-1' }], [], []); // nessun codice già presente, alloggio trovato, nessuna prenotazione uguale, ospite nuovo
     const r = await registraPrenotazioneAirbnb(dati);
     expect(r.esito).toBe('creata');
     expect(creaPrenotazione).toHaveBeenCalledWith(expect.objectContaining({
@@ -35,9 +36,15 @@ describe('registraPrenotazioneAirbnb', () => {
     expect(creaPrenotazione).not.toHaveBeenCalled();
   });
   it('un ospite già in anagrafica viene riusato', async () => {
-    risultati.push([], [{ id: 'alloggio-1' }], [{ id: 'ospite-9' }]);
+    risultati.push([], [{ id: 'alloggio-1' }], [], [{ id: 'ospite-9' }]);
     await registraPrenotazioneAirbnb(dati);
     expect(creaPrenotazione).toHaveBeenCalledWith(expect.objectContaining({ ospiteId: 'ospite-9' }));
+  });
+  it('stessa prenotazione già inserita a mano (senza codice): non è una doppia, si aggancia il codice', async () => {
+    risultati.push([], [{ id: 'alloggio-1' }], [{ id: 'manuale-1', codice: null }]);
+    expect((await registraPrenotazioneAirbnb(dati)).esito).toBe('gia-presente');
+    expect(creaPrenotazione).not.toHaveBeenCalled();
+    expect(aggiornamenti).toEqual([{ codice_conferma_canale: 'HM353YWJXC' }]);
   });
   it('stanza sconosciuta: errore, non una prenotazione sbagliata', async () => {
     risultati.push([]);

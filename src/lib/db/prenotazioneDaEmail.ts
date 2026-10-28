@@ -37,9 +37,23 @@ export async function registraPrenotazioneAirbnb(p: DatiPrenotazioneEmail): Prom
   if (!al) throw new Error(`Alloggio "${seed.nome}" non trovato nel database`);
 
   const { nome, cognome } = dividiNomeOspite(p.ospite);
+  const sceltoNome = sql`lower(${ospiti.nome}) = ${nome.toLowerCase()}`;
+  const sceltoCognome = sql`lower(${ospiti.cognome}) = ${cognome.toLowerCase()}`;
+
+  // Stessa prenotazione già inserita a mano (stesso alloggio, stesse date, stesso ospite, senza codice):
+  // non è una doppia prenotazione. Le si aggancia il codice di conferma e si chiude lì.
+  const [stessa] = await db.select({ id: prenotazioni.id, codice: prenotazioni.codice_conferma_canale }).from(prenotazioni)
+    .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
+    .where(and(eq(prenotazioni.alloggio_id, al.id), eq(prenotazioni.checkin, p.checkinISO), eq(prenotazioni.checkout, p.checkoutISO),
+      eq(prenotazioni.stato, 'Attiva'), sceltoNome, sceltoCognome)).limit(1);
+  if (stessa) {
+    if (!stessa.codice && p.codice) await db.update(prenotazioni).set({ codice_conferma_canale: p.codice }).where(eq(prenotazioni.id, stessa.id));
+    return { esito: 'gia-presente' };
+  }
+
   // Un ospite che è già tornato riusa la sua anagrafica (documenti e storico restano agganciati).
   const [esistente] = await db.select({ id: ospiti.id }).from(ospiti)
-    .where(and(sql`lower(${ospiti.nome}) = ${nome.toLowerCase()}`, sql`lower(${ospiti.cognome}) = ${cognome.toLowerCase()}`)).limit(1);
+    .where(and(sceltoNome, sceltoCognome)).limit(1);
 
   await creaPrenotazione({
     alloggioId: al.id, ospiteId: esistente?.id, ospiteNome: nome, ospiteCognome: cognome,
