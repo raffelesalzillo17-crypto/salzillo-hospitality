@@ -56,6 +56,8 @@ function leggiImporto(testo: string): number {
 export type AirbnbParsed = {
   complete: boolean; missing: string[]; ospite?: string; stanza?: string;
   checkinISO?: string; checkoutISO?: string; checkinIt?: string; checkoutIt?: string; lordo?: number;
+  /** Codice di conferma Airbnb (es. HM353YWJXC) — opzionale: se manca la prenotazione si crea lo stesso. */
+  codice?: string;
 };
 export function parseAirbnbEmail(body: string, emailDate: Date): AirbnbParsed {
   const missing: string[] = [];
@@ -81,8 +83,9 @@ export function parseAirbnbEmail(body: string, emailDate: Date): AirbnbParsed {
   const priceMatch = body.match(/Totale \(EUR\)\s*€?\s*([\d.,]+)/i);
   if (priceMatch) lordo = leggiImporto(priceMatch[1]);
   if (lordo == null || Number.isNaN(lordo)) missing.push('prezzo');
+  const codice = body.match(/Codice di conferma\s+([A-Z0-9]{8,12})/)?.[1];
   return {
-    complete: missing.length === 0, missing, ospite, stanza,
+    complete: missing.length === 0, missing, ospite, stanza, codice,
     checkinISO: checkinD ? toISO(checkinD) : undefined, checkoutISO: checkoutD ? toISO(checkoutD) : undefined,
     checkinIt: checkinD ? toItFmt(checkinD) : undefined, checkoutIt: checkoutD ? toItFmt(checkoutD) : undefined, lordo,
   };

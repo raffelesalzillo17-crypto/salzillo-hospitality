@@ -20,6 +20,8 @@ import { creaEventoLocale } from './db/mutations';
 import { eq, and } from 'drizzle-orm';
 import { GoogleGenAI } from '@google/genai';
 import { parseAirbnbEmail } from './airbnbEmail';
+import { registraPrenotazioneAirbnb } from './db/prenotazioneDaEmail';
+import { ErroreSovrapposizione } from './db/disponibilita';
 
 /** Invio con lo stesso schema a doppio tentativo (Markdown, poi testo semplice se fallisce)
  *  usato ovunque nel progetto — un posto solo invece di 6 copie identiche. */
@@ -309,8 +311,9 @@ function parseBookingSubject(subject: string): { reservationId?: string; arrival
   if (dateMatch) { const mm = MESI_FULL[dateMatch[2].toLowerCase()]; if (mm) arrivalIt = `${dateMatch[1].padStart(2, '0')}/${mm}/${dateMatch[3]}`; }
   return { reservationId, arrivalIt };
 }
-export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolean): Promise<string[]> {
+export async function eseguiSyncEmailPrenotazioni(_origin: string, dryRun: boolean): Promise<string[]> {
   const testi: string[] = [];
+  const oggi = new Date().toISOString().slice(0, 10);
   const gmail = await getGmailClient();
   const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   await ensureTrackingSheet(sheets);
@@ -330,25 +333,27 @@ export async function eseguiSyncEmailPrenotazioni(origin: string, dryRun: boolea
     const parsed = parseAirbnbEmail(body, emailDate);
     if (parsed.complete) {
       if (!dryRun) {
-        const res = await fetch(`${origin}/api/prenotazione`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-plancia-key': process.env.PLANCIA_ACCESS_KEY || '' },
-          body: JSON.stringify({ checkin: parsed.checkinISO, checkout: parsed.checkoutISO, ospite: parsed.ospite, stanza: parsed.stanza, canale: 'Airbnb', lordo: parsed.lordo }),
-        });
-        const json = await res.json().catch(() => ({} as { error?: string; sovrapposizione?: boolean }));
-        if (res.status === 409 && json.sovrapposizione) {
-          // Airbnb ha già confermato questa prenotazione ma le date risultano occupate da noi:
-          // è un possibile overbooking, da risolvere a mano. Non si blocca il sync (altrimenti
-          // ripeterebbe l'errore ogni notte): si segnala una volta e si segna come gestita.
-          await markProcessed(sheets, m.id, 'Airbnb', 'alert-sovrapposizione');
-          testi.push(`🚨 *Possibile doppia prenotazione!*
-Airbnb ha confermato ${parsed.ospite} — ${parsed.stanza}, ${parsed.checkinIt} → ${parsed.checkoutIt} (${parsed.lordo}€), ma ${json.error}
-👉 Non l'ho registrata. Controlla subito il calendario e decidi quale prenotazione tenere.`);
-          continue;
+        try {
+          const r = await registraPrenotazioneAirbnb({
+            ospite: parsed.ospite!, stanza: parsed.stanza!, checkinISO: parsed.checkinISO!,
+            checkoutISO: parsed.checkoutISO!, lordo: parsed.lordo!, codice: parsed.codice,
+          });
+          await markProcessed(sheets, m.id, 'Airbnb', r.esito === 'creata' ? 'creata' : 'gia-presente');
+          if (r.esito === 'creata') {
+            testi.push(`✅ *Nuova prenotazione Airbnb aggiunta*\n👤 ${parsed.ospite} — ${parsed.stanza}\n📅 ${parsed.checkinIt} → ${parsed.checkoutIt}\n💶 ${parsed.lordo}€`);
+          }
+        } catch (e) {
+          if (!(e instanceof ErroreSovrapposizione)) throw e;
+          // Airbnb ha già confermato ma le date risultano occupate da noi: possibile overbooking, da
+          // risolvere a mano. L'email NON si segna come gestita: appena le date si liberano (es. si annulla
+          // l'altra prenotazione) la registra da sola al giro dopo. L'avviso parte una volta al giorno.
+          const chiave = `avviso:${m.id}:${oggi}`;
+          if (!processed.has(chiave)) {
+            await markProcessed(sheets, chiave, 'Airbnb', 'avviso-sovrapposizione');
+            processed.add(chiave);
+            testi.push(`🚨 *Possibile doppia prenotazione!*\nAirbnb ha confermato ${parsed.ospite} — ${parsed.stanza}, ${parsed.checkinIt} → ${parsed.checkoutIt} (${parsed.lordo}€), ma ${e.message}\n👉 Non l'ho registrata. Controlla il calendario e decidi quale tenere: appena le date si liberano la registro da sola.`);
+          }
         }
-        if (!res.ok || json.error) throw new Error(`Creazione prenotazione Airbnb fallita (${parsed.ospite}): ${json.error || res.status}`);
-        await markProcessed(sheets, m.id, 'Airbnb', 'creata');
-        testi.push(`✅ *Nuova prenotazione Airbnb aggiunta*\n👤 ${parsed.ospite} — ${parsed.stanza}\n📅 ${parsed.checkinIt} → ${parsed.checkoutIt}\n💶 ${parsed.lordo}€`);
       }
     } else if (!dryRun) {
       await markProcessed(sheets, m.id, 'Airbnb', `alert-dati-incompleti (${parsed.missing.join('; ')})`);
@@ -357,7 +362,13 @@ Airbnb ha confermato ${parsed.ospite} — ${parsed.stanza}, ${parsed.checkinIt} 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[sync-email] email Airbnb ${m.id} non elaborata:`, msg);
-      if (!dryRun) testi.push(`⚠️ *Email Airbnb non elaborata* (${msg.slice(0, 150)})\nRiprovo al prossimo controllo. Se una prenotazione manca, aggiungila a mano.`);
+      // Si riprova a ogni giro, ma l'avviso parte una volta al giorno (con la lettura frequente sarebbe spam).
+      const chiave = `errore:${m.id}:${oggi}`;
+      if (!dryRun && !processed.has(chiave)) {
+        processed.add(chiave);
+        await markProcessed(sheets, chiave, 'Airbnb', 'avviso-errore').catch(() => {});
+        testi.push(`⚠️ *Email Airbnb non elaborata* (${msg.slice(0, 150)})\nRiprovo al prossimo controllo. Se una prenotazione manca, aggiungila a mano.`);
+      }
     }
   }
 
