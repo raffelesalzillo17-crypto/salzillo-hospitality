@@ -111,12 +111,13 @@ export async function testoCheckoutOggi(): Promise<string | null> {
 // ── Controllo calendari iCal (ex /api/cron/controllo-calendari) ────────────────
 export async function testoControlloCalendari(): Promise<string | null> {
   const esiti = await controllaTuttiICalendari();
-  const problemi = esiti.filter((e) => e.errore || e.mancano.length || e.inPiu.length);
+  const problemi = esiti.filter((e) => e.errore || e.mancano.length || e.inPiu.length || e.importate.length);
   if (problemi.length === 0) return null;
   return ['⚠️ *Controllo calendari — qualcosa non torna:*', '',
     ...problemi.map((p) => {
       const righe = [`*${p.alloggio} · ${p.calendario}*`];
       if (p.errore) righe.push(`  errore: ${p.errore}`);
+      p.importate.forEach((m) => righe.push(`  ✅ ${m.start}→${m.end}: importata da ${p.calendario} come segnaposto — completa ospite e importo`));
       p.mancano.forEach((m) => righe.push(`  📥 ${m.start}→${m.end}: c'è su ${p.calendario} ma non da noi`));
       p.inPiu.forEach((m) => righe.push(`  📤 ${m.start}→${m.end} (${m.ospite}): da noi ma non su ${p.calendario}`));
       return righe.join('\n');

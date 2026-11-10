@@ -7,12 +7,14 @@
  *
  * IMPORT/CHECK — scarica i calendari iCal di Airbnb/Booking e li confronta con le nostre
  * prenotazioni: segnala se una piattaforma ha una prenotazione che noi non abbiamo (o
- * viceversa). Solo controllo, non crea niente in automatico.
+ * viceversa). Dal 10/11/2026 una prenotazione che c'è sull'OTA ma non da noi viene importata
+ * in automatico come segnaposto "In attesa di conferma" (solo date), da completare a mano.
  */
 
 import { and, eq, ne, gte } from 'drizzle-orm';
 import { getDb } from './index';
 import { prenotazioni, alloggi, ospiti, calendariIcal, blocchiCalendario } from './schema';
+import { creaPrenotazione } from './mutations';
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
 
@@ -102,12 +104,33 @@ function eBlocco(b: Blocco): boolean {
   return /not available|unavailable|non disponibile|blocked/i.test(b.summary) && nottiTra(b.start, b.end) > 10;
 }
 
+/** Segna come "da importare" solo le prenotazioni vere: niente eco dei nostri stessi blocchi
+ *  (riesportati da Airbnb/Booking) e, su Airbnb, niente blocchi manuali "Not available". */
+function importabile(b: Blocco, canale: string): boolean {
+  if (/salzillo hospitality/i.test(b.summary)) return false;
+  if (canale === 'Airbnb' && /not available|unavailable|non disponibile|blocked/i.test(b.summary)) return false;
+  return true;
+}
+
 export type EsitoControllo = {
   alloggio: string; calendario: string;
+  importate: { start: string; end: string; canale: string }[]; // create ora come segnaposto (prima mancavano da noi)
   mancano: { start: string; end: string; summary: string }[];   // sull'OTA ma non da noi
   inPiu: { start: string; end: string; ospite: string; canale: string }[]; // da noi ma non sull'OTA (stesso canale)
   errore?: string;
 };
+
+const NOTA_IMPORT_ICAL = 'Importata da iCal';
+
+/** Un segnaposto già cancellato a mano con le stesse date non va ricreato a ogni controllo. */
+async function eraGiaScartata(alloggioId: string, canaleOta: string, start: string, end: string): Promise<boolean> {
+  const db = getDb();
+  const righe = await db.select({ note: prenotazioni.note }).from(prenotazioni).where(and(
+    eq(prenotazioni.alloggio_id, alloggioId), eq(prenotazioni.canale, canaleOta as 'Booking'),
+    eq(prenotazioni.checkin, start), eq(prenotazioni.checkout, end), eq(prenotazioni.stato, 'Cancellata'),
+  ));
+  return righe.some((r) => (r.note ?? '').startsWith(NOTA_IMPORT_ICAL));
+}
 
 export async function controllaCalendariAlloggio(alloggioId: string): Promise<EsitoControllo[]> {
   const db = getDb();
@@ -127,7 +150,7 @@ export async function controllaCalendariAlloggio(alloggioId: string): Promise<Es
 
   const esiti: EsitoControllo[] = [];
   for (const c of cals) {
-    const esito: EsitoControllo = { alloggio: a.nome, calendario: c.nome, mancano: [], inPiu: [] };
+    const esito: EsitoControllo = { alloggio: a.nome, calendario: c.nome, importate: [], mancano: [], inPiu: [] };
     try {
       const res = await fetch(c.url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -136,9 +159,23 @@ export async function controllaCalendariAlloggio(alloggioId: string): Promise<Es
       const prenOta = blocchi.filter((b) => !eBlocco(b) && b.start <= orizzonte);
 
       for (const b of prenOta) {
-        if (!nostre.some((p) => sovrappone(p.checkin, p.checkout, b.start, b.end))) {
-          esito.mancano.push({ start: b.start, end: b.end, summary: b.summary });
+        if (nostre.some((p) => sovrappone(p.checkin, p.checkout, b.start, b.end))) continue;
+        // Import automatico come segnaposto "In attesa di conferma" (solo date: l'iCal non ha
+        // ospite né importi). Le date restano bloccate sugli altri canali; i dati veri si
+        // completano a mano. Se l'import non riesce (blocco manuale, errore) resta in "mancano".
+        const canaleOta = c.nome === 'Booking' || c.nome === 'Airbnb' ? c.nome : null;
+        if (canaleOta && importabile(b, canaleOta) && !(await eraGiaScartata(alloggioId, canaleOta, b.start, b.end))) {
+          try {
+            await creaPrenotazione({
+              alloggioId, ospiteNome: 'Ospite', ospiteCognome: `${canaleOta} (da completare)`,
+              checkin: b.start, checkout: b.end, canale: canaleOta, lordo: 0, stato: 'In attesa di conferma',
+              note: `${NOTA_IMPORT_ICAL} — solo date dal calendario ${canaleOta} (${b.summary || 'senza titolo'}). Completare ospite e importo.`,
+            });
+            esito.importate.push({ start: b.start, end: b.end, canale: canaleOta });
+            continue;
+          } catch { /* ripiego: segnala soltanto */ }
         }
+        esito.mancano.push({ start: b.start, end: b.end, summary: b.summary });
       }
       for (const p of nostre.filter((p) => p.canale.toLowerCase() === c.nome.toLowerCase())) {
         if (!blocchi.some((b) => sovrappone(p.checkin, p.checkout, b.start, b.end))) {
@@ -148,7 +185,8 @@ export async function controllaCalendariAlloggio(alloggioId: string): Promise<Es
     } catch (e) {
       esito.errore = e instanceof Error ? e.message : String(e);
     }
-    const testo = esito.errore ? `errore: ${esito.errore}` : (esito.mancano.length || esito.inPiu.length) ? `${esito.mancano.length} da noi mancanti, ${esito.inPiu.length} in più` : 'ok';
+    const testo = esito.errore ? `errore: ${esito.errore}` : (esito.mancano.length || esito.inPiu.length || esito.importate.length)
+      ? `${esito.importate.length} importate, ${esito.mancano.length} da noi mancanti, ${esito.inPiu.length} in più` : 'ok';
     await db.update(calendariIcal).set({ ultimo_controllo: new Date(), ultimo_esito: testo }).where(eq(calendariIcal.id, c.id));
     esiti.push(esito);
   }

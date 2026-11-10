@@ -8,7 +8,7 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
   const [cals, setCals] = useState<{ id: string; nome: string; url: string; attivo: boolean; ultimo_controllo: string | null; ultimo_esito: string | null }[]>([]);
   const [nome, setNome] = useState('Airbnb');
   const [url, setUrl] = useState('');
-  const [esiti, setEsiti] = useState<null | { alloggio: string; calendario: string; mancano: { start: string; end: string; summary: string }[]; inPiu: { start: string; end: string; ospite: string }[]; errore?: string }[]>(null);
+  const [esiti, setEsiti] = useState<null | { alloggio: string; calendario: string; importate?: { start: string; end: string }[]; mancano: { start: string; end: string; summary: string }[]; inPiu: { start: string; end: string; ospite: string }[]; errore?: string }[]>(null);
   const [busy, setBusy] = useState(false);
   const exportUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/ical/${alloggio.id}.ics`;
 
@@ -95,8 +95,9 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         {esiti && esiti.map((e, i) => (
           <div key={i} style={{ marginTop: 8, fontSize: 13 }}>
             <b>{e.calendario}:</b> {e.errore ? <span className="err">errore — {e.errore}</span>
-              : e.mancano.length === 0 && e.inPiu.length === 0 ? <span style={{ color: '#1FAA6E' }}>tutto coincide ✓</span>
+              : e.mancano.length === 0 && e.inPiu.length === 0 && !e.importate?.length ? <span style={{ color: '#1FAA6E' }}>tutto coincide ✓</span>
               : <>
+                {(e.importate ?? []).map((m, j) => <div key={'i' + j} style={{ color: '#1FAA6E' }}>✅ {dataIt(m.start)}→{dataIt(m.end)}: importata da {e.calendario} come segnaposto — completa ospite e importo</div>)}
                 {e.mancano.map((m, j) => <div key={'m' + j} className="err">📥 {dataIt(m.start)}→{dataIt(m.end)}: c&apos;è su {e.calendario}, non qui</div>)}
                 {e.inPiu.map((m, j) => <div key={'p' + j} className="err">📤 {dataIt(m.start)}→{dataIt(m.end)} ({m.ospite}): qui ma non su {e.calendario}</div>)}
               </>}
