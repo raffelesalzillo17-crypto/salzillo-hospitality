@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { richiediSessione, creaLinkPersonale } from '@/lib/db/auth';
-import { getDb } from '@/lib/db';
-import { utenti } from '@/lib/db/schema';
+import { richiediSessione, linkAccesso } from '@/lib/db/auth';
+import { chiaveAccessoUtente } from '@/lib/db/mutations';
 
-// Restituisce al Titolare, già dentro l'app, il SUO link personale (vedi /api/nuovo/entra).
+// Restituisce a chi è già dentro l'app il SUO link personale (vedi /api/nuovo/entra), da
+// salvare nei preferiti o usare su un altro dispositivo. Non lo cambia: se non c'è lo crea.
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const check = await richiediSessione(req);
   if ('risposta' in check) return check.risposta;
-  if (check.sessione.ruolo !== 'Titolare') return NextResponse.json({ ok: false, error: 'Solo il titolare' }, { status: 403 });
-  const [u] = await getDb().select().from(utenti).where(eq(utenti.id, check.sessione.id));
-  if (!u?.password_hash) return NextResponse.json({ ok: false, error: 'Account senza password' }, { status: 400 });
-  const url = `${req.nextUrl.origin}/api/nuovo/entra?k=${creaLinkPersonale(u.id, u.password_hash)}`;
-  return NextResponse.json({ ok: true, url }, { headers: { 'Cache-Control': 'no-store' } });
+  const chiave = await chiaveAccessoUtente(check.sessione.id, false);
+  return NextResponse.json({ ok: true, url: linkAccesso(req.nextUrl.origin, chiave) }, { headers: { 'Cache-Control': 'no-store' } });
 }

@@ -10,7 +10,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
 }) {
   const [nuovo, setNuovo] = useState<{ nome: string; ruolo: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [invito, setInvito] = useState<{ nome: string; codice: string } | null>(null);
+  const [invito, setInvito] = useState<{ nome: string; url: string; copiato: boolean } | null>(null);
   const [espanso, setEspanso] = useState<string | null>(null);
   const tuttiImmobili = anagrafica.flatMap((p) => p.immobili.map((im) => ({ ...im, proprietario: p.nome })));
 
@@ -18,10 +18,24 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
     if (!nuovo?.nome.trim()) return;
     setBusy(true);
     try {
-      const r = await api('invita-collaboratore', { dati: { nome: nuovo.nome.trim(), ruolo: nuovo.ruolo } });
-      setInvito({ nome: nuovo.nome.trim(), codice: (r as { codice_invito: string }).codice_invito });
+      const r = await api('invita-collaboratore', { dati: { nome: nuovo.nome.trim(), ruolo: nuovo.ruolo } }) as { id: string };
+      const nome = nuovo.nome.trim();
       setNuovo(null); await onCambiato();
-    } finally { setBusy(false); }
+      await mostraLink(r.id, nome, false);
+    } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  // Il link personale di una persona: lo chiede al server (che lo crea se manca, o lo cambia
+  // con rigenera), prova a copiarlo e lo mostra comunque, così si può copiare a mano.
+  async function mostraLink(id: string, nome: string, rigenera: boolean) {
+    try {
+      const r = await api('link-accesso', { id, dati: { rigenera } }) as { chiave: string };
+      const url = `${window.location.origin}/api/nuovo/entra?k=${r.chiave}`;
+      let copiato = false;
+      try { await navigator.clipboard.writeText(url); copiato = true; } catch { /* si copia a mano dal riquadro */ }
+      setInvito({ nome, url, copiato });
+    } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
   }
 
   return (
@@ -30,12 +44,13 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
         <h2>Chi ha accesso al sistema <small>({utenti.length})</small></h2>
         <button className="add" onClick={() => setNuovo({ nome: '', ruolo: 'Collaboratore' })}>＋ Persona</button>
       </div>
-      <p className="sub">Tu crei la scheda (nome e ruolo), la persona sceglie DA SÉ username e password al primo accesso, usando il codice che le dai tu.</p>
+      <p className="sub">Tu crei la scheda (nome e ruolo) e il sistema genera un link solo per quella persona: aprendolo entra, senza username né password. Chi ha il link entra come lei.</p>
       {invito && (
         <div className="form" style={{ padding: 12, background: 'var(--coral-soft)', borderRadius: 10, marginBottom: 10 }}>
-          <b>Codice invito per {invito.nome}: <span style={{ fontSize: 20, letterSpacing: 2 }}>{invito.codice}</span></b>
-          <p className="sub">Daglielo di persona o a voce. La persona deve andare su <b>salzillo-hospitality.vercel.app/nuovo</b>, cliccare &quot;Primo accesso&quot; sotto al modulo di login, inserire questo codice e scegliere da sé username e password.</p>
-          <button onClick={() => setInvito(null)}>Ho capito</button>
+          <b>Link personale di {invito.nome}{invito.copiato ? ' — copiato ✓' : ''}</b>
+          <input readOnly value={invito.url} onFocus={(e) => e.target.select()} style={{ width: '100%', boxSizing: 'border-box', fontSize: 12 }} />
+          <p className="sub">Mandalo solo a {invito.nome} (WhatsApp va bene). Basta aprirlo una volta su ogni telefono o computer: poi resta dentro. Per toglierle l&apos;accesso usa &quot;disattiva&quot;, oppure &quot;nuovo link&quot; se il link è finito in mani sbagliate.</p>
+          <button onClick={() => setInvito(null)}>Chiudi</button>
         </div>
       )}
       {nuovo && (
@@ -45,7 +60,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
             {['Collaboratore', 'Pulizie', 'Proprietario'].map((r) => <option key={r}>{r}</option>)}
           </select></label>
           <div className="modalactions">
-            <button className="add" onClick={crea} disabled={busy || !nuovo.nome.trim()}>{busy ? '…' : 'Crea e genera codice'}</button>
+            <button className="add" onClick={crea} disabled={busy || !nuovo.nome.trim()}>{busy ? '…' : 'Crea e genera il link'}</button>
             <button onClick={() => setNuovo(null)}>Annulla</button>
           </div>
         </div>
@@ -55,8 +70,12 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="pill pill-Bozza">{u.ruolo}</span>
             <b>{u.nome}</b>
-            {u.username ? <span className="empty">@{u.username}</span> : u.codiceInvito ? <span className="empty">invito in attesa: <b>{u.codiceInvito}</b></span> : null}
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {!u.attivo && <span className="empty">disattivato</span>}
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button className="mini" onClick={() => mostraLink(u.id, u.nome, false)} title="Mostra e copia il link personale di questa persona">🔗 link</button>
+              <button className="mini" title="Genera un link nuovo: quello vecchio smette di funzionare" onClick={() => {
+                if (confirm(`Generare un link nuovo per ${u.nome}? Quello vecchio smette di funzionare: dovrai mandarle quello nuovo${u.ruolo === 'Titolare' ? ' (se sei tu, salvalo subito)' : ''}.`)) mostraLink(u.id, u.nome, true);
+              }}>↻ nuovo link</button>
               {u.ruolo !== 'Titolare' && (u.ruolo === 'Collaboratore' || u.ruolo === 'Proprietario') && (
                 <button className="linklike" onClick={() => setEspanso(espanso === u.id ? null : u.id)}>permessi</button>
               )}

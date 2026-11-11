@@ -26,10 +26,6 @@ import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
 export default function Nuovo() {
   const [sess, setSess] = useState<{ nome: string; ruolo: string; vedeFinanziario: boolean; puoModificare: boolean } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [u, setU] = useState(''); const [p, setP] = useState('');
-  const [primoAccesso, setPrimoAccesso] = useState(false);
-  const [pa, setPa] = useState({ codice: '', username: '', password: '' });
-  const [paOk, setPaOk] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
   const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida'>('dashboard');
@@ -68,30 +64,19 @@ export default function Nuovo() {
     }).finally(() => setAuthChecked(true));
   }, []);
 
-  async function login(e: React.FormEvent) {
-    e.preventDefault(); setErrore('');
-    const r = await fetch('/api/nuovo/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
-    const d = await r.json();
-    if (d.ok) { setP(''); await carica(); } else setErrore(d.error || 'Errore');
-  }
-
-  async function inviaPrimoAccesso(e: React.FormEvent) {
-    e.preventDefault(); setErrore('');
-    const r = await fetch('/api/nuovo/primo-accesso', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codiceInvito: pa.codice, username: pa.username, password: pa.password }) });
-    const d = await r.json();
-    if (d.ok) { setPaOk(true); setPa({ codice: '', username: '', password: '' }); } else setErrore(d.error || 'Errore');
-  }
-  // Link personale: apre l'app senza username e password (solo Titolare). Si copia negli
-  // appunti; se il browser non lo permette lo mostra per copiarlo a mano.
+  // Link personale: l'unico modo di entrare (niente username e password). Da qui chi è già
+  // dentro copia il proprio, per i preferiti o per un altro dispositivo.
   async function copiaLinkPersonale() {
     const d = await (await fetch('/api/nuovo/link-personale')).json();
     if (!d.ok) { alert(d.error || 'Errore'); return; }
-    try {
-      await navigator.clipboard.writeText(d.url);
-      alert('Link personale copiato.\n\nSalvalo nei preferiti o aggiungilo alla schermata Home: aprendolo entri senza scrivere nulla.\n\nChi ha questo link entra come te: non mandarlo a nessuno. Se cambi la password il link smette di funzionare.');
-    } catch { prompt('Copia il tuo link personale (non mandarlo a nessuno):', d.url); }
+    const avviso = 'Salvalo nei preferiti o aggiungilo alla schermata Home: aprendolo entri subito.\n\nChi ha questo link entra come te: non mandarlo a nessuno.';
+    try { await navigator.clipboard.writeText(d.url); alert(`Il tuo link personale è stato copiato.\n\n${avviso}`); }
+    catch { prompt(`Copia il tuo link personale.\n\n${avviso}`, d.url); }
   }
-  async function logout() { await fetch('/api/nuovo/logout', { method: 'POST' }); setSess(null); setDati(null); }
+  async function logout() {
+    if (!confirm('Uscire da questo dispositivo? Per rientrare ti servirà il tuo link personale.')) return;
+    await fetch('/api/nuovo/logout', { method: 'POST' }); setSess(null); setDati(null);
+  }
 
   async function aggiorna() {
     setSyncing(true);
@@ -110,36 +95,12 @@ export default function Nuovo() {
           <div className="gatemark">S</div>
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Nuovo sistema</h1>
-          {!primoAccesso ? (
-            <>
-              <form onSubmit={login}>
-                <div className="field"><span className="fic">👤</span><input value={u} onChange={(e) => setU(e.target.value)} placeholder="utente" autoFocus autoComplete="username" /></div>
-                <div className="field"><span className="fic">🔒</span><input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="password" autoComplete="current-password" /></div>
-                <button type="submit">Entra →</button>
-              </form>
-              <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
-                Hai un codice invito? <button type="button" className="linklike" onClick={() => { setPrimoAccesso(true); setErrore(''); setPaOk(false); }}>Primo accesso</button>
-              </p>
-            </>
-          ) : paOk ? (
-            <>
-              <p className="empty" style={{ textAlign: 'center' }}>Account creato — ora puoi entrare con lo username e la password che hai scelto.</p>
-              <button className="add" onClick={() => { setPrimoAccesso(false); setPaOk(false); }}>Torna al login</button>
-            </>
-          ) : (
-            <>
-              <p className="sub">Inserisci il codice invito che ti ha dato Raffaele, poi scegli tu username e password — nessun altro li conoscerà.</p>
-              <form onSubmit={inviaPrimoAccesso}>
-                <div className="field"><span className="fic">🎟️</span><input value={pa.codice} onChange={(e) => setPa({ ...pa, codice: e.target.value.toUpperCase() })} placeholder="codice invito" autoFocus /></div>
-                <div className="field"><span className="fic">👤</span><input value={pa.username} onChange={(e) => setPa({ ...pa, username: e.target.value })} placeholder="scegli uno username" autoComplete="username" /></div>
-                <div className="field"><span className="fic">🔒</span><input type="password" value={pa.password} onChange={(e) => setPa({ ...pa, password: e.target.value })} placeholder="scegli una password (min. 8 caratteri)" autoComplete="new-password" /></div>
-                <button type="submit">Crea il mio accesso</button>
-              </form>
-              <p className="sub" style={{ textAlign: 'center', marginTop: 10 }}>
-                <button type="button" className="linklike" onClick={() => { setPrimoAccesso(false); setErrore(''); }}>Torna al login</button>
-              </p>
-            </>
-          )}
+          <p className="sub" style={{ textAlign: 'center' }}>
+            Per entrare apri il <b>tuo link personale</b>: non servono username e password.
+          </p>
+          <p className="sub" style={{ textAlign: 'center' }}>
+            Non lo trovi più o non funziona? Chiedine uno nuovo a Raffaele.
+          </p>
           {errore && <p className="err">{errore}</p>}
         </div>
       </div>
@@ -169,7 +130,7 @@ export default function Nuovo() {
           <h1>Nuovo sistema <span className="beta">anteprima</span></h1>
         </div>
         <div className="topright">
-          <span className="hint">👤 {sess.nome}{sess.ruolo === 'Titolare' && <> · <button className="linklike" onClick={copiaLinkPersonale} title="Un link per entrare senza username e password">🔗 link personale</button></>} · <button className="linklike" onClick={logout}>esci</button></span>
+          <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={copiaLinkPersonale} title="Il tuo link per entrare da un altro telefono o computer">🔗 il mio link</button> · <button className="linklike" onClick={logout}>esci</button></span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <TemaToggle />
             {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}

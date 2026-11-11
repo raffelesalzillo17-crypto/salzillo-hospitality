@@ -92,3 +92,23 @@ describe('ordinaGruppoAlloggiati — gli ospiti di una prenotazione partono insi
     expect(ordinaGruppoAlloggiati([]).ok).toBe(false);
   });
 });
+
+import { codiceLuogoRilascio } from '../src/lib/alloggiatiLookup';
+
+describe('codiceLuogoRilascio — al portale va il codice, non il nome', () => {
+  it('nome di un comune (maiuscole, apostrofi e accenti non contano) → codice a 9 cifre', () => {
+    expect(codiceLuogoRilascio("Sant'Antonio Abate")).toMatch(/^\d{9}$/);
+    expect(codiceLuogoRilascio('SAN SEBASTIANO AL VESUVIO')).toMatch(/^\d{9}$/);
+    expect(codiceLuogoRilascio("sant antonio abate")).toBe(codiceLuogoRilascio("Sant'Antonio Abate"));
+  });
+  it('stato estero → codice dello stato; un codice già pronto resta com\'è', () => {
+    expect(codiceLuogoRilascio('Francia')).toMatch(/^\d{9}$/);
+    expect(codiceLuogoRilascio('415063074')).toBe('415063074');
+  });
+  it('testo che non è un comune né uno stato: niente codice inventato', () => {
+    expect(codiceLuogoRilascio('MIT-UCO')).toBeNull();
+    expect(codiceLuogoRilascio('Comune di Napoli')).toBeNull();
+    expect(codiceLuogoRilascio('')).toBeNull();
+    expect(codiceLuogoRilascio(null)).toBeNull();
+  });
+});

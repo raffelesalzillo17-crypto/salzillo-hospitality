@@ -8,36 +8,24 @@
  *  - Proprietario: solo il suo immobile, in sola lettura.
  *  - Pulizie: solo il calendario pulizie e le sue conferme.
  *
- * scrypt per le password (nativo), token di sessione HMAC firmato (stateless). Stesso spirito
+ * Accesso con link personale (niente password, vedi sotto), token di sessione HMAC firmato (stateless). Stesso spirito
  * di src/lib/accessi.ts, che resta nel repo come riferimento ma non è più collegato a niente.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { getDb } from './index';
 import { utenti, permessiImmobile, immobili, alloggi } from './schema';
 
 export const COOKIE = 'sh_sessione';
 // Un anno, e si rinnova da sola a ogni apertura dell'app (vedi /api/nuovo/dati): su un
-// dispositivo usato con regolarità username e password si mettono una volta sola.
+// dispositivo usato con regolarità il link personale si apre una volta sola.
 export const TTL_MS = 365 * 24 * 60 * 60 * 1000;
 export const OPZIONI_COOKIE = { httpOnly: true, secure: true, sameSite: 'lax' as const, path: '/', maxAge: TTL_MS / 1000 };
 
 function segreto(): string {
   return process.env.ACCESSI_SECRET || process.env.PLANCIA_ACCESS_KEY || 'dev-secret-non-usare-in-produzione';
-}
-
-export function hashPassword(pw: string): string {
-  const salt = randomBytes(16).toString('hex');
-  return `${salt}:${scryptSync(pw, salt, 64).toString('hex')}`;
-}
-export function verificaPassword(pw: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
-  if (!salt || !hash) return false;
-  const a = Buffer.from(hash, 'hex');
-  const b = Buffer.from(scryptSync(pw, salt, 64).toString('hex'), 'hex');
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function creaToken(utenteId: string): string {
@@ -58,27 +46,24 @@ export function verificaToken(token: string): string | null {
 }
 
 // ── Link personale (11/11/2026) ──────────────────────────────────────────────────────────
-// Raffaele ha chiesto di entrare senza scrivere username e password: un link segreto che apre
-// la sessione da solo. Chi ha il link entra come lui, quindi vale solo per il Titolare che lo
-// genera per sé da dentro l'app. La firma dipende anche dall'hash della password: cambiando
-// password (o disattivando l'utente) il vecchio link smette di funzionare, senza bisogno di
-// una colonna in più nel database.
-function firmaLink(utenteId: string, passwordHash: string): string {
-  return createHmac('sha256', segreto()).update(`link-personale:${utenteId}:${passwordHash}`).digest('hex');
+// Niente più username e password: ogni persona (Titolare, collaboratore, proprietario, pulizie)
+// entra con un link solo suo, /api/nuovo/entra?k=<chiave>. La chiave è casuale (32 byte) e sta
+// nella colonna `codice_invito` dell'utente, che prima conteneva il codice a 6 lettere del
+// "primo accesso" e ora è la chiave permanente. Chi ha il link entra come quella persona:
+// per toglierle l'accesso si disattiva l'utente o le si genera un link nuovo (il vecchio muore).
+export const LUNGHEZZA_MINIMA_CHIAVE = 40;
+export function nuovaChiaveAccesso(): string {
+  return randomBytes(32).toString('base64url'); // 43 caratteri
 }
-export function creaLinkPersonale(utenteId: string, passwordHash: string): string {
-  return Buffer.from(`${utenteId}:${firmaLink(utenteId, passwordHash)}`).toString('base64url');
+export function linkAccesso(origin: string, chiave: string): string {
+  return `${origin}/api/nuovo/entra?k=${chiave}`;
 }
-/** Ritorna l'id dell'utente se il link è valido e l'utente è ancora un Titolare attivo. */
-export async function verificaLinkPersonale(k: string): Promise<string | null> {
-  try {
-    const [utenteId, firma] = Buffer.from(k, 'base64url').toString('utf8').split(':');
-    if (!utenteId || !firma || !/^[0-9a-f-]{36}$/i.test(utenteId)) return null;
-    const [u] = await getDb().select().from(utenti).where(eq(utenti.id, utenteId));
-    if (!u || !u.attivo || u.ruolo !== 'Titolare' || !u.password_hash) return null;
-    const a = Buffer.from(firma, 'hex'), b = Buffer.from(firmaLink(u.id, u.password_hash), 'hex');
-    return a.length === b.length && timingSafeEqual(a, b) ? u.id : null;
-  } catch { return null; }
+/** Ritorna l'id dell'utente attivo a cui appartiene la chiave, o null. */
+export async function verificaChiaveAccesso(k: string): Promise<string | null> {
+  // I vecchi codici invito a 6 lettere non sono mai chiavi valide: troppo corti per un link.
+  if (!k || k.length < LUNGHEZZA_MINIMA_CHIAVE) return null;
+  const [u] = await getDb().select({ id: utenti.id, attivo: utenti.attivo }).from(utenti).where(eq(utenti.codice_invito, k));
+  return u && u.attivo ? u.id : null;
 }
 
 export type Sessione = {

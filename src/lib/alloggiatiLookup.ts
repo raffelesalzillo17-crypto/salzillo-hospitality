@@ -22,6 +22,23 @@ export function cercaStato(nome: string): { codice: string; nome: string } | nul
   return n ? STATI.find((s) => norm(s.nome) === n) ?? null : null;
 }
 
+/**
+ * Il tracciato vuole il luogo di rilascio del documento come CODICE (di un comune italiano o di
+ * uno stato estero, 9 cifre), non come nome. Nelle schedine lo teniamo scritto per esteso, come
+ * si legge sul documento, e lo traduciamo qui al momento dell'invio (11/11/2026: il nome
+ * mandato così com'era veniva rifiutato come "troppo lungo"). Ritorna null se il nome non
+ * corrisponde a un solo comune né a uno stato: in quel caso non si indovina.
+ */
+export function codiceLuogoRilascio(testo: string | null | undefined): string | null {
+  const t = (testo ?? '').trim();
+  if (!t) return null;
+  if (/^[0-9]{9}$/.test(t)) return t;
+  const comuni = cercaComuni(t);
+  if (comuni.length === 1) return comuni[0].codice;
+  if (comuni.length > 1) return null;
+  return cercaStato(t)?.codice ?? null;
+}
+
 export function cercaTipoDocumento(nome: string): { codice: string; nome: string } | null {
   const n = norm(nome);
   return TIPI_DOCUMENTO_CODICI.find((t) => norm(t.nome) === n) ?? null;

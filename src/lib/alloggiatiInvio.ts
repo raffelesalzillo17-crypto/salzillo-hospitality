@@ -22,6 +22,7 @@ import {
 } from './alloggiatiWebService';
 import { formatSchedinaRecord, validateSchedina, ordinaGruppoAlloggiati, type DatiSchedina, type TipoAlloggiatoCodice } from './alloggiatiRecordFormat';
 import { inArray } from 'drizzle-orm';
+import { codiceLuogoRilascio } from './alloggiatiLookup';
 import { alertInvioAmbiguo } from './cronAlert';
 
 export type SchedinaDaInviare = {
@@ -389,6 +390,13 @@ export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<Es
     if (!s.statoNascitaCodice || !s.cittadinanzaCodice) return no(`${chi}: stato di nascita o cittadinanza mancanti.`);
     // Mai un sesso inventato su un modulo verso la Polizia (audit del 23/09/2026).
     if (s.sesso !== 'M' && s.sesso !== 'F') return no(`${chi}: sesso mancante.`);
+    // Luogo di rilascio: nella schedina è un nome, al portale va il codice. Serve solo per la
+    // persona di riferimento (per familiari e membri il tracciato lo vuole vuoto).
+    const serveDocumento = s.tipo === '16' || s.tipo === '17' || s.tipo === '18';
+    const luogoRilascio = serveDocumento ? codiceLuogoRilascio(s.luogoRilascioDocumento) : null;
+    if (serveDocumento && s.luogoRilascioDocumento?.trim() && !luogoRilascio) {
+      return no(`${chi}: il luogo di rilascio del documento "${s.luogoRilascioDocumento}" non corrisponde a un solo comune italiano né a uno stato estero nelle tabelle ufficiali. Va scritto come il nome esatto del comune (es. "Marcianise"), senza "Comune di" o sigle.`);
+    }
     const dati: DatiSchedina = {
       tipoAlloggiato: s.tipo as TipoAlloggiatoCodice,
       dataArrivo: isoToItaliano(p.checkin), numeroGiorniPermanenza: notti,
@@ -397,7 +405,7 @@ export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<Es
       comuneNascita: s.comuneNascitaCodice ?? undefined, provinciaNascita: s.provinciaNascita ?? undefined,
       statoNascita: s.statoNascitaCodice, cittadinanza: s.cittadinanzaCodice,
       tipoDocumento: s.tipoDocumentoCodice ?? undefined, numeroDocumento: s.numeroDocumento ?? undefined,
-      luogoRilascioDocumento: s.luogoRilascioDocumento ?? undefined,
+      luogoRilascioDocumento: luogoRilascio ?? undefined,
     };
     const errori = validateSchedina(dati);
     if (errori.length > 0) return no(`${chi}: dati non validi — ${errori.join('; ')}`);

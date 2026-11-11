@@ -4,7 +4,7 @@ import { richiediSessione } from '@/lib/db/auth';
 import { getDb } from '@/lib/db';
 import { schedine } from '@/lib/db/schema';
 import { prenotazioneVisibile, puoScrivereDocumenti } from '@/lib/db/accessoPrenotazione';
-import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA, TIPI_ALLOGGIATO_UI } from '@/lib/alloggiatiLookup';
+import { cercaComuni, cercaStato, cercaTipoDocumento, codiceLuogoRilascio, CODICE_ITALIA, TIPI_ALLOGGIATO_UI } from '@/lib/alloggiatiLookup';
 
 // Crea una schedina Alloggiati a partire dai dati controllati da Raffaele nella scheda della
 // prenotazione (di solito precompilati dall'OCR, vedi schedina-da-documento). I codici ufficiali
@@ -50,6 +50,12 @@ export async function POST(req: NextRequest) {
   if (!tipoDoc) return err("Tipo di documento non valido (Carta d'identità, Passaporto o Patente)");
   const tipoAll = TIPI_ALLOGGIATO_UI.find((t) => t.codice === s(o.tipoAlloggiatoCodice));
   if (!tipoAll) return err('Scegli il tipo di ospite (singolo, capofamiglia, familiare...)');
+
+  // Luogo di rilascio: se c'è deve essere un comune o uno stato delle tabelle ufficiali, perché
+  // al portale va il suo codice. Meglio fermarsi qui, dove si può correggere, che all'invio.
+  if (s(o.luogoRilascioDocumento) && !codiceLuogoRilascio(s(o.luogoRilascioDocumento))) {
+    return err(`Luogo di rilascio "${s(o.luogoRilascioDocumento)}" non trovato (o con più comuni omonimi): scrivi il nome esatto del comune, senza "Comune di", oppure lo stato per un documento estero. Se non lo sai lascialo vuoto.`);
+  }
 
   // Comune e provincia di nascita: obbligatori solo per chi è nato in Italia
   let comuneCodice: string | null = null, provincia: string | null = null;

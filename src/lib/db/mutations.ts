@@ -13,7 +13,7 @@ import {
   permessiImmobile, richiestePubbliche, ospitiPrenotazione, schedine, documenti,
   calendariIcal, versamentiSoggiorno, inviiRegione, linkUtili,
 } from './schema';
-import { hashPassword } from './auth';
+import { nuovaChiaveAccesso, LUNGHEZZA_MINIMA_CHIAVE } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import { randomUUID } from 'node:crypto';
 import { calcolaImportiPuri } from '../importi';
@@ -880,46 +880,38 @@ export async function aggiornaContrattoGestione(id: string, d: Record<string, un
   return r;
 }
 
-// ── Collaboratori (utenti) — invito + primo accesso ─────────────────────────────────────────
-// Il Titolare crea solo nome/ruolo/permessi. Username e password li sceglie la persona stessa
-// al primo accesso, usando il codice invito — mai decisi da Raffaele o da Claude per lei.
-
-function generaCodiceInvito(): string {
-  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // niente 0/O/1/I, facile da leggere/dettare
-  let c = '';
-  for (let i = 0; i < 6; i++) c += alfabeto[Math.floor(Math.random() * alfabeto.length)];
-  return c;
-}
+// ── Collaboratori (utenti) — invito con link personale ──────────────────────────────────────
+// Il Titolare crea nome/ruolo/permessi e il sistema genera un link solo per quella persona:
+// aprendolo entra, senza username né password (11/11/2026, prima c'era un codice invito e la
+// persona sceglieva le credenziali al primo accesso).
 
 export async function invitaCollaboratore(d: { nome: string; ruolo: string; proprietarioId?: string }) {
   const db = getDb();
-  const codice = generaCodiceInvito();
   const [r] = await db.insert(utenti).values({
-    nome: d.nome, ruolo: d.ruolo as 'Collaboratore', proprietario_id: d.proprietarioId || null, codice_invito: codice,
+    nome: d.nome, ruolo: d.ruolo as 'Collaboratore', proprietario_id: d.proprietarioId || null, codice_invito: nuovaChiaveAccesso(),
   }).returning();
   return r;
 }
 
-export async function completaPrimoAccesso(d: { codiceInvito: string; username: string; password: string }) {
+/** La chiave del link personale di un utente. Con `rigenera` ne crea una nuova (il link
+ *  vecchio smette di funzionare); senza, la crea solo se manca. */
+export async function chiaveAccessoUtente(utenteId: string, rigenera: boolean): Promise<string> {
   const db = getDb();
-  const codice = d.codiceInvito.trim().toUpperCase();
-  const username = d.username.trim().toLowerCase();
-  if (!username || d.password.length < 8) throw new Error('Username obbligatorio, password di almeno 8 caratteri');
-  const [u] = await db.select().from(utenti).where(eq(utenti.codice_invito, codice));
-  if (!u) throw new Error('Codice invito non valido o già usato');
-  const [giaEsiste] = await db.select({ id: utenti.id }).from(utenti).where(eq(utenti.username, username));
-  if (giaEsiste) throw new Error('Username già in uso, scegline un altro');
-  const [r] = await db.update(utenti).set({
-    username, password_hash: hashPassword(d.password), codice_invito: null, aggiornato_il: new Date(),
-  }).where(eq(utenti.id, u.id)).returning();
-  return r;
+  const [u] = await db.select({ chiave: utenti.codice_invito }).from(utenti).where(eq(utenti.id, utenteId));
+  if (!u) throw new Error('Persona non trovata');
+  if (!rigenera && u.chiave && u.chiave.length >= LUNGHEZZA_MINIMA_CHIAVE) return u.chiave;
+  const chiave = nuovaChiaveAccesso();
+  await db.update(utenti).set({ codice_invito: chiave, aggiornato_il: new Date() }).where(eq(utenti.id, utenteId));
+  return chiave;
 }
 
 export async function leggiUtentiDb() {
   const db = getDb();
+  // La chiave del link personale non viaggia nell'elenco: si chiede una per volta con l'azione
+  // 'link-accesso', quando il Titolare la vuole copiare.
   return db.select({
-    id: utenti.id, nome: utenti.nome, ruolo: utenti.ruolo, username: utenti.username,
-    codiceInvito: utenti.codice_invito, attivo: utenti.attivo, proprietarioId: utenti.proprietario_id,
+    id: utenti.id, nome: utenti.nome, ruolo: utenti.ruolo,
+    attivo: utenti.attivo, proprietarioId: utenti.proprietario_id,
   }).from(utenti).orderBy(utenti.nome);
 }
 

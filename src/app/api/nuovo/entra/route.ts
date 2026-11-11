@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verificaLinkPersonale, creaToken, COOKIE, OPZIONI_COOKIE } from '@/lib/db/auth';
+import { verificaChiaveAccesso, creaToken, COOKIE, OPZIONI_COOKIE } from '@/lib/db/auth';
 
-// Link personale del Titolare: /api/nuovo/entra?k=<chiave> apre la sessione senza username e
-// password e porta su /nuovo (vedi src/lib/db/auth.ts). Chi ha il link entra come lui.
+// Link personale: /api/nuovo/entra?k=<chiave> apre la sessione della persona a cui appartiene
+// la chiave e porta su /nuovo (vedi src/lib/db/auth.ts). È l'unico modo di entrare: username e
+// password non esistono più. Chi ha il link entra come quella persona.
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const utenteId = await verificaLinkPersonale(req.nextUrl.searchParams.get('k') || '');
+  const utenteId = await verificaChiaveAccesso(req.nextUrl.searchParams.get('k') || '');
   const res = NextResponse.redirect(new URL('/nuovo', req.nextUrl.origin));
   // La chiave non deve finire altrove né restare in una copia salvata della risposta.
   res.headers.set('Referrer-Policy', 'no-referrer');

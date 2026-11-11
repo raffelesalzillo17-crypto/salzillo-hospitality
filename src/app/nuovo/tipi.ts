@@ -19,7 +19,7 @@ export type Operatore = { id: string; nome: string };
 
 export type DocumentoCaricato = { id: string; tipo: string; nome: string; ospiteId: string | null; prenotazioneId: string | null; proprietarioId: string | null; driveUrl: string | null; caricatoIl: string };
 
-export type UtenteAdmin = { id: string; nome: string; ruolo: string; username: string | null; codiceInvito: string | null; attivo: boolean; proprietarioId: string | null };
+export type UtenteAdmin = { id: string; nome: string; ruolo: string; attivo: boolean; proprietarioId: string | null };
 
 export type Permesso = { utente_id: string; immobile_id: string; puo_vedere: boolean; puo_modificare: boolean; puo_vedere_finanziario: boolean };
 

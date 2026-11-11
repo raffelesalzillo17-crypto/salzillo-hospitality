@@ -11,7 +11,7 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola']);
+const SOLO_TITOLARE = new Set(['invita-collaboratore', 'link-accesso', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -78,6 +78,8 @@ export async function POST(req: NextRequest) {
       case 'elimina-pulizia': r = await M.eliminaPulizia(id!); break;
       case 'conferma-checkin-prenotazione': r = await M.confermaCheckinPrenotazione(id!); break;
       case 'invita-collaboratore': r = await M.invitaCollaboratore(dati as Parameters<typeof M.invitaCollaboratore>[0]); break;
+      // Link personale di una persona: lo restituisce (creandolo se manca) o, con rigenera, lo sostituisce.
+      case 'link-accesso': r = { chiave: await M.chiaveAccessoUtente(id!, dati.rigenera === true) }; break;
       case 'attiva-utente': r = await M.impostaAttivoUtente(id!, !!dati.attivo); break;
       case 'elimina-operatore-pulizie': r = await M.eliminaOperatorePulizie(id!); break;
       case 'imposta-permesso': r = await M.impostaPermessoImmobile(dati as Parameters<typeof M.impostaPermessoImmobile>[0]); break;
