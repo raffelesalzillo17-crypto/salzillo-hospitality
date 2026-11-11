@@ -22,4 +22,4 @@ if (!chiave || chiave.length < 40) {
   chiave = randomBytes(32).toString('base64url');
   await sql`update utenti set codice_invito = ${chiave}, aggiornato_il = now() where id = ${u.id}`;
 }
-console.log(`https://salzillo-hospitality.vercel.app/api/nuovo/entra?k=${chiave}`);
+console.log(`https://salzillo-hospitality.vercel.app/entra?k=${chiave}`);

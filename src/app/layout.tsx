@@ -1,17 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const inter = Inter({
+// I font stanno dentro al progetto (src/app/fonts, file variabili "latin" presi da Fontsource,
+// licenza OFL accanto) invece di essere scaricati da Google a ogni build: l'11/11/2026 due
+// deploy su quattro sono falliti perché Vercel non riusciva a raggiungere Google Fonts.
+const inter = localFont({
+  src: "./fonts/inter-latin-wght-normal.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+const plusJakartaSans = localFont({
+  src: "./fonts/plus-jakarta-sans-latin-wght-normal.woff2",
   variable: "--font-jakarta",
-  subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: "200 800",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

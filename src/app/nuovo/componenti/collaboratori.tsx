@@ -31,7 +31,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
   async function mostraLink(id: string, nome: string, rigenera: boolean) {
     try {
       const r = await api('link-accesso', { id, dati: { rigenera } }) as { chiave: string };
-      const url = `${window.location.origin}/api/nuovo/entra?k=${r.chiave}`;
+      const url = `${window.location.origin}/entra?k=${r.chiave}`;
       let copiato = false;
       try { await navigator.clipboard.writeText(url); copiato = true; } catch { /* si copia a mano dal riquadro */ }
       setInvito({ nome, url, copiato });
@@ -49,7 +49,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
         <div className="form" style={{ padding: 12, background: 'var(--coral-soft)', borderRadius: 10, marginBottom: 10 }}>
           <b>Link personale di {invito.nome}{invito.copiato ? ' — copiato ✓' : ''}</b>
           <input readOnly value={invito.url} onFocus={(e) => e.target.select()} style={{ width: '100%', boxSizing: 'border-box', fontSize: 12 }} />
-          <p className="sub">Mandalo solo a {invito.nome} (WhatsApp va bene). Basta aprirlo una volta su ogni telefono o computer: poi resta dentro. Per toglierle l&apos;accesso usa &quot;disattiva&quot;, oppure &quot;nuovo link&quot; se il link è finito in mani sbagliate.</p>
+          <p className="sub">Mandalo solo a {invito.nome} (WhatsApp va bene). Aprendolo trova il pulsante per entrare e le istruzioni per mettere l&apos;app sul telefono; basta farlo una volta su ogni dispositivo, poi resta dentro. Per toglierle l&apos;accesso usa &quot;disattiva&quot;, oppure &quot;nuovo link&quot; se il link è finito in mani sbagliate.</p>
           <button onClick={() => setInvito(null)}>Chiudi</button>
         </div>
       )}

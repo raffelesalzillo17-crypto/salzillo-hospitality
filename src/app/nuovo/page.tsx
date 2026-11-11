@@ -69,7 +69,7 @@ export default function Nuovo() {
   async function copiaLinkPersonale() {
     const d = await (await fetch('/api/nuovo/link-personale')).json();
     if (!d.ok) { alert(d.error || 'Errore'); return; }
-    const avviso = 'Salvalo nei preferiti o aggiungilo alla schermata Home: aprendolo entri subito.\n\nChi ha questo link entra come te: non mandarlo a nessuno.';
+    const avviso = 'Aprilo sul telefono o sul computer dove vuoi usare l\'app: trovi il pulsante per entrare e le istruzioni per installarla.\n\nChi ha questo link entra come te: non mandarlo a nessuno.';
     try { await navigator.clipboard.writeText(d.url); alert(`Il tuo link personale è stato copiato.\n\n${avviso}`); }
     catch { prompt(`Copia il tuo link personale.\n\n${avviso}`, d.url); }
   }

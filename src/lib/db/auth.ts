@@ -56,7 +56,9 @@ export function nuovaChiaveAccesso(): string {
   return randomBytes(32).toString('base64url'); // 43 caratteri
 }
 export function linkAccesso(origin: string, chiave: string): string {
-  return `${origin}/api/nuovo/entra?k=${chiave}`;
+  // La pagina /entra (logo, istruzioni per installare l'app, pulsante "Entra"), non la route
+  // /api/nuovo/entra che apre la sessione: quella resta valida per i link già mandati.
+  return `${origin}/entra?k=${chiave}`;
 }
 /** Ritorna l'id dell'utente attivo a cui appartiene la chiave, o null. */
 export async function verificaChiaveAccesso(k: string): Promise<string | null> {
