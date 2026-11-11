@@ -159,19 +159,21 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
     }
   }
 
-  async function invia(s: SchedinaAlloggiati) {
+  async function invia(gruppo: SchedinaAlloggiati[]) {
+    const g = gruppo[0];
     if (!confirm(
-      `Invio VERO e DEFINITIVO alla Polizia di Stato (Alloggiati Web) per ${s.ospiteNomeCompleto} — ${s.alloggioNome}, arrivo ${dataIt(s.checkin)}.\n\n` +
-      'Non è annullabile una volta accettato dal sistema. Il sistema valida di nuovo i dati prima di inviare (Test) e invia solo se il test passa. Procedo?'
+      `Invio VERO e DEFINITIVO alla Polizia di Stato (Alloggiati Web) — ${g.alloggioNome}, arrivo ${dataIt(g.checkin)}:\n` +
+      gruppo.map((s) => `• ${s.ospiteNomeCompleto} (${s.tipoAlloggiato || 'tipo mancante'})`).join('\n') +
+      '\n\nGli ospiti della prenotazione partono insieme, in un solo invio. Non è annullabile una volta accettato dal sistema. Il sistema valida di nuovo i dati prima di inviare (Test) e invia solo se il test passa per tutti. Procedo?'
     )) return;
-    setBusy(s.id);
+    setBusy(g.prenotazioneId);
     try {
       const r = await fetch('/api/nuovo/alloggiati/invia', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedinaId: s.id }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prenotazioneId: g.prenotazioneId }),
       });
       const d = await r.json();
-      setEsiti((e) => ({ ...e, [s.id]: { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviata.' : 'Errore sconosciuto.') } }));
-      if (d.ok) await onCambiato();
+      setEsiti((e) => ({ ...e, [g.prenotazioneId]: { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviate.' : 'Errore sconosciuto.') } }));
+      await onCambiato();
     } finally {
       setBusy(null);
     }
@@ -181,7 +183,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
     <div className="card">
       <div className="cardhead"><h2>Alloggiati Web <small>({schedine.length} da inviare)</small></h2></div>
       <p className="sub">
-        Invio vero e diretto al portale della Polizia di Stato — un click alla volta, mai automatico. Compaiono qui solo le
+        Invio vero e diretto al portale della Polizia di Stato — una prenotazione alla volta (tutti i suoi ospiti insieme), mai automatico. Compaiono qui solo le
         schedine di prenotazioni <b>Il Tulipano</b> con canale <b>Airbnb, Booking o Diretto</b> (regola confermata da Raffaele
         — le prenotazioni No Tax e le altre strutture non vengono mai inviate). Prima di ogni invio il sistema rivalida i dati
         col servizio reale (Test) e invia solo se il test passa.
@@ -227,12 +229,15 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
                 <div key={s.id} className="docrow">
                   <b>{s.ospiteNomeCompleto}</b>
                   <span className="empty">{s.tipoAlloggiato || '—'}</span>
-                  <button className="mini coral" disabled={busy === s.id} style={{ marginLeft: 'auto' }} onClick={() => invia(s)}>
-                    {busy === s.id ? 'invio…' : '📨 invia adesso'}
-                  </button>
-                  {esiti[s.id] && <p className={esiti[s.id].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[s.id].messaggio}</p>}
+                  {s.esitoInvio && <p className="err" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{s.esitoInvio}</p>}
                 </div>
               ))}
+              <div className="docrow">
+                <button className="mini coral" disabled={busy !== null} style={{ marginLeft: 'auto' }} onClick={() => invia(gruppo)}>
+                  {busy === pid ? 'invio…' : gruppo.length === 1 ? '📨 invia adesso' : `📨 invia insieme i ${gruppo.length} ospiti`}
+                </button>
+                {esiti[pid] && <p className={esiti[pid].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[pid].messaggio}</p>}
+              </div>
             </div>
           );
         })

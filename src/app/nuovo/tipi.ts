@@ -59,7 +59,7 @@ export type CosaManca = {
 export type SchedinaAlloggiati = {
   id: string; cognome: string; nome: string; ospiteNomeCompleto: string;
   alloggioNome: string; prenotazioneId: string; checkin: string; checkout: string; canale: string;
-  tipoAlloggiato?: string | null;
+  tipoAlloggiato?: string | null; esitoInvio?: string | null;
 };
 
 export type SchedinaDaVerificare = {

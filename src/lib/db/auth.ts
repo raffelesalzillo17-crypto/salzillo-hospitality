@@ -57,6 +57,30 @@ export function verificaToken(token: string): string | null {
   } catch { return null; }
 }
 
+// ── Link personale (11/11/2026) ──────────────────────────────────────────────────────────
+// Raffaele ha chiesto di entrare senza scrivere username e password: un link segreto che apre
+// la sessione da solo. Chi ha il link entra come lui, quindi vale solo per il Titolare che lo
+// genera per sé da dentro l'app. La firma dipende anche dall'hash della password: cambiando
+// password (o disattivando l'utente) il vecchio link smette di funzionare, senza bisogno di
+// una colonna in più nel database.
+function firmaLink(utenteId: string, passwordHash: string): string {
+  return createHmac('sha256', segreto()).update(`link-personale:${utenteId}:${passwordHash}`).digest('hex');
+}
+export function creaLinkPersonale(utenteId: string, passwordHash: string): string {
+  return Buffer.from(`${utenteId}:${firmaLink(utenteId, passwordHash)}`).toString('base64url');
+}
+/** Ritorna l'id dell'utente se il link è valido e l'utente è ancora un Titolare attivo. */
+export async function verificaLinkPersonale(k: string): Promise<string | null> {
+  try {
+    const [utenteId, firma] = Buffer.from(k, 'base64url').toString('utf8').split(':');
+    if (!utenteId || !firma || !/^[0-9a-f-]{36}$/i.test(utenteId)) return null;
+    const [u] = await getDb().select().from(utenti).where(eq(utenti.id, utenteId));
+    if (!u || !u.attivo || u.ruolo !== 'Titolare' || !u.password_hash) return null;
+    const a = Buffer.from(firma, 'hex'), b = Buffer.from(firmaLink(u.id, u.password_hash), 'hex');
+    return a.length === b.length && timingSafeEqual(a, b) ? u.id : null;
+  } catch { return null; }
+}
+
 export type Sessione = {
   id: string; username: string; nome: string; ruolo: string; proprietarioId: string | null;
   immobiliVisibili: string[] | 'tutti';       // id immobili, o 'tutti' per il titolare

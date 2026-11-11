@@ -192,3 +192,32 @@ export function formatSchedinaRecord(dati: DatiSchedina): string {
 
   return record;
 }
+
+/**
+ * Gli ospiti di UNA prenotazione vanno comunicati insieme, nello stesso invio, con la persona
+ * di riferimento per prima e gli altri subito dopo: un solo ospite = "Ospite singolo" (16);
+ * più ospiti = un Capofamiglia (17) seguito dai Familiari (19), oppure un Capogruppo (18)
+ * seguito dai Membri del gruppo (20). Un familiare o un membro mandato da solo non ha senso
+ * per il portale (11/11/2026: prima si inviava una schedina per volta, quindi due ospiti
+ * della stessa prenotazione partivano come due arrivi slegati).
+ *
+ * Ritorna gli elementi nell'ordine giusto per l'invio, oppure l'errore da mostrare.
+ */
+export function ordinaGruppoAlloggiati<T extends { tipo: string | null }>(ospiti: T[]): { ok: true; ordinati: T[] } | { ok: false; errore: string } {
+  const quanti = (k: string) => ospiti.filter((o) => o.tipo === k).length;
+  if (ospiti.length === 0) return { ok: false, errore: 'Nessuna schedina da inviare per questa prenotazione.' };
+  if (ospiti.some((o) => !o.tipo || !['16', '17', '18', '19', '20'].includes(o.tipo))) {
+    return { ok: false, errore: 'A una schedina manca il tipo di ospite: sceglilo dalla scheda della prenotazione.' };
+  }
+  if (ospiti.length === 1) {
+    return ospiti[0].tipo === '16'
+      ? { ok: true, ordinati: ospiti }
+      : { ok: false, errore: 'C\'è una sola schedina: il tipo deve essere "Ospite singolo". Se gli ospiti sono di più, crea prima le schedine degli altri.' };
+  }
+  if (quanti('16') > 0) return { ok: false, errore: 'Con più ospiti nessuno può essere "Ospite singolo": serve un Capofamiglia con i Familiari, oppure un Capogruppo con i Membri del gruppo.' };
+  if (quanti('17') + quanti('18') !== 1) return { ok: false, errore: 'Serve una sola persona di riferimento: un Capofamiglia oppure un Capogruppo.' };
+  if (quanti('17') === 1 && quanti('20') > 0) return { ok: false, errore: 'Con un Capofamiglia gli altri devono essere "Familiare", non "Membro gruppo".' };
+  if (quanti('18') === 1 && quanti('19') > 0) return { ok: false, errore: 'Con un Capogruppo gli altri devono essere "Membro gruppo", non "Familiare".' };
+  const capo = ospiti.find((o) => o.tipo === '17' || o.tipo === '18')!;
+  return { ok: true, ordinati: [capo, ...ospiti.filter((o) => o !== capo)] };
+}

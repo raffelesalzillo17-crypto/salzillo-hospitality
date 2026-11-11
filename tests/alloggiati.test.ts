@@ -64,3 +64,31 @@ describe('validateSchedina', () => {
     expect(e).toMatch(/fuori range/);
   });
 });
+
+import { ordinaGruppoAlloggiati } from '../src/lib/alloggiatiRecordFormat';
+
+describe('ordinaGruppoAlloggiati — gli ospiti di una prenotazione partono insieme', () => {
+  const o = (tipo: string | null, n = '') => ({ tipo, n });
+  it('un solo ospite: deve essere "singolo"', () => {
+    expect(ordinaGruppoAlloggiati([o('16')]).ok).toBe(true);
+    expect(ordinaGruppoAlloggiati([o('17')]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([o('19')]).ok).toBe(false);
+  });
+  it('capofamiglia + familiari: capofamiglia sempre per primo', () => {
+    const r = ordinaGruppoAlloggiati([o('19', 'a'), o('17', 'capo'), o('19', 'b')]);
+    expect(r.ok && r.ordinati.map((x) => x.n)).toEqual(['capo', 'a', 'b']);
+  });
+  it('capogruppo + membri: capogruppo per primo', () => {
+    const r = ordinaGruppoAlloggiati([o('20', 'a'), o('18', 'capo')]);
+    expect(r.ok && r.ordinati.map((x) => x.n)).toEqual(['capo', 'a']);
+  });
+  it('rifiuta le combinazioni che non stanno insieme', () => {
+    expect(ordinaGruppoAlloggiati([o('18'), o('19')]).ok).toBe(false); // il caso dell'11/11/2026
+    expect(ordinaGruppoAlloggiati([o('17'), o('20')]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([o('16'), o('16')]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([o('17'), o('17')]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([o('19'), o('19')]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([o('17'), o(null)]).ok).toBe(false);
+    expect(ordinaGruppoAlloggiati([]).ok).toBe(false);
+  });
+});

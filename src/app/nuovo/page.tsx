@@ -81,6 +81,16 @@ export default function Nuovo() {
     const d = await r.json();
     if (d.ok) { setPaOk(true); setPa({ codice: '', username: '', password: '' }); } else setErrore(d.error || 'Errore');
   }
+  // Link personale: apre l'app senza username e password (solo Titolare). Si copia negli
+  // appunti; se il browser non lo permette lo mostra per copiarlo a mano.
+  async function copiaLinkPersonale() {
+    const d = await (await fetch('/api/nuovo/link-personale')).json();
+    if (!d.ok) { alert(d.error || 'Errore'); return; }
+    try {
+      await navigator.clipboard.writeText(d.url);
+      alert('Link personale copiato.\n\nSalvalo nei preferiti o aggiungilo alla schermata Home: aprendolo entri senza scrivere nulla.\n\nChi ha questo link entra come te: non mandarlo a nessuno. Se cambi la password il link smette di funzionare.');
+    } catch { prompt('Copia il tuo link personale (non mandarlo a nessuno):', d.url); }
+  }
   async function logout() { await fetch('/api/nuovo/logout', { method: 'POST' }); setSess(null); setDati(null); }
 
   async function aggiorna() {
@@ -159,7 +169,7 @@ export default function Nuovo() {
           <h1>Nuovo sistema <span className="beta">anteprima</span></h1>
         </div>
         <div className="topright">
-          <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={logout}>esci</button></span>
+          <span className="hint">👤 {sess.nome}{sess.ruolo === 'Titolare' && <> · <button className="linklike" onClick={copiaLinkPersonale} title="Un link per entrare senza username e password">🔗 link personale</button></>} · <button className="linklike" onClick={logout}>esci</button></span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <TemaToggle />
             {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}

@@ -20,7 +20,8 @@ import { schedine, prenotazioni, alloggi } from './db/schema';
 import {
   generateToken, authenticationTest, testSchedine, sendSchedine,
 } from './alloggiatiWebService';
-import { formatSchedinaRecord, validateSchedina, type DatiSchedina, type TipoAlloggiatoCodice } from './alloggiatiRecordFormat';
+import { formatSchedinaRecord, validateSchedina, ordinaGruppoAlloggiati, type DatiSchedina, type TipoAlloggiatoCodice } from './alloggiatiRecordFormat';
+import { inArray } from 'drizzle-orm';
 import { alertInvioAmbiguo } from './cronAlert';
 
 export type SchedinaDaInviare = {
@@ -34,6 +35,7 @@ export type SchedinaDaInviare = {
   canale: string;
   ospiteNomeCompleto: string;
   tipoAlloggiato: string | null;
+  esitoInvio: string | null;
 };
 
 /** Le schedine "Da inviare" che rientrano nel filtro di sicurezza — quelle che il pulsante
@@ -47,6 +49,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
       cognome: schedine.cognome,
       nome: schedine.nome,
       tipoAlloggiato: schedine.tipo_alloggiato,
+      esitoInvio: schedine.esito_invio,
       prenotazioneId: prenotazioni.id,
       checkin: prenotazioni.checkin,
       checkout: prenotazioni.checkout,
@@ -75,6 +78,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
     canale: r.canale,
     ospiteNomeCompleto: `${r.nome} ${r.cognome}`.trim(),
     tipoAlloggiato: r.tipoAlloggiato,
+    esitoInvio: r.esitoInvio,
   }));
 }
 
@@ -328,4 +332,162 @@ export async function risolviSchedinaAmbigua(schedinaId: string, esito: 'Inviata
   } else {
     await db.update(schedine).set({ stato: 'Da inviare', inviata_il: null, esito_invio: null }).where(eq(schedine.id, schedinaId));
   }
+}
+
+export type EsitoInvioPrenotazione = { ok: boolean; messaggio: string; inviate: number };
+
+/**
+ * Invia DAVVERO ad Alloggiati Web tutte le schedine "Da inviare" di UNA prenotazione, in un
+ * solo invio e nell'ordine richiesto (persona di riferimento, poi familiari/membri) — vedi
+ * ordinaGruppoAlloggiati. Stesse garanzie di inviaSchedinaReale: filtro di sicurezza
+ * ricontrollato qui, blocco atomico contro i doppi invii, Test() prima di Send(), e Send()
+ * solo se il Test passa per TUTTE le schedine. Sempre innescato da un click esplicito del
+ * Titolare su quella prenotazione, mai automatico e mai su più prenotazioni insieme.
+ */
+export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<EsitoInvioPrenotazione> {
+  const db = getDb();
+  const no = (messaggio: string): EsitoInvioPrenotazione => ({ ok: false, messaggio, inviate: 0 });
+
+  const tutte = await db
+    .select({
+      id: schedine.id, stato: schedine.stato, cognome: schedine.cognome, nome: schedine.nome, sesso: schedine.sesso,
+      dataNascita: schedine.data_nascita, comuneNascitaCodice: schedine.comune_nascita_codice,
+      provinciaNascita: schedine.provincia_nascita, statoNascitaCodice: schedine.stato_nascita_codice,
+      cittadinanzaCodice: schedine.cittadinanza_codice, tipoDocumentoCodice: schedine.tipo_documento_codice,
+      numeroDocumento: schedine.numero_documento, luogoRilascioDocumento: schedine.luogo_rilascio_documento,
+      tipo: schedine.tipo_alloggiato_codice,
+      checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
+      prenotazioneStato: prenotazioni.stato, trasmetteAlloggiati: alloggi.trasmette_alloggiati, alloggioNome: alloggi.nome,
+    })
+    .from(schedine)
+    .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .where(eq(schedine.prenotazione_id, prenotazioneId));
+
+  if (tutte.length === 0) return no('Nessuna schedina su questa prenotazione.');
+  const p = tutte[0];
+  // Ricontrollo del filtro lato server — non fidarsi del solo filtro applicato in UI.
+  if (!p.trasmetteAlloggiati || p.canale === 'No Tax' || p.prenotazioneStato !== 'Attiva') {
+    return no(`Questa prenotazione (${p.alloggioNome}, canale ${p.canale}) non rientra nella regola di invio ad Alloggiati Web.`);
+  }
+  // Se una parte del gruppo è già partita (o è rimasta in uno stato incerto) non si può più
+  // comporre un invio coerente da qui: meglio fermarsi che mandare un familiare senza il suo
+  // capofamiglia, o mandare due volte la stessa persona.
+  const nonDaInviare = tutte.filter((s) => s.stato !== 'Da inviare');
+  if (nonDaInviare.length > 0) {
+    return no(`Su questa prenotazione ci sono schedine già in stato "${nonDaInviare[0].stato}" (${nonDaInviare.map((s) => `${s.nome} ${s.cognome}`).join(', ')}): le altre non possono partire insieme a loro da qui. Controlla sul portale Alloggiati Web e, se serve, inserisci a mano lì quelle che mancano.`);
+  }
+  const gruppo = ordinaGruppoAlloggiati(tutte);
+  if (!gruppo.ok) return no(gruppo.errore);
+
+  const notti = giorniTra(p.checkin, p.checkout);
+  if (notti > 30) return no(`Soggiorno di ${notti} notti — Alloggiati Web accetta al massimo 30 giorni per invio.`);
+
+  const record: string[] = [];
+  for (const s of gruppo.ordinati) {
+    const chi = `${s.nome} ${s.cognome}`;
+    if (!s.statoNascitaCodice || !s.cittadinanzaCodice) return no(`${chi}: stato di nascita o cittadinanza mancanti.`);
+    // Mai un sesso inventato su un modulo verso la Polizia (audit del 23/09/2026).
+    if (s.sesso !== 'M' && s.sesso !== 'F') return no(`${chi}: sesso mancante.`);
+    const dati: DatiSchedina = {
+      tipoAlloggiato: s.tipo as TipoAlloggiatoCodice,
+      dataArrivo: isoToItaliano(p.checkin), numeroGiorniPermanenza: notti,
+      cognome: s.cognome, nome: s.nome, sesso: s.sesso === 'F' ? '2' : '1',
+      dataNascita: s.dataNascita ? isoToItaliano(s.dataNascita) : '',
+      comuneNascita: s.comuneNascitaCodice ?? undefined, provinciaNascita: s.provinciaNascita ?? undefined,
+      statoNascita: s.statoNascitaCodice, cittadinanza: s.cittadinanzaCodice,
+      tipoDocumento: s.tipoDocumentoCodice ?? undefined, numeroDocumento: s.numeroDocumento ?? undefined,
+      luogoRilascioDocumento: s.luogoRilascioDocumento ?? undefined,
+    };
+    const errori = validateSchedina(dati);
+    if (errori.length > 0) return no(`${chi}: dati non validi — ${errori.join('; ')}`);
+    record.push(formatSchedinaRecord(dati));
+  }
+
+  // Blocco atomico su tutto il gruppo: se anche una sola schedina è già stata presa da un'altra
+  // richiesta (doppio click, due schede aperte) si rilasciano le altre e ci si ferma.
+  const ids = gruppo.ordinati.map((s) => s.id);
+  const presi = await db.update(schedine).set({ stato: 'In invio' })
+    .where(and(inArray(schedine.id, ids), eq(schedine.stato, 'Da inviare')))
+    .returning({ id: schedine.id });
+  const rilascia = async (esito: string | null) => {
+    await db.update(schedine).set({ stato: 'Da inviare', esito_invio: esito })
+      .where(and(inArray(schedine.id, presi.map((x) => x.id)), eq(schedine.stato, 'In invio')));
+  };
+  if (presi.length !== ids.length) {
+    await rilascia(null);
+    return no('Un altro invio per questa prenotazione è già in corso o è appena stato completato — ricarica la pagina prima di riprovare.');
+  }
+
+  // Fino a Send() non è partito nulla: ogni problema riporta le schedine a "Da inviare", con il
+  // motivo scritto accanto, così si corregge e si riprova senza passare da "Da verificare".
+  let token: string;
+  try {
+    const tokenRes = await generateToken();
+    if (!tokenRes.esito.esito || !tokenRes.token) {
+      const m = `Autenticazione ad Alloggiati Web fallita: ${tokenRes.esito.erroreDes || 'nessun token ricevuto'}`;
+      await rilascia(m); return no(m);
+    }
+    token = tokenRes.token;
+    const authTest = await authenticationTest(token);
+    if (!authTest.esito) {
+      const m = `Verifica token fallita: ${authTest.erroreDes || 'esito negativo'}`;
+      await rilascia(m); return no(m);
+    }
+    const test = await testSchedine(token, record);
+    const testOk = test.esito.esito && test.schedineValide === record.length && test.dettaglio.every((d) => d.esito);
+    if (!testOk) {
+      const righe = test.dettaglio
+        .map((d, i) => (d.esito ? null : `${gruppo.ordinati[i]?.nome ?? ''} ${gruppo.ordinati[i]?.cognome ?? ''}: ${d.erroreDes || 'errore'} (${d.erroreCod || '?'})`))
+        .filter(Boolean);
+      const m = `Controllo del portale non superato, invio NON effettuato: ${righe.length ? righe.join(' — ') : test.esito.erroreDes || 'validazione fallita'}`;
+      await rilascia(m); return no(m);
+    }
+  } catch (err) {
+    const m = `Errore di comunicazione con Alloggiati Web prima dell'invio (non è partito nulla): ${err instanceof Error ? err.message : String(err)}`;
+    await rilascia(m); return no(m);
+  }
+
+  // Solo ora, con il Test superato per tutte, l'invio vero. Da qui in poi le schedine NON
+  // tornano mai da sole a "Da inviare": se l'esito non è chiaro restano "In invio" e vanno
+  // risolte a mano da "Da verificare", dopo aver guardato il portale.
+  const nomi = gruppo.ordinati.map((s) => `${s.nome} ${s.cognome}`).join(', ');
+  let send: Awaited<ReturnType<typeof sendSchedine>>;
+  try {
+    send = await sendSchedine(token, record);
+  } catch (err) {
+    const m = `Esito dell'invio sconosciuto (errore di comunicazione durante l'invio: ${err instanceof Error ? err.message : String(err)}). Controlla sul portale Alloggiati Web se le schedine risultano arrivate.`;
+    await db.update(schedine).set({ esito_invio: m }).where(inArray(schedine.id, ids));
+    await alertInvioAmbiguo({ ospite: nomi, alloggio: p.alloggioNome, erroreScrittura: m }).catch(() => {});
+    return no(m);
+  }
+  const tutteAccettate = send.esito.esito && send.schedineValide === record.length && send.dettaglio.every((d) => d.esito);
+  if (!tutteAccettate) {
+    if (!send.esito.esito && (send.schedineValide ?? 0) === 0) {
+      // Il portale ha rifiutato l'intero invio: non è entrato nulla.
+      const m = `Invio ad Alloggiati Web rifiutato: ${send.esito.erroreDes || 'invio non riuscito'}`;
+      await db.update(schedine).set({ stato: 'Errore', esito_invio: m }).where(inArray(schedine.id, ids));
+      return no(m);
+    }
+    const m = `Invio accettato solo in parte dal portale (${send.schedineValide ?? '?'} su ${record.length}). Controlla sul portale Alloggiati Web quali ospiti risultano arrivati.`;
+    await db.update(schedine).set({ esito_invio: m }).where(inArray(schedine.id, ids));
+    await alertInvioAmbiguo({ ospite: nomi, alloggio: p.alloggioNome, erroreScrittura: m }).catch(() => {});
+    return no(m);
+  }
+
+  const messaggio = `Inviate con successo il ${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })} (${record.length} ospit${record.length === 1 ? 'e' : 'i'}: ${nomi}).`;
+  for (let tentativo = 1; tentativo <= 3; tentativo++) {
+    try {
+      await db.update(schedine).set({ stato: 'Inviata', inviata_il: new Date(), esito_invio: messaggio }).where(inArray(schedine.id, ids));
+      return { ok: true, messaggio, inviate: record.length };
+    } catch (errScrittura) {
+      if (tentativo === 3) {
+        const msgScrittura = errScrittura instanceof Error ? errScrittura.message : String(errScrittura);
+        await alertInvioAmbiguo({ ospite: nomi, alloggio: p.alloggioNome, erroreScrittura: msgScrittura }).catch(() => {});
+        return { ok: true, inviate: record.length, messaggio: `${messaggio} ATTENZIONE: non sono riuscito a registrarlo nel sistema (${msgScrittura}) — vai su "Alloggiati Web → Da verificare" e conferma a mano.` };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400 * tentativo));
+    }
+  }
+  return { ok: true, messaggio, inviate: record.length };
 }
