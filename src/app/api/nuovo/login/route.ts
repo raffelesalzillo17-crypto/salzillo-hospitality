@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db/index';
 import { utenti } from '@/lib/db/schema';
-import { verificaPassword, creaToken, COOKIE, leggiSessione } from '@/lib/db/auth';
+import { verificaPassword, creaToken, COOKIE, OPZIONI_COOKIE, leggiSessione } from '@/lib/db/auth';
 
 export async function POST(req: NextRequest) {
   let body: { username?: string; password?: string };
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(COOKIE, creaToken(u.id), { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 });
+  res.cookies.set(COOKIE, creaToken(u.id), OPZIONI_COOKIE);
   return res;
 }
 

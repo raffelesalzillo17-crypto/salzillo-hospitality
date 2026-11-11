@@ -19,7 +19,10 @@ import { getDb } from './index';
 import { utenti, permessiImmobile, immobili, alloggi } from './schema';
 
 export const COOKIE = 'sh_sessione';
-const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Un anno, e si rinnova da sola a ogni apertura dell'app (vedi /api/nuovo/dati): su un
+// dispositivo usato con regolarità username e password si mettono una volta sola.
+export const TTL_MS = 365 * 24 * 60 * 60 * 1000;
+export const OPZIONI_COOKIE = { httpOnly: true, secure: true, sameSite: 'lax' as const, path: '/', maxAge: TTL_MS / 1000 };
 
 function segreto(): string {
   return process.env.ACCESSI_SECRET || process.env.PLANCIA_ACCESS_KEY || 'dev-secret-non-usare-in-produzione';

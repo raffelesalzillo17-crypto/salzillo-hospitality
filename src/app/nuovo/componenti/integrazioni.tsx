@@ -214,16 +214,29 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
           ))}
         </div>
       )}
-      {schedine.length === 0 ? <p className="empty">Nessuna schedina da inviare al momento.</p> : schedine.map((s) => (
-        <div key={s.id} className="docrow">
-          <b>{s.ospiteNomeCompleto}</b>
-          <span className="empty">{s.alloggioNome} · arrivo {dataIt(s.checkin)} · {s.canale}</span>
-          <button className="mini coral" disabled={busy === s.id} style={{ marginLeft: 'auto' }} onClick={() => invia(s)}>
-            {busy === s.id ? 'invio…' : '📨 invia adesso'}
-          </button>
-          {esiti[s.id] && <p className={esiti[s.id].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[s.id].messaggio}</p>}
-        </div>
-      ))}
+      {schedine.length === 0 ? <p className="empty">Nessuna schedina da inviare al momento.</p> : (
+        // Raggruppate per prenotazione: due ospiti della stessa prenotazione sono UNA prenotazione
+        // con due schedine, non due prenotazioni (così sembrava prima, una riga per ospite).
+        [...new Set(schedine.map((s) => s.prenotazioneId))].map((pid) => {
+          const gruppo = schedine.filter((s) => s.prenotazioneId === pid);
+          const g = gruppo[0];
+          return (
+            <div key={pid} className="docgroup">
+              <h3><span>{g.alloggioNome} · arrivo {dataIt(g.checkin)} · {g.canale}</span><span className="empty">{gruppo.length} ospit{gruppo.length === 1 ? 'e' : 'i'}</span></h3>
+              {gruppo.map((s) => (
+                <div key={s.id} className="docrow">
+                  <b>{s.ospiteNomeCompleto}</b>
+                  <span className="empty">{s.tipoAlloggiato || '—'}</span>
+                  <button className="mini coral" disabled={busy === s.id} style={{ marginLeft: 'auto' }} onClick={() => invia(s)}>
+                    {busy === s.id ? 'invio…' : '📨 invia adesso'}
+                  </button>
+                  {esiti[s.id] && <p className={esiti[s.id].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[s.id].messaggio}</p>}
+                </div>
+              ))}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

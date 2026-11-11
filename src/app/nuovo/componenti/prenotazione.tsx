@@ -4,7 +4,26 @@ import { useEffect, useState } from 'react';
 import type { Alloggio, DatiSch, Ospite, Prenotazione, TabelleAll } from '../tipi';
 import { SCH_VUOTA, api, dataIt, eur, neg, normAll, ridimensiona } from '../utilita';
 
-export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { prenotazioneId: string; puoModificare: boolean }) {
+const TIPI_OSPITE = [['16', 'Ospite singolo'], ['17', 'Capofamiglia'], ['18', 'Capogruppo'], ['19', 'Familiare'], ['20', 'Membro gruppo']] as const;
+const codiceTipo = (rapporto: string) => TIPI_OSPITE.find(([, nome]) => rapporto.startsWith(nome))?.[0] ?? '';
+
+/** I ruoli delle schedine di UNA prenotazione devono stare insieme: un solo ospite = "singolo";
+ *  più ospiti = un capofamiglia con i familiari, oppure un capogruppo con i membri del gruppo.
+ *  Ritorna la frase da mostrare se non tornano, '' se è tutto a posto. */
+export function avvisoRuoli(schedine: Prenotazione['schedine']): string {
+  const c = schedine.map((s) => codiceTipo(s.rapporto));
+  const quanti = (k: string) => c.filter((x) => x === k).length;
+  if (c.length < 2) return c[0] && c[0] !== '16' ? 'C’è un solo ospite: il tipo giusto è "Ospite singolo" (oppure manca la schedina degli altri).' : '';
+  if (quanti('16')) return 'Con più ospiti nessuno può essere "Ospite singolo": serve un capofamiglia (o capogruppo) e gli altri familiari (o membri).';
+  if (quanti('17') + quanti('18') !== 1) return 'Serve una sola persona di riferimento: un capofamiglia oppure un capogruppo.';
+  if (quanti('17') && quanti('20')) return 'Con un capofamiglia gli altri devono essere "Familiare", non "Membro gruppo".';
+  if (quanti('18') && quanti('19')) return 'Con un capogruppo gli altri devono essere "Membro gruppo", non "Familiare" (oppure il primo va messo come "Capofamiglia").';
+  return '';
+}
+
+export function DocumentiPrenotazione({ prenotazioneId, puoModificare, schedine, onCambiato }: {
+  prenotazioneId: string; puoModificare: boolean; schedine: Prenotazione['schedine']; onCambiato: () => Promise<void>;
+}) {
   type Doc = { id: string; nome: string; driveUrl: string | null; mime: string | null; caricatoIl: string };
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,6 +58,8 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Errore');
       await carica();
+      setOk(`✅ ${d.caricati} file caricat${d.caricati === 1 ? 'o' : 'i'} su questa prenotazione.`);
+      await onCambiato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
 
@@ -50,6 +71,7 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Errore');
       await carica();
+      await onCambiato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
 
@@ -62,7 +84,11 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Errore');
       if (!tab) setTab(await fetch('/checkin/tabelle.json').then((x) => x.json()));
-      setSch({ ...SCH_VUOTA, ...d.dati, tipoAlloggiatoCodice: '16', comuneNascitaCodice: '' });
+      // Il tipo di ospite proposto dipende da chi c'è già su questa prenotazione: il primo è
+      // "singolo", dal secondo in poi "familiare" (o "membro gruppo" se il primo è un capogruppo).
+      const giaCapogruppo = schedine.some((x) => codiceTipo(x.rapporto) === '18');
+      const proposto = schedine.length === 0 ? '16' : giaCapogruppo ? '20' : '19';
+      setSch({ ...SCH_VUOTA, ...d.dati, tipoAlloggiatoCodice: proposto, comuneNascitaCodice: '' });
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
 
@@ -76,8 +102,9 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
       });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Errore');
-      setOk(`✅ Schedina creata per ${sch.nome} ${sch.cognome}: la trovi tra i documenti check-in ricevuti e in Alloggiati Web.`);
+      setOk(`✅ Schedina creata per ${sch.nome} ${sch.cognome}: la vedi qui sotto, tra le schedine di questa prenotazione, e in Alloggiati Web.`);
       setSch(null);
+      await onCambiato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
 
@@ -99,9 +126,15 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
       {docs && docs.length === 0 && <p className="sub">Nessun documento ancora.</p>}
       {docs && docs.map((d) => (
         <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0', flexWrap: 'wrap' }}>
-          {d.driveUrl
-            ? <a href={d.driveUrl} target="_blank" rel="noopener">{d.nome}</a>
-            : <span>{d.nome}</span>}
+          {d.mime?.startsWith('image/') && d.mime !== 'image/heic' && d.mime !== 'image/heif' && (
+            <a href={`/api/nuovo/documenti-prenotazione?file=${d.id}`} target="_blank" rel="noopener" title="Apri la foto">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/nuovo/documenti-prenotazione?file=${d.id}`} alt={d.nome} loading="lazy"
+                style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--line)', display: 'block' }} />
+            </a>
+          )}
+          <a href={`/api/nuovo/documenti-prenotazione?file=${d.id}`} target="_blank" rel="noopener">{d.nome}</a>
+          {d.driveUrl && <a className="sub" href={d.driveUrl} target="_blank" rel="noopener">Drive</a>}
           <span className="sub" style={{ marginLeft: 'auto' }}>{new Date(d.caricatoIl).toLocaleDateString('it-IT')}</span>
           {puoModificare && d.mime?.startsWith('image/') && (
             <button className="mini" disabled={busy} onClick={() => leggi(d.id)} title="Leggi il documento e precompila la schedina Alloggiati">🔍 Leggi</button>
@@ -153,7 +186,7 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
           {campo('Numero documento', 'numeroDocumento')}
           {campo('Luogo di rilascio (facoltativo)', 'luogoRilascioDocumento')}
           <label style={{ display: 'block', margin: '5px 0' }}>
-            <span className="sub">Tipo di ospite</span>
+            <span className="sub">Tipo di ospite{schedine.length > 0 ? ` — su questa prenotazione c’è già ${schedine.map((x) => `${x.nome} (${x.rapporto || '—'})`).join(', ')}` : ''}</span>
             <select value={sch.tipoAlloggiatoCodice} onChange={(e) => set('tipoAlloggiatoCodice', e.target.value)} style={{ display: 'block' }}>
               <option value="16">Ospite singolo</option><option value="17">Capofamiglia</option><option value="18">Capogruppo</option>
               <option value="19">Familiare</option><option value="20">Membro gruppo</option>
@@ -172,9 +205,23 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare }: { preno
   );
 }
 
-export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito, onClose, onSalvato }: {
+export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito, onClose, onSalvato, onCambiato }: {
   p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; apriPagamentoSubito?: boolean; onClose: () => void; onSalvato: () => void;
+  /** Ricarica i dati senza chiudere la scheda (documenti e schedine appena aggiunti). */
+  onCambiato: () => Promise<void>;
 }) {
+  const [errTipo, setErrTipo] = useState('');
+  async function cambiaTipo(id: string, tipoAlloggiatoCodice: string) {
+    setErrTipo('');
+    try {
+      const r = await fetch('/api/nuovo/schedina', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, tipoAlloggiatoCodice }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Errore');
+      await onCambiato();
+    } catch (e) { setErrTipo(String(e instanceof Error ? e.message : e)); }
+  }
   const [modifica, setModifica] = useState(false);
   const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
   const [busy, setBusy] = useState(false);
@@ -232,7 +279,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamento
             </tbody></table>
             {p.penaleImporto != null && <p>Penale: {eur(p.penaleImporto)}</p>}
             {p.note && <p className="sub">{p.note}</p>}
-            <DocumentiPrenotazione prenotazioneId={p.id} puoModificare={puoModificare} />
+            <DocumentiPrenotazione prenotazioneId={p.id} puoModificare={puoModificare} schedine={p.schedine} onCambiato={onCambiato} />
 
             {p.pagamenti.length > 0 && (
               <table className="tbl" style={{ marginTop: 10 }}><tbody>
@@ -246,13 +293,22 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamento
 
             {p.schedine.length > 0 && (
               <table className="tbl" style={{ marginTop: 10 }}><tbody>
-                <tr><td colSpan={2}><b style={{ fontSize: 13 }}>Documenti check-in ricevuti ({p.schedine.length})</b></td></tr>
+                <tr><td colSpan={2}><b style={{ fontSize: 13 }}>Schedine degli ospiti di questa prenotazione ({p.schedine.length})</b></td></tr>
                 {p.schedine.map((s) => (
                   <tr key={s.id}>
-                    <td>{s.cognome} {s.nome} <small className="sub">({s.rapporto || '—'})</small></td>
-                    <td className="num"><small>{s.tipoDocumento || '—'} {s.numeroDocumento}</small></td>
+                    <td>{s.cognome} {s.nome}{' '}
+                      {puoModificare && s.stato === 'Da inviare' ? (
+                        <select value={codiceTipo(s.rapporto)} onChange={(e) => cambiaTipo(s.id, e.target.value)} title="Tipo di ospite">
+                          {!codiceTipo(s.rapporto) && <option value="">{s.rapporto || '—'}</option>}
+                          {TIPI_OSPITE.map(([cod, nome]) => <option key={cod} value={cod}>{nome}</option>)}
+                        </select>
+                      ) : <small className="sub">({s.rapporto || '—'})</small>}
+                    </td>
+                    <td className="num"><small>{s.tipoDocumento || '—'} {s.numeroDocumento} · {s.stato}</small></td>
                   </tr>
                 ))}
+                {avvisoRuoli(p.schedine) && <tr><td colSpan={2}><small style={{ color: '#d33' }}>⚠️ {avvisoRuoli(p.schedine)}</small></td></tr>}
+                {errTipo && <tr><td colSpan={2}><small style={{ color: '#d33' }}>{errTipo}</small></td></tr>}
               </tbody></table>
             )}
 

@@ -4,7 +4,7 @@ import { richiediSessione } from '@/lib/db/auth';
 import { prenotazioneVisibile, puoScrivereDocumenti as puoScrivere } from '@/lib/db/accessoPrenotazione';
 import { getDb } from '@/lib/db';
 import { documenti } from '@/lib/db/schema';
-import { eliminaDocumentoDrive, registraDocumento } from '@/lib/documenti';
+import { eliminaDocumentoDrive, registraDocumento, scaricaDocumentoDrive } from '@/lib/documenti';
 
 // Documenti d'identità degli ospiti, caricati da Raffaele/collaboratori dalla scheda della
 // prenotazione (richiesta del 12/10/2026: i documenti non li compila più l'ospite sul sito, li
@@ -12,6 +12,8 @@ import { eliminaDocumentoDrive, registraDocumento } from '@/lib/documenti';
 // dell'ospite) + una riga nella tabella `documenti` legata alla prenotazione.
 //
 //   GET    ?prenotazione=<id>   → elenco dei documenti d'identità di quella prenotazione
+//   GET    ?file=<documentoId>  → il file stesso (foto/PDF), per vederlo dentro l'app senza
+//                                  passare da Drive (che chiede l'account Google giusto)
 //   POST   multipart: prenotazione=<id>, file=<uno o più file>   → carica
 //   DELETE ?id=<documentoId>    → toglie dall'elenco e sposta il file nel cestino di Drive
 
@@ -28,6 +30,20 @@ const err = (error: string, status = 400) => NextResponse.json({ ok: false, erro
 export async function GET(req: NextRequest) {
   const check = await richiediSessione(req);
   if ('risposta' in check) return check.risposta;
+  const fileId = req.nextUrl.searchParams.get('file') || '';
+  if (fileId) {
+    const [d] = await getDb().select().from(documenti).where(and(eq(documenti.id, fileId), eq(documenti.tipo, TIPO)));
+    if (!d || !d.prenotazione_id || !d.drive_file_id) return err('Documento non trovato', 404);
+    if (!(await prenotazioneVisibile(d.prenotazione_id, check.sessione))) return err('Documento non trovato', 404);
+    try {
+      const contenuto = await scaricaDocumentoDrive(d.drive_file_id);
+      return new NextResponse(new Uint8Array(contenuto), {
+        headers: { 'Content-Type': d.mime || 'application/octet-stream', 'Content-Disposition': 'inline', 'Cache-Control': 'private, max-age=3600' },
+      });
+    } catch (e) {
+      return err(`File non leggibile da Drive: ${e instanceof Error ? e.message : String(e)}`, 502);
+    }
+  }
   const id = req.nextUrl.searchParams.get('prenotazione') || '';
   if (!id) return err('Manca la prenotazione');
   const p = await prenotazioneVisibile(id, check.sessione);

@@ -666,7 +666,8 @@ export default function Nuovo() {
         <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} daVerificare={dati.schedineDaVerificare ?? []} onCambiato={carica} />
       )}
 
-      {prenSel && <DettaglioPrenotazione p={prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
+      {prenSel && <DettaglioPrenotazione p={dati.prenotazioni.find((x) => x.id === prenSel.id) ?? prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
+        onCambiato={carica}
         apriPagamentoSubito={prenSelAzione === 'pagamento'}
         onClose={() => { setPrenSel(null); setPrenSelAzione(null); }}
         onSalvato={async () => { setPrenSel(null); setPrenSelAzione(null); await carica(); }} />}

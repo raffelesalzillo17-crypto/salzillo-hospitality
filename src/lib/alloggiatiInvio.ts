@@ -33,6 +33,7 @@ export type SchedinaDaInviare = {
   checkout: string;
   canale: string;
   ospiteNomeCompleto: string;
+  tipoAlloggiato: string | null;
 };
 
 /** Le schedine "Da inviare" che rientrano nel filtro di sicurezza — quelle che il pulsante
@@ -45,6 +46,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
       id: schedine.id,
       cognome: schedine.cognome,
       nome: schedine.nome,
+      tipoAlloggiato: schedine.tipo_alloggiato,
       prenotazioneId: prenotazioni.id,
       checkin: prenotazioni.checkin,
       checkout: prenotazioni.checkout,
@@ -72,6 +74,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
     checkout: r.checkout,
     canale: r.canale,
     ospiteNomeCompleto: `${r.nome} ${r.cognome}`.trim(),
+    tipoAlloggiato: r.tipoAlloggiato,
   }));
 }
 

@@ -6,7 +6,7 @@ import {
   richiesteNuoveDb, leggiTuttiIBlocchiDb, leggiLinkUtiliDb,
 } from '@/lib/db/queries';
 import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
-import { richiediSessione, alloggiVisibili } from '@/lib/db/auth';
+import { richiediSessione, alloggiVisibili, creaToken, COOKIE, OPZIONI_COOKIE } from '@/lib/db/auth';
 import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati, schedineDaVerificare } from '@/lib/alloggiatiInvio';
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
       ...p, lordo: 0, commissione: 0, cedolare: 0, costoPulizia: 0, feeGestione: 0, utile: 0, nettoProprietario: 0,
     }))).map((p) => ({ ...p, ...datiWhatsappCheckin(p.alloggio, p.telefono) }));
 
-    return NextResponse.json({
+    const risposta = NextResponse.json({
       ok: true,
       oggi: oggiISO,
       sessione: { nome: sess.nome, ruolo: sess.ruolo, vedeFinanziario: sess.vedeFinanziario, puoModificare: sess.immobiliModificabili === 'tutti' || sess.immobiliModificabili.length > 0 },
@@ -118,6 +118,9 @@ export async function GET(req: NextRequest) {
         utile: Number(r.utile), nettoProprietario: Number(r.nettoProprietario),
       })) : [],
     });
+    // Sessione rinnovata a ogni apertura: chi usa l'app con regolarità non rimette mai le credenziali.
+    risposta.cookies.set(COOKIE, creaToken(sess.id), OPZIONI_COOKIE);
+    return risposta;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[nuovo/dati] ERRORE:', msg);

@@ -90,3 +90,24 @@ export async function POST(req: NextRequest) {
   }).returning({ id: schedine.id });
   return NextResponse.json({ ok: true, id: riga.id });
 }
+
+// Cambia il "tipo di ospite" (singolo, capofamiglia, familiare...) di una schedina non ancora
+// inviata: serve quando gli ospiti di una prenotazione sono più di uno e i ruoli scelti non
+// stanno insieme (es. un Capogruppo con un Familiare). Una schedina già inviata non si tocca.
+export async function PATCH(req: NextRequest) {
+  const check = await richiediSessione(req);
+  if ('risposta' in check) return check.risposta;
+  if (!puoScrivereDocumenti(check.sessione)) return err('Il tuo ruolo non può modificare schedine', 403);
+  let body: { id?: string; tipoAlloggiatoCodice?: string };
+  try { body = await req.json(); } catch { return err('Richiesta non valida'); }
+  const tipoAll = TIPI_ALLOGGIATO_UI.find((t) => t.codice === s(body.tipoAlloggiatoCodice));
+  if (!body.id || !tipoAll) return err('Dati mancanti');
+  const db = getDb();
+  const [riga] = await db.select({ id: schedine.id, prenotazione_id: schedine.prenotazione_id, stato: schedine.stato })
+    .from(schedine).where(eq(schedine.id, body.id));
+  if (!riga || !(await prenotazioneVisibile(riga.prenotazione_id, check.sessione))) return err('Schedina non trovata', 404);
+  if (riga.stato !== 'Da inviare') return err(`Questa schedina è in stato "${riga.stato}": non si può più cambiare`, 409);
+  await db.update(schedine).set({ tipo_alloggiato: tipoAll.nome, tipo_alloggiato_codice: tipoAll.codice })
+    .where(and(eq(schedine.id, body.id), eq(schedine.stato, 'Da inviare')));
+  return NextResponse.json({ ok: true });
+}
