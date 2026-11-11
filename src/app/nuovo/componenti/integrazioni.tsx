@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { SchedinaAlloggiati, SchedinaDaVerificare } from '../tipi';
+import type { InvioAlloggiati, SchedinaAlloggiati, SchedinaDaVerificare } from '../tipi';
 import { api, dataIt } from '../utilita';
 
 export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: string }; onClose: () => void }) {
@@ -108,7 +108,10 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
   );
 }
 
-export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { schedine: SchedinaAlloggiati[]; daVerificare: SchedinaDaVerificare[]; onCambiato: () => Promise<void> }) {
+export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }: { schedine: SchedinaAlloggiati[]; daVerificare: SchedinaDaVerificare[]; inviate: InvioAlloggiati[]; onCambiato: () => Promise<void> }) {
+  // L'esito dell'ultimo invio resta in cima al riquadro: la prenotazione inviata sparisce
+  // dall'elenco "da inviare", quindi il messaggio non può stare lì dentro.
+  const [ultimoEsito, setUltimoEsito] = useState<{ ok: boolean; messaggio: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [esiti, setEsiti] = useState<Record<string, { ok: boolean; messaggio: string }>>({});
   const [risolviBusy, setRisolviBusy] = useState<string | null>(null);
@@ -131,11 +134,13 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
   const [ricevutaErr, setRicevutaErr] = useState('');
   const [ricevutaEsito, setRicevutaEsito] = useState('');
 
-  async function scaricaRicevuta() {
+  async function scaricaRicevuta(giorno?: string) {
+    const dataRichiesta = giorno ?? dataRicevuta;
+    if (giorno) setDataRicevuta(giorno);
     setRicevutaBusy(true); setRicevutaErr(''); setRicevutaEsito('');
     try {
       const r = await fetch('/api/nuovo/alloggiati/ricevuta', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dataRicevuta }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dataRichiesta }),
       });
       const d = await r.json();
       if (!d.ok) { setRicevutaErr(d.error || 'Errore'); return; }
@@ -144,7 +149,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
       const a = document.createElement('a');
-      a.href = url; a.download = `ricevuta-alloggiati-${dataRicevuta}.pdf`; a.click();
+      a.href = url; a.download = `ricevuta-alloggiati-${dataRichiesta}.pdf`; a.click();
       URL.revokeObjectURL(url);
       // Come per preventivi/contratti: salvata anche nella cartella Drive di ciascun ospite
       // coperto da questa ricevuta, e comparirà nella scheda "Preventivi" → gruppo dell'ospite.
@@ -152,6 +157,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
       const nonSalvate: string[] = d.nonSalvateSuDrive || [];
       if (salvate.length > 0) setRicevutaEsito(`Salvata su Drive per: ${salvate.join(', ')} — la trovi nella scheda Preventivi, sotto ciascun ospite.`);
       if (nonSalvate.length > 0) setRicevutaErr(`Scaricata, ma NON salvata su Drive per: ${nonSalvate.join('; ')}`);
+      await onCambiato();
     } catch (e) {
       setRicevutaErr(String(e instanceof Error ? e.message : e));
     } finally {
@@ -172,7 +178,9 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prenotazioneId: g.prenotazioneId }),
       });
       const d = await r.json();
-      setEsiti((e) => ({ ...e, [g.prenotazioneId]: { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviate.' : 'Errore sconosciuto.') } }));
+      const esito = { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviate.' : 'Errore sconosciuto.') };
+      setEsiti((e) => ({ ...e, [g.prenotazioneId]: esito }));
+      setUltimoEsito(esito);
       await onCambiato();
     } finally {
       setBusy(null);
@@ -188,10 +196,17 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
         — le prenotazioni No Tax e le altre strutture non vengono mai inviate). Prima di ogni invio il sistema rivalida i dati
         col servizio reale (Test) e invia solo se il test passa.
       </p>
+      {ultimoEsito && (
+        <div style={{ background: ultimoEsito.ok ? '#1FAA6E22' : 'var(--coral-soft)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+          <b>{ultimoEsito.ok ? '✅ Invio riuscito' : '⚠️ Invio non riuscito'}</b>
+          <p style={{ margin: '4px 0 0' }}>{ultimoEsito.messaggio}</p>
+          {ultimoEsito.ok && <p className="sub" style={{ margin: '4px 0 0' }}>Il portale ha accettato le schedine: le trovi qui sotto in &quot;Inviate al portale&quot;, dove puoi scaricare la ricevuta della Polizia.</p>}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 0', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', marginBottom: 12 }}>
         <b style={{ fontSize: 13 }}>📄 Ricevuta del giorno</b>
         <input type="date" value={dataRicevuta} onChange={(e) => setDataRicevuta(e.target.value)} />
-        <button className="mini" disabled={ricevutaBusy} onClick={scaricaRicevuta}>{ricevutaBusy ? 'scarico…' : '⬇️ Scarica PDF'}</button>
+        <button className="mini" disabled={ricevutaBusy} onClick={() => scaricaRicevuta()}>{ricevutaBusy ? 'scarico…' : '⬇️ Scarica PDF'}</button>
         {ricevutaErr && <p className="err" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{ricevutaErr}</p>}
         {ricevutaEsito && <p className="empty" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{ricevutaEsito}</p>}
       </div>
@@ -242,6 +257,34 @@ export function AlloggiatiWebBox({ schedine, daVerificare, onCambiato }: { sched
           );
         })
       )}
+
+      <div className="docgroup" style={{ marginTop: 16 }}>
+        <h3><span>✅ Inviate al portale</span><span className="empty">ultimi 60 giorni · {inviate.length}</span></h3>
+        {inviate.length === 0 && <p className="empty">Nessun invio negli ultimi 60 giorni.</p>}
+        {inviate.map((v) => (
+          <div key={v.prenotazioneId} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <b>{v.alloggioNome} · arrivo {dataIt(v.checkin)}</b>
+              <span className="pill pill-Accettato">accettata dal portale</span>
+              <span className="empty">{new Date(v.inviataIl).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <span>{v.ospiti.map((o) => `${o.nome}${o.tipo ? ` (${o.tipo})` : ''}`).join(', ')}</span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {v.ricevutaSalvata ? (
+                <span>📄 Ricevuta della Polizia salvata ✓{v.ricevutaUrl && <> · <a href={v.ricevutaUrl} target="_blank" rel="noopener">apri</a></>}</span>
+              ) : (
+                <>
+                  <span className="empty">📄 Ricevuta della Polizia non ancora salvata</span>
+                  <button className="mini" disabled={ricevutaBusy} onClick={() => scaricaRicevuta(v.giornoInvio)}>{ricevutaBusy ? 'scarico…' : '⬇️ scarica e salva'}</button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        <p className="empty" style={{ marginTop: 6 }}>
+          &quot;Accettata dal portale&quot; vuol dire che Alloggiati Web ha risposto di aver ricevuto le schedine. La prova ufficiale da conservare è la ricevuta: se il portale non la dà ancora, riprova il giorno dopo.
+        </p>
+      </div>
     </div>
   );
 }

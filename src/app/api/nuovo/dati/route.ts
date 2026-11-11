@@ -9,7 +9,7 @@ import { leggiUtentiDb, leggiPermessiDb } from '@/lib/db/mutations';
 import { richiediSessione, alloggiVisibili, creaToken, COOKIE, OPZIONI_COOKIE } from '@/lib/db/auth';
 import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
-import { schedineDaInviareAlloggiati, schedineDaVerificare } from '@/lib/alloggiatiInvio';
+import { schedineDaInviareAlloggiati, schedineDaVerificare, inviiFattiAlloggiati } from '@/lib/alloggiatiInvio';
 import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
@@ -103,6 +103,7 @@ export async function GET(req: NextRequest) {
       permessi: sess.ruolo === 'Titolare' ? await leggiPermessiDb() : [],
       schedineAlloggiati: sess.ruolo === 'Titolare' ? await schedineDaInviareAlloggiati() : [],
       schedineDaVerificare: sess.ruolo === 'Titolare' ? await schedineDaVerificare() : [],
+      inviiAlloggiati: sess.ruolo === 'Titolare' ? await inviiFattiAlloggiati() : [],
       categorieSpesa,
       preventivi: sess.vedeFinanziario ? preventivi : [],
       richieste: sess.vedeFinanziario ? richieste : [],

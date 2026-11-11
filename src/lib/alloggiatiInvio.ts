@@ -16,7 +16,7 @@
 
 import { eq, and, sql } from 'drizzle-orm';
 import { getDb } from './db/index';
-import { schedine, prenotazioni, alloggi } from './db/schema';
+import { schedine, prenotazioni, alloggi, documenti } from './db/schema';
 import {
   generateToken, authenticationTest, testSchedine, sendSchedine,
 } from './alloggiatiWebService';
@@ -498,4 +498,64 @@ export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<Es
     }
   }
   return { ok: true, messaggio, inviate: record.length };
+}
+
+export type InvioFatto = {
+  prenotazioneId: string; alloggioNome: string; checkin: string;
+  /** Quando il portale ha accettato l'invio (ISO). */
+  inviataIl: string;
+  /** Giorno dell'invio in ora italiana (YYYY-MM-DD): è la data con cui si chiede la ricevuta. */
+  giornoInvio: string;
+  ospiti: { nome: string; tipo: string | null }[];
+  esito: string | null;
+  /** La ricevuta ufficiale della Polizia per quel giorno, se è già stata scaricata e salvata. */
+  ricevutaUrl: string | null; ricevutaSalvata: boolean;
+};
+
+/**
+ * Gli invii ad Alloggiati Web già andati a buon fine negli ultimi `giorni` giorni, uno per
+ * prenotazione — la "conferma" che resta visibile nel sistema (11/11/2026: dopo il primo invio
+ * reale la prenotazione spariva dall'elenco "da inviare" e non restava traccia a schermo che
+ * fosse partita). La prova ufficiale è la ricevuta del portale: qui si dice se è già salvata.
+ */
+export async function inviiFattiAlloggiati(giorni = 60): Promise<InvioFatto[]> {
+  const db = getDb();
+  const da = new Date(Date.now() - giorni * 864e5);
+  const righe = await db
+    .select({
+      prenotazioneId: prenotazioni.id, alloggioNome: alloggi.nome, checkin: prenotazioni.checkin,
+      cognome: schedine.cognome, nome: schedine.nome, tipo: schedine.tipo_alloggiato,
+      inviataIl: schedine.inviata_il, esito: schedine.esito_invio,
+    })
+    .from(schedine)
+    .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
+    .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .where(and(eq(schedine.stato, 'Inviata'), sql`${schedine.inviata_il} >= ${da}`))
+    .orderBy(sql`${schedine.inviata_il} desc`, schedine.tipo_alloggiato_codice);
+  if (righe.length === 0) return [];
+
+  const ricevute = await db.select({ prenotazioneId: documenti.prenotazione_id, url: documenti.drive_url, nome: documenti.nome })
+    .from(documenti)
+    .where(and(eq(documenti.tipo, 'Ricevuta Alloggiati'), inArray(documenti.prenotazione_id, [...new Set(righe.map((r) => r.prenotazioneId))])));
+
+  const giornoRoma = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const perPren = new Map<string, InvioFatto>();
+  for (const r of righe) {
+    if (!r.inviataIl) continue;
+    const quando = new Date(r.inviataIl);
+    let g = perPren.get(r.prenotazioneId);
+    if (!g) {
+      const giornoInvio = giornoRoma(quando);
+      // La ricevuta è per giorno: vale quella il cui nome porta la data di questo invio.
+      const ric = ricevute.find((x) => x.prenotazioneId === r.prenotazioneId && x.nome.includes(giornoInvio));
+      g = {
+        prenotazioneId: r.prenotazioneId, alloggioNome: r.alloggioNome, checkin: r.checkin,
+        inviataIl: quando.toISOString(), giornoInvio, ospiti: [], esito: r.esito,
+        ricevutaUrl: ric?.url ?? null, ricevutaSalvata: !!ric,
+      };
+      perPren.set(r.prenotazioneId, g);
+    }
+    g.ospiti.push({ nome: `${r.nome} ${r.cognome}`.trim(), tipo: r.tipo });
+  }
+  return [...perPren.values()];
 }

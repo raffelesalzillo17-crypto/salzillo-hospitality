@@ -634,7 +634,7 @@ export default function Nuovo() {
       })()}
 
       {tab === 'alloggiati' && sess.ruolo === 'Titolare' && (
-        <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} daVerificare={dati.schedineDaVerificare ?? []} onCambiato={carica} />
+        <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} daVerificare={dati.schedineDaVerificare ?? []} inviate={dati.inviiAlloggiati ?? []} onCambiato={carica} />
       )}
 
       {prenSel && <DettaglioPrenotazione p={dati.prenotazioni.find((x) => x.id === prenSel.id) ?? prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}

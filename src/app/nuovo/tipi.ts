@@ -56,6 +56,11 @@ export type CosaManca = {
   pagamentiInSospeso: { id: string; ospite: string; checkin: string; lordo: string; alloggio: string }[];
 };
 
+export type InvioAlloggiati = {
+  prenotazioneId: string; alloggioNome: string; checkin: string; inviataIl: string; giornoInvio: string;
+  ospiti: { nome: string; tipo: string | null }[]; esito: string | null; ricevutaUrl: string | null; ricevutaSalvata: boolean;
+};
+
 export type SchedinaAlloggiati = {
   id: string; cognome: string; nome: string; ospiteNomeCompleto: string;
   alloggioNome: string; prenotazioneId: string; checkin: string; checkout: string; canale: string;
@@ -90,6 +95,7 @@ export type Dati = {
   operatoriPulizie?: Operatore[]; utenti?: UtenteAdmin[]; permessi?: Permesso[]; documenti?: DocumentoCaricato[];
   schedineAlloggiati?: SchedinaAlloggiati[];
   schedineDaVerificare?: SchedinaDaVerificare[];
+  inviiAlloggiati?: InvioAlloggiati[];
   categorieSpesa?: { id: string; nome: string }[];
   eventi?: { id: string; titolo: string; dal: string; al: string; comune: string | null; impatto: string; note: string | null }[];
   prezzi?: { id: string; dal: string; al: string; prezzoNotte: string; note: string | null; alloggioId: string | null; alloggio: string | null }[];
