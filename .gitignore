@@ -45,3 +45,5 @@ google-credentials.json
 .env*.local
 .report_key_local
 .esporta_key_local
+.backup_key_local
+.backup_run_key_local
