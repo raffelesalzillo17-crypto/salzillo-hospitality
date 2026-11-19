@@ -9,6 +9,10 @@
       "schedule": "45 5 * * *"
     },
     {
+      "path": "/api/cron/esporta-anonimo",
+      "schedule": "55 5 * * *"
+    },
+    {
       "path": "/api/cron/analisi-mercato-settimanale",
       "schedule": "0 6 * 4-10 6"
     },
