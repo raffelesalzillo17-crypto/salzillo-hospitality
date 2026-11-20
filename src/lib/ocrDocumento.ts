@@ -55,7 +55,7 @@ const MSG_NON_LEGGIBILE = 'Lettura non riuscita: la foto non è stata letta — 
 
 // Errori transitori lato Google: vale la pena riprovare. 4xx diversi da 429 no.
 const RIPROVABILI = new Set([429, 500, 502, 503, 504]);
-const ATTESE_MS = [1500, 3000, 5000]; // fino a 4 tentativi, entro il budget di 48 s
+const ATTESE_MS = [1500, 3000, 5000]; // fino a 4 tentativi, entro il budget (48 s di default)
 
 const fallimento = (codice: CodiceErroreOcr, error: string, status: number): EsitoOcr =>
   ({ ok: false, error, status, codice });
@@ -118,7 +118,7 @@ function testoUtileEMeta(data: RispostaGemini): {
   };
 }
 
-export async function leggiDocumento(imageBase64: string, mediaType: string): Promise<EsitoOcr> {
+export async function leggiDocumento(imageBase64: string, mediaType: string, opzioni?: { budgetMs?: number }): Promise<EsitoOcr> {
   if (!TIPI_OCR_SUPPORTATI.has(mediaType)) {
     return fallimento('formato_non_supportato', `Formato non supportato (${mediaType}) — riprova con una foto o un PDF.`, 415);
   }
@@ -160,9 +160,9 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     // Ogni tentativo ha un tetto di tempo: senza, una chiamata appesa a Gemini (vista nella prova
     // del 20/11: 503 poi silenzio) consumava tutti i 60 s della funzione e la route moriva in 504.
     // Il tetto dell'11/11 (11 s) era troppo stretto per la foto vera di un passaporto: nei log
-    // del 20/11 i tentativi scadevano tutti a 11 s. Ora c'è un budget totale di 48 s (la funzione
-    // ne ha 60, e la route dei documenti scarica prima il file da Drive): ogni tentativo usa il tempo che resta, fino a 26 s.
-    const fine = Date.now() + 48000;
+    // del 20/11 i tentativi scadevano tutti a 11 s. Il budget di default è 48 s; la route dei
+    // documenti lo riduce di quanto già speso (sessione + download da Drive) per restare sotto i 60 s.
+    const fine = Date.now() + Math.max(8000, opzioni?.budgetMs ?? 48_000);
     // Primo tentativo sul modello principale; se risponde 503/429/5xx o non risponde,
     // i ritentativi usano 3.5-flash-lite (quota distinta, spesso più disponibile sul livello gratuito).
     const tentativo = async (modello: string): Promise<Response | null> => {

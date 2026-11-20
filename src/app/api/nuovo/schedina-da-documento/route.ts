@@ -15,10 +15,13 @@ import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA } from '@/li
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+const LIMITE_FUNZIONE_MS = 58_000; // 2 s di margine sotto maxDuration
+const TIMEOUT_DRIVE_MS = 12_000;
 
 const err = (error: string, status = 400, codice?: string) => NextResponse.json({ ok: false, error, ...(codice ? { codice } : {}) }, { status });
 
 export async function POST(req: NextRequest) {
+  const inizio = Date.now();
   const check = await richiediSessione(req);
   if ('risposta' in check) return check.risposta;
   if (!puoScrivereDocumenti(check.sessione)) return err('Il tuo ruolo non può creare schedine', 403);
@@ -37,12 +40,23 @@ export async function POST(req: NextRequest) {
 
   let dati: DatiDocumento;
   try {
-    const contenuto = await scaricaDocumentoDrive(d.drive_file_id);
-    const esito = await leggiDocumento(contenuto.toString('base64'), mime);
+    const contenuto = await scaricaDocumentoDrive(d.drive_file_id, TIMEOUT_DRIVE_MS);
+    const budgetMs = LIMITE_FUNZIONE_MS - (Date.now() - inizio);
+    if (budgetMs < 8000) return err('Lettura non riuscita: il servizio di lettura è occupato — riprova tra un attimo, oppure compila i dati a mano.', 502, 'servizio_occupato');
+    const esito = await leggiDocumento(contenuto.toString('base64'), mime, { budgetMs });
     if (!esito.ok) return err(esito.error || 'Lettura non riuscita — compila i dati a mano.', 502, esito.codice);
     dati = esito.dati;
   } catch (e) {
-    return err(`Lettura non riuscita: ${e instanceof Error ? e.message : String(e)}`, 502);
+    const msg = e instanceof Error ? e.message : String(e);
+    const download = /drive|scaduto|aborted|timeout/i.test(msg);
+    console.error('[schedina-da-documento]', download ? 'download Drive fallito' : 'lettura fallita', { elapsedMs: Date.now() - inizio });
+    return err(
+      download
+        ? 'Lettura non riuscita: non sono riuscito a scaricare il documento — riprova, oppure compila i dati a mano.'
+        : 'Lettura non riuscita — compila i dati a mano.',
+      502,
+      download ? 'documento_non_scaricato' : 'errore_interno',
+    );
   }
 
   const stato = cercaStato(dati.statoNascita || '');
