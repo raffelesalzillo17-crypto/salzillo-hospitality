@@ -53,6 +53,7 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     `https://generativelanguage.googleapis.com/v1beta/models/${MODELLO}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
+      signal: AbortSignal.timeout(11000), // 4 tentativi x 11 s + 9,5 s di attese < 60 s
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: {
@@ -71,17 +72,25 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
   );
 
   try {
-    let res = await chiama();
+    // Ogni tentativo ha un tetto di tempo: senza, una chiamata appesa a Gemini (vista nella prova
+    // del 20/11: 503 poi silenzio) consumava tutti i 60 s della funzione e la route moriva in 504.
+    const tentativo = async (): Promise<Response | null> => {
+      try { return await chiama(); } catch (e) {
+        console.error('[ocr-documento] tentativo fallito/scaduto:', e instanceof Error ? e.message : String(e));
+        return null;
+      }
+    };
+    let res = await tentativo();
     for (const attesa of ATTESE_MS) {
-      if (res.ok || !RIPROVABILI.has(res.status)) break;
-      console.error('[ocr-documento] Gemini', res.status, '— riprovo tra', attesa, 'ms');
+      if (res && (res.ok || !RIPROVABILI.has(res.status))) break;
+      if (res) console.error('[ocr-documento] Gemini', res.status, '— riprovo tra', attesa, 'ms');
       await new Promise((r) => setTimeout(r, attesa));
-      res = await chiama();
+      res = await tentativo();
     }
 
-    if (!res.ok) {
-      const testo = await res.text().catch(() => '');
-      console.error('[ocr-documento] Gemini ERRORE:', res.status, testo);
+    if (!res || !res.ok) {
+      const testo = res ? await res.text().catch(() => '') : 'nessuna risposta (timeout)';
+      console.error('[ocr-documento] Gemini ERRORE:', res?.status, testo);
       return { ok: false, error: 'Lettura non riuscita — compila i dati a mano.', status: 502 };
     }
 
