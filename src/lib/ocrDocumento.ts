@@ -40,7 +40,7 @@ export type EsitoOcr = { ok: true; dati: DatiDocumento } | { ok: false; error: s
 
 // Errori transitori lato Google: vale la pena riprovare. 4xx diversi da 429 no.
 const RIPROVABILI = new Set([429, 500, 502, 503, 504]);
-const ATTESE_MS = [1500, 3000, 5000]; // 4 tentativi in tutto, ~9,5 s di attesa massima
+const ATTESE_MS = [1500, 3000, 5000]; // fino a 4 tentativi, entro il budget di 48 s
 
 export async function leggiDocumento(imageBase64: string, mediaType: string): Promise<EsitoOcr> {
   if (!TIPI_OCR_SUPPORTATI.has(mediaType)) {
@@ -50,11 +50,11 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     return { ok: false, error: 'Lettura automatica non configurata su questo server', status: 500 };
   }
 
-  const chiama = () => fetch(
+  const chiama = (timeoutMs: number) => fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODELLO}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
-      signal: AbortSignal.timeout(11000), // 4 tentativi x 11 s + 9,5 s di attese < 60 s
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: {
@@ -75,8 +75,14 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
   try {
     // Ogni tentativo ha un tetto di tempo: senza, una chiamata appesa a Gemini (vista nella prova
     // del 20/11: 503 poi silenzio) consumava tutti i 60 s della funzione e la route moriva in 504.
+    // Il tetto dell'11/11 (11 s) era troppo stretto per la foto vera di un passaporto: nei log
+    // del 20/11 i tentativi scadevano tutti a 11 s. Ora c'è un budget totale di 48 s (la funzione
+    // ne ha 60, e la route dei documenti scarica prima il file da Drive): ogni tentativo usa il tempo che resta, fino a 26 s.
+    const fine = Date.now() + 48000;
     const tentativo = async (): Promise<Response | null> => {
-      try { return await chiama(); } catch (e) {
+      const resto = fine - Date.now();
+      if (resto < 4000) return null;
+      try { return await chiama(Math.min(26000, resto)); } catch (e) {
         console.error('[ocr-documento] tentativo fallito/scaduto:', e instanceof Error ? e.message : String(e));
         return null;
       }
@@ -84,6 +90,7 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     let res = await tentativo();
     for (const attesa of ATTESE_MS) {
       if (res && (res.ok || !RIPROVABILI.has(res.status))) break;
+      if (fine - Date.now() < 8000) break;
       if (res) console.error('[ocr-documento] Gemini', res.status, '— riprovo tra', attesa, 'ms');
       await new Promise((r) => setTimeout(r, attesa));
       res = await tentativo();
