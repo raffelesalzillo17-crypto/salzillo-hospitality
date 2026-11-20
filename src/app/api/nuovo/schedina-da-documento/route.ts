@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { documenti } from '@/lib/db/schema';
 import { prenotazioneVisibile, puoScrivereDocumenti } from '@/lib/db/accessoPrenotazione';
 import { scaricaDocumentoDrive } from '@/lib/documenti';
+import { leggiDocumento, TIPI_OCR_SUPPORTATI, type DatiDocumento } from '@/lib/ocrDocumento';
 import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA } from '@/lib/alloggiatiLookup';
 
 // Legge un documento già caricato (foto) con l'OCR e restituisce i dati per PRECOMPILARE una
@@ -15,7 +16,6 @@ import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA } from '@/li
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const TIPI_OK = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 const err = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
 
 export async function POST(req: NextRequest) {
@@ -33,22 +33,18 @@ export async function POST(req: NextRequest) {
   const p = await prenotazioneVisibile(d.prenotazione_id, check.sessione);
   if (!p) return err('Documento non trovato', 404);
   const mime = (d.mime || '').toLowerCase();
-  if (!TIPI_OK.has(mime)) return err('Per ora leggo solo le foto (JPG, PNG, WebP, HEIC), non i PDF: compila i campi a mano.');
+  if (!TIPI_OCR_SUPPORTATI.has(mime)) return err('Formato non leggibile (servono foto JPG, PNG, WebP, HEIC oppure PDF): compila i campi a mano.');
 
-  let letto: { ok?: boolean; dati?: Record<string, string>; error?: string };
+  let dati: DatiDocumento;
   try {
     const contenuto = await scaricaDocumentoDrive(d.drive_file_id);
-    const r = await fetch(`${req.nextUrl.origin}/api/checkin-ocr`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64: contenuto.toString('base64'), mediaType: mime }),
-    });
-    letto = await r.json();
-    if (!r.ok || !letto.ok || !letto.dati) return err(letto.error || 'Lettura non riuscita — compila i dati a mano.', 502);
+    const esito = await leggiDocumento(contenuto.toString('base64'), mime);
+    if (!esito.ok) return err(esito.error || 'Lettura non riuscita — compila i dati a mano.', 502);
+    dati = esito.dati;
   } catch (e) {
     return err(`Lettura non riuscita: ${e instanceof Error ? e.message : String(e)}`, 502);
   }
 
-  const dati = letto.dati;
   const stato = cercaStato(dati.statoNascita || '');
   const cittadinanza = cercaStato(dati.cittadinanza || '');
   const tipoDoc = cercaTipoDocumento(dati.tipoDocumento || '');

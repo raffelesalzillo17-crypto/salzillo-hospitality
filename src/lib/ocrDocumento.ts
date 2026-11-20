@@ -1,0 +1,109 @@
+// Lettura dei dati anagrafici da un documento d'identità (foto o PDF) con Gemini.
+// Estratta da /api/checkin-ocr il 20/11/2026 per due motivi: (1) più tentativi con attese
+// crescenti — il livello gratuito risponde spesso 503 "alta domanda" e un solo ritentativo non
+// bastava (fallito il 19/11 sera e già l'11/11); (2) poterla chiamare direttamente da altre route
+// senza rifare un fetch HTTP con il file in base64 (che sfora il limite di ~4,5 MB del corpo).
+//
+// È un AIUTO per pre-compilare: mai una scrittura diretta di un dato legalmente rilevante.
+
+const MODELLO = 'gemini-3.6-flash';
+
+export const TIPI_OCR_SUPPORTATI = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf',
+]);
+
+const SCHEMA_ESTRAZIONE = {
+  type: 'OBJECT',
+  properties: {
+    cognome: { type: 'STRING' },
+    nome: { type: 'STRING' },
+    sesso: { type: 'STRING', description: 'Esattamente "M" o "F" se leggibile/deducibile dal documento, altrimenti stringa vuota "". Nessun altro valore.' },
+    dataNascita: { type: 'STRING', description: 'Formato GG/MM/AAAA' },
+    luogoNascita: { type: 'STRING', description: 'Comune o città di nascita, nome leggibile (es. "Marcianise", "Parigi").' },
+    statoNascita: { type: 'STRING', description: 'Nazione di nascita, nome leggibile in italiano (es. "Italia", "Francia"). Se il documento non lo indica esplicitamente ma il luogo di nascita è chiaramente italiano, usa "Italia".' },
+    cittadinanza: { type: 'STRING', description: 'Nazionalità/cittadinanza, nome leggibile in italiano (es. "Italia"). Sui documenti italiani spesso non è scritta esplicitamente: in quel caso usa "Italia".' },
+    tipoDocumento: { type: 'STRING', description: 'Esattamente uno tra "Carta d\'identità", "Passaporto", "Patente", oppure stringa vuota "" se non riconoscibile. Nessun altro valore.' },
+    numeroDocumento: { type: 'STRING' },
+    luogoRilascioDocumento: { type: 'STRING', description: 'Comune o autorità di rilascio, se leggibile.' },
+  },
+  required: ['cognome', 'nome', 'sesso', 'dataNascita', 'luogoNascita', 'statoNascita', 'cittadinanza', 'tipoDocumento', 'numeroDocumento', 'luogoRilascioDocumento'],
+};
+
+export type DatiDocumento = {
+  cognome: string; nome: string; sesso: string; dataNascita: string; luogoNascita: string;
+  statoNascita: string; cittadinanza: string; tipoDocumento: string; numeroDocumento: string;
+  luogoRilascioDocumento: string;
+};
+
+export type EsitoOcr = { ok: true; dati: DatiDocumento } | { ok: false; error: string; status: number };
+
+// Errori transitori lato Google: vale la pena riprovare. 4xx diversi da 429 no.
+const RIPROVABILI = new Set([429, 500, 502, 503, 504]);
+const ATTESE_MS = [1500, 3000, 5000]; // 4 tentativi in tutto, ~9,5 s di attesa massima
+
+export async function leggiDocumento(imageBase64: string, mediaType: string): Promise<EsitoOcr> {
+  if (!TIPI_OCR_SUPPORTATI.has(mediaType)) {
+    return { ok: false, error: `Formato non supportato (${mediaType}) — riprova con una foto o un PDF.`, status: 415 };
+  }
+  if (!process.env.GEMINI_API_KEY) {
+    return { ok: false, error: 'Lettura automatica non configurata su questo server', status: 500 };
+  }
+
+  const chiama = () => fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODELLO}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: 'Leggi il documento d\'identità (carta d\'identità, passaporto o patente; può essere una foto o un PDF) e registra i dati nel formato richiesto. Non inventare mai un dato che non riesci a leggere: usa stringa vuota "".' }],
+        },
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: mediaType, data: imageBase64 } },
+            { text: 'Leggi questo documento ed estrai i dati.' },
+          ],
+        }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA_ESTRAZIONE },
+      }),
+    },
+  );
+
+  try {
+    let res = await chiama();
+    for (const attesa of ATTESE_MS) {
+      if (res.ok || !RIPROVABILI.has(res.status)) break;
+      console.error('[ocr-documento] Gemini', res.status, '— riprovo tra', attesa, 'ms');
+      await new Promise((r) => setTimeout(r, attesa));
+      res = await chiama();
+    }
+
+    if (!res.ok) {
+      const testo = await res.text().catch(() => '');
+      console.error('[ocr-documento] Gemini ERRORE:', res.status, testo);
+      return { ok: false, error: 'Lettura non riuscita — compila i dati a mano.', status: 502 };
+    }
+
+    const data = await res.json();
+    const testoJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!testoJson) return { ok: false, error: 'Lettura non riuscita — compila i dati a mano.', status: 502 };
+
+    let dati: DatiDocumento;
+    try { dati = JSON.parse(testoJson); } catch {
+      return { ok: false, error: 'Lettura non riuscita — compila i dati a mano.', status: 502 };
+    }
+
+    // Lo schema di Gemini non accetta enum con valore vuoto: normalizza qui sesso e tipo.
+    const sesso = dati.sesso?.trim().toUpperCase();
+    dati.sesso = sesso === 'M' || sesso === 'MASCHIO' ? 'M' : sesso === 'F' || sesso === 'FEMMINA' ? 'F' : '';
+    const TIPI_DOC = ["Carta d'identità", 'Passaporto', 'Patente'];
+    if (dati.tipoDocumento && !TIPI_DOC.includes(dati.tipoDocumento)) {
+      const t = dati.tipoDocumento.toLowerCase();
+      dati.tipoDocumento = t.includes('ident') ? "Carta d'identità" : t.includes('passaport') ? 'Passaporto' : t.includes('patente') ? 'Patente' : '';
+    }
+    return { ok: true, dati };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), status: 500 };
+  }
+}
