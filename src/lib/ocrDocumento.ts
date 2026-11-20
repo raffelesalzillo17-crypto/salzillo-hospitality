@@ -17,6 +17,12 @@ export const TIPI_OCR_SUPPORTATI = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf',
 ]);
 
+/** Alcuni browser/OS registrano i JPEG come image/jpg, che Gemini e il Set qui sopra non accettano. */
+export function normalizzaTipoOcr(mediaType: string): string {
+  const t = (mediaType || '').toLowerCase().trim();
+  return t === 'image/jpg' ? 'image/jpeg' : t;
+}
+
 const SCHEMA_ESTRAZIONE = {
   type: 'OBJECT',
   properties: {
@@ -119,7 +125,8 @@ function testoUtileEMeta(data: RispostaGemini): {
 }
 
 export async function leggiDocumento(imageBase64: string, mediaType: string, opzioni?: { budgetMs?: number }): Promise<EsitoOcr> {
-  if (!TIPI_OCR_SUPPORTATI.has(mediaType)) {
+  const mime = normalizzaTipoOcr(mediaType);
+  if (!TIPI_OCR_SUPPORTATI.has(mime)) {
     return fallimento('formato_non_supportato', `Formato non supportato (${mediaType}) — riprova con una foto o un PDF.`, 415);
   }
   if (!process.env.GEMINI_API_KEY) {
@@ -139,7 +146,7 @@ export async function leggiDocumento(imageBase64: string, mediaType: string, opz
         contents: [{
           role: 'user',
           parts: [
-            { inlineData: { mimeType: mediaType, data: imageBase64 } },
+            { inlineData: { mimeType: mime, data: imageBase64 } },
             { text: 'Leggi questo documento ed estrai i dati.' },
           ],
         }],

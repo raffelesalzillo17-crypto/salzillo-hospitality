@@ -5,7 +5,7 @@ import { getDb } from '@/lib/db';
 import { documenti } from '@/lib/db/schema';
 import { prenotazioneVisibile, puoScrivereDocumenti } from '@/lib/db/accessoPrenotazione';
 import { scaricaDocumentoDrive } from '@/lib/documenti';
-import { leggiDocumento, TIPI_OCR_SUPPORTATI, type DatiDocumento } from '@/lib/ocrDocumento';
+import { leggiDocumento, TIPI_OCR_SUPPORTATI, normalizzaTipoOcr, type DatiDocumento } from '@/lib/ocrDocumento';
 import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA } from '@/lib/alloggiatiLookup';
 
 // Legge un documento già caricato (foto) con l'OCR e restituisce i dati per PRECOMPILARE una
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!d || !d.prenotazione_id || !d.drive_file_id) return err('Documento non trovato', 404);
   const p = await prenotazioneVisibile(d.prenotazione_id, check.sessione);
   if (!p) return err('Documento non trovato', 404);
-  const mime = (d.mime || '').toLowerCase();
+  const mime = normalizzaTipoOcr(d.mime || '');
   if (!TIPI_OCR_SUPPORTATI.has(mime)) return err('Formato non leggibile (servono foto JPG, PNG, WebP, HEIC oppure PDF): compila i campi a mano.');
 
   let dati: DatiDocumento;
