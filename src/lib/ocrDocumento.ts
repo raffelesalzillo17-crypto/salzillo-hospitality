@@ -7,6 +7,9 @@
 // È un AIUTO per pre-compilare: mai una scrittura diretta di un dato legalmente rilevante.
 
 const MODELLO = 'gemini-3.6-flash';
+// Quota e capacità separate da 3.6-flash (il 2.5-flash dà 404 sulle chiavi nuove).
+// Pensato per estrazione documenti e JSON; accetta foto e PDF.
+const MODELLO_RISERVA = 'gemini-3.5-flash-lite';
 
 export const TIPI_OCR_SUPPORTATI = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf',
@@ -50,8 +53,8 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     return { ok: false, error: 'Lettura automatica non configurata su questo server', status: 500 };
   }
 
-  const chiama = (timeoutMs: number) => fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODELLO}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  const chiama = (timeoutMs: number, modello: string) => fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modello}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       signal: AbortSignal.timeout(timeoutMs),
@@ -79,26 +82,32 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
     // del 20/11 i tentativi scadevano tutti a 11 s. Ora c'è un budget totale di 48 s (la funzione
     // ne ha 60, e la route dei documenti scarica prima il file da Drive): ogni tentativo usa il tempo che resta, fino a 26 s.
     const fine = Date.now() + 48000;
-    const tentativo = async (): Promise<Response | null> => {
+    // Primo tentativo sul modello principale; se risponde 503/429/5xx o non risponde,
+    // i ritentativi usano 3.5-flash-lite (quota distinta, spesso più disponibile sul livello gratuito).
+    const tentativo = async (modello: string): Promise<Response | null> => {
       const resto = fine - Date.now();
       if (resto < 4000) return null;
-      try { return await chiama(Math.min(26000, resto)); } catch (e) {
-        console.error('[ocr-documento] tentativo fallito/scaduto:', e instanceof Error ? e.message : String(e));
+      try { return await chiama(Math.min(26000, resto), modello); } catch (e) {
+        console.error('[ocr-documento] tentativo fallito/scaduto:', modello, e instanceof Error ? e.message : String(e));
         return null;
       }
     };
-    let res = await tentativo();
+    let modello = MODELLO;
+    let res = await tentativo(modello);
     for (const attesa of ATTESE_MS) {
       if (res && (res.ok || !RIPROVABILI.has(res.status))) break;
       if (fine - Date.now() < 8000) break;
-      if (res) console.error('[ocr-documento] Gemini', res.status, '— riprovo tra', attesa, 'ms');
+      const fallito = modello;
+      if (modello === MODELLO) modello = MODELLO_RISERVA;
+      if (res) console.error('[ocr-documento] Gemini', fallito, res.status, '— riprovo con', modello, 'tra', attesa, 'ms');
+      else console.error('[ocr-documento] nessuna risposta da', fallito, '— riprovo con', modello, 'tra', attesa, 'ms');
       await new Promise((r) => setTimeout(r, attesa));
-      res = await tentativo();
+      res = await tentativo(modello);
     }
 
     if (!res || !res.ok) {
       const testo = res ? await res.text().catch(() => '') : 'nessuna risposta (timeout)';
-      console.error('[ocr-documento] Gemini ERRORE:', res?.status, testo);
+      console.error('[ocr-documento] Gemini ERRORE:', modello, res?.status, testo);
       return { ok: false, error: 'Lettura non riuscita — compila i dati a mano.', status: 502 };
     }
 
