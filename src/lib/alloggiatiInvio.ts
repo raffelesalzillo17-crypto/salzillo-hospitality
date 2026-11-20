@@ -245,7 +245,7 @@ export async function inviaSchedinaReale(schedinaId: string): Promise<EsitoInvio
     if (!testOk) {
       const dettaglioErr = test.dettaglio[0];
       const msg = dettaglioErr && !dettaglioErr.esito
-        ? `${dettaglioErr.erroreDes || 'errore'} (${dettaglioErr.erroreCod || '?'})`
+        ? `${dettaglioErr.erroreDes || 'errore'} (${dettaglioErr.erroreCod || '?'})${dettaglioErr.erroreDettaglio ? ` — ${dettaglioErr.erroreDettaglio}` : ''}`
         : test.esito.erroreDes || 'validazione fallita';
       return segnaErrore(`Test di validazione non superato, invio NON effettuato: ${msg}`);
     }
@@ -256,7 +256,7 @@ export async function inviaSchedinaReale(schedinaId: string): Promise<EsitoInvio
     if (!sendOk) {
       const dettaglioErr = send.dettaglio[0];
       const msg = dettaglioErr && !dettaglioErr.esito
-        ? `${dettaglioErr.erroreDes || 'errore'} (${dettaglioErr.erroreCod || '?'})`
+        ? `${dettaglioErr.erroreDes || 'errore'} (${dettaglioErr.erroreCod || '?'})${dettaglioErr.erroreDettaglio ? ` — ${dettaglioErr.erroreDettaglio}` : ''}`
         : send.esito.erroreDes || 'invio non riuscito';
       return segnaErrore(`Invio ad Alloggiati Web fallito: ${msg}`);
     }
