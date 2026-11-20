@@ -19,19 +19,20 @@ const SCHEMA_ESTRAZIONE = {
     nome: { type: 'STRING' },
     sesso: { type: 'STRING', description: 'Esattamente "M" o "F" se leggibile/deducibile dal documento, altrimenti stringa vuota "". Nessun altro valore.' },
     dataNascita: { type: 'STRING', description: 'Formato GG/MM/AAAA' },
-    luogoNascita: { type: 'STRING', description: 'Comune o città di nascita, nome leggibile (es. "Marcianise", "Parigi").' },
+    luogoNascita: { type: 'STRING', description: 'Comune o città di nascita copiato ESATTAMENTE come stampato, senza aggiungere, completare o correggere parole (se c\'è scritto "ROSSANO" scrivi "ROSSANO", mai "Rossano Calabro"). Senza la sigla della provincia tra parentesi, che va in provinciaNascita.' },
+    provinciaNascita: { type: 'STRING', description: 'Sigla di 2 lettere della provincia di nascita se stampata (es. "CS"), altrimenti stringa vuota "".' },
     statoNascita: { type: 'STRING', description: 'Nazione di nascita, nome leggibile in italiano (es. "Italia", "Francia"). Se il documento non lo indica esplicitamente ma il luogo di nascita è chiaramente italiano, usa "Italia".' },
     cittadinanza: { type: 'STRING', description: 'Nazionalità/cittadinanza, nome leggibile in italiano (es. "Italia"). Sui documenti italiani spesso non è scritta esplicitamente: in quel caso usa "Italia".' },
     tipoDocumento: { type: 'STRING', description: 'Esattamente uno tra "Carta d\'identità", "Passaporto", "Patente", oppure stringa vuota "" se non riconoscibile. Nessun altro valore.' },
     numeroDocumento: { type: 'STRING' },
-    luogoRilascioDocumento: { type: 'STRING', description: 'Comune o autorità di rilascio, se leggibile.' },
+    luogoRilascioDocumento: { type: 'STRING', description: 'Comune o autorità di rilascio SOLO se è stampato esplicitamente come luogo di rilascio (es. "Questura di Napoli", "Comune di Roma"). Non copiare il luogo di nascita né la residenza. Sui passaporti italiani l\'autorità è il Ministero degli Affari Esteri: in quel caso, e se non leggibile, stringa vuota "".' },
   },
-  required: ['cognome', 'nome', 'sesso', 'dataNascita', 'luogoNascita', 'statoNascita', 'cittadinanza', 'tipoDocumento', 'numeroDocumento', 'luogoRilascioDocumento'],
+  required: ['cognome', 'nome', 'sesso', 'dataNascita', 'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza', 'tipoDocumento', 'numeroDocumento', 'luogoRilascioDocumento'],
 };
 
 export type DatiDocumento = {
   cognome: string; nome: string; sesso: string; dataNascita: string; luogoNascita: string;
-  statoNascita: string; cittadinanza: string; tipoDocumento: string; numeroDocumento: string;
+  provinciaNascita?: string; statoNascita: string; cittadinanza: string; tipoDocumento: string; numeroDocumento: string;
   luogoRilascioDocumento: string;
 };
 

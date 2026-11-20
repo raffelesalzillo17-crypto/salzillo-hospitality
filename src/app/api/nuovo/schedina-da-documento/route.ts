@@ -49,11 +49,26 @@ export async function POST(req: NextRequest) {
   const cittadinanza = cercaStato(dati.cittadinanza || '');
   const tipoDoc = cercaTipoDocumento(dati.tipoDocumento || '');
   const nataInItalia = stato?.codice === CODICE_ITALIA;
-  const comuni = nataInItalia ? cercaComuni(dati.luogoNascita || '') : [];
+  // Toglie una sigla "(CS)" rimasta nel nome e la usa per scegliere tra comuni omonimi: è una
+  // corrispondenza esatta sul nome + provincia, non un'ipotesi (vedi alloggiatiLookup.ts).
+  const pulisci = (testo: string) => {
+    const m = testo.match(/\(([A-Za-z]{2})\)\s*$/);
+    return { nome: testo.replace(/\s*\([^)]*\)\s*$/, '').trim(), prov: (m?.[1] || '').toUpperCase() };
+  };
+  const nascita = pulisci(dati.luogoNascita || '');
+  const prov = (dati.provinciaNascita || nascita.prov || '').toUpperCase();
+  let comuni = nataInItalia ? cercaComuni(nascita.nome) : [];
+  if (comuni.length > 1 && prov) {
+    const stessaProv = comuni.filter((c) => c.provincia.toUpperCase() === prov);
+    if (stessaProv.length) comuni = stessaProv;
+  }
+  const rilascio = pulisci(dati.luogoRilascioDocumento || '').nome;
   return NextResponse.json({
     ok: true,
     dati: {
       ...dati,
+      luogoNascita: nascita.nome,
+      luogoRilascioDocumento: rilascio,
       statoNascita: stato?.nome ?? dati.statoNascita ?? '',
       cittadinanza: cittadinanza?.nome ?? dati.cittadinanza ?? '',
       tipoDocumento: tipoDoc?.nome ?? '',
