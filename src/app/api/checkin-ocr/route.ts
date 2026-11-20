@@ -27,6 +27,6 @@ export async function POST(req: NextRequest) {
   }
 
   const esito = await leggiDocumento(imageBase64, mediaType);
-  if (!esito.ok) return NextResponse.json({ error: esito.error }, { status: esito.status });
+  if (!esito.ok) return NextResponse.json({ error: esito.error, codice: esito.codice }, { status: esito.status });
   return NextResponse.json({ ok: true, dati: esito.dati });
 }

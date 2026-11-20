@@ -16,7 +16,7 @@ import { cercaComuni, cercaStato, cercaTipoDocumento, CODICE_ITALIA } from '@/li
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const err = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
+const err = (error: string, status = 400, codice?: string) => NextResponse.json({ ok: false, error, ...(codice ? { codice } : {}) }, { status });
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   try {
     const contenuto = await scaricaDocumentoDrive(d.drive_file_id);
     const esito = await leggiDocumento(contenuto.toString('base64'), mime);
-    if (!esito.ok) return err(esito.error || 'Lettura non riuscita — compila i dati a mano.', 502);
+    if (!esito.ok) return err(esito.error || 'Lettura non riuscita — compila i dati a mano.', 502, esito.codice);
     dati = esito.dati;
   } catch (e) {
     return err(`Lettura non riuscita: ${e instanceof Error ? e.message : String(e)}`, 502);
