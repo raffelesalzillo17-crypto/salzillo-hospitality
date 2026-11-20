@@ -172,9 +172,22 @@ export async function eliminaDocumentoDrive(fileId: string): Promise<void> {
   await drive.files.update({ fileId, requestBody: { trashed: true } });
 }
 
-/** Scarica il contenuto di un file da Drive (per rileggere un documento già caricato, es. OCR). */
-export async function scaricaDocumentoDrive(fileId: string): Promise<Buffer> {
+/** Scarica il contenuto di un file da Drive (per rileggere un documento già caricato, es. OCR).
+ *  Timeout di 12 s di default: senza, un download appeso mangia i 60 s della funzione e l'OCR non parte. */
+export async function scaricaDocumentoDrive(fileId: string, timeoutMs = 12_000): Promise<Buffer> {
   const drive = getDrive();
-  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
-  return Buffer.from(res.data as ArrayBuffer);
+  try {
+    const res = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'arraybuffer', signal: AbortSignal.timeout(timeoutMs) },
+    );
+    return Buffer.from(res.data as ArrayBuffer);
+  } catch (e) {
+    const nome = e instanceof Error ? e.name : '';
+    const msg = e instanceof Error ? e.message : String(e);
+    if (nome === 'TimeoutError' || nome === 'AbortError' || /aborted|timeout/i.test(msg)) {
+      throw new Error('Download da Drive scaduto');
+    }
+    throw e;
+  }
 }
