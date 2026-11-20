@@ -143,7 +143,13 @@ export async function leggiDocumento(imageBase64: string, mediaType: string): Pr
             { text: 'Leggi questo documento ed estrai i dati.' },
           ],
         }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA_ESTRAZIONE },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: SCHEMA_ESTRAZIONE,
+          // 3.6-flash ha thinking «medium» di default: su un'estrazione allunga i tempi
+          // e può lasciare il JSON in una parte successiva o tagliare per MAX_TOKENS.
+          thinkingConfig: { thinkingLevel: 'minimal' },
+        },
       }),
     },
   );
