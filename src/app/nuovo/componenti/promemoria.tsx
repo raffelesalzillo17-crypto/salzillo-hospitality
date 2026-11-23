@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Alloggio, AttivitaPromemoria, Promemoria, PromemoriaPrenotazione, RegolaPromemoria, RigaMessaggioPrenotazione } from '../tipi';
 import { api } from '../utilita';
 import { FormModale } from './ui';
-import { CANALI as ELENCO_CANALI } from '@/lib/canali';
+import { CANALI as ELENCO_CANALI } from '../../../lib/canali';
 
 // Promemoria e messaggi automatici (motore di regole, vedi src/lib/regole.ts): in alto cosa c'è
 // da fare adesso, sotto le regole che li generano (modificabili dal titolare), in fondo lo
