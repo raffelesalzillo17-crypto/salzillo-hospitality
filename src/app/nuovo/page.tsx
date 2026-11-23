@@ -15,6 +15,7 @@ import { SezioneRegistro } from './componenti/registro';
 import { SezioneOspiti } from './componenti/ospiti';
 import { SezioneAdempimenti } from './componenti/adempimenti';
 import { SezioneSpese } from './componenti/spese';
+import { RiepilogoDashboard, CosaManca } from './componenti/dashboard';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
@@ -170,6 +171,7 @@ export default function Nuovo() {
           </div>
         )}
         <div className="grid">
+          {sess.ruolo !== 'Pulizie' && <RiepilogoDashboard dati={dati} oggi={oggi} ruoloTitolare={sess.ruolo === 'Titolare'} />}
           <div className="card">
             <h2><i className="ic ic-arrivi">🛬</i>Arrivi <small>prossimi 7 giorni</small></h2>
             {arrivi.length === 0 ? <p className="empty">Nessun arrivo.</p> : arrivi.map((p) => (
@@ -212,19 +214,6 @@ export default function Nuovo() {
             ))}
           </div>
           <div className="card">
-            <h2><i className="ic ic-mese">📊</i><span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
-            <div className="tablescroll">
-              <table className="tbl">
-                <tbody>
-                  {dati.riepilogoMese.map((r) => (
-                    <tr key={r.immobile}><td>{r.immobile}<small> · {r.proprietario}</small></td><td className="num">{r.prenotazioni}</td><td className="num">{eur(r.lordo)}</td><td className="num strong">{eur(r.utile)}</td></tr>
-                  ))}
-                  <tr className="tot"><td>Totale</td><td className="num">{totMese.n}</td><td className="num">{eur(totMese.lordo)}</td><td className="num strong">{eur(totMese.utile)}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="card">
             <h2><i className="ic ic-occ">🏠</i>Occupazione <small>adesso</small></h2>
             <p className="big">{occupatiOggi.length} / {dati.alloggi.filter((a) => a.attivo).length} <small>alloggi occupati</small></p>
             {occupatiOggi.map((p) => (
@@ -234,29 +223,7 @@ export default function Nuovo() {
               </div>
             ))}
           </div>
-          <div className="card">
-            <h2><i className="ic ic-manca">📋</i>Cosa manca</h2>
-            {(() => {
-              const cm = dati.cosaManca;
-              const avvisiAdp = dati.adempimentiAvvisi ?? [];
-              const vuoto = cm.schedineDaInviare.length + cm.scadenzeVicine.length + cm.pulizieDaFare.length + cm.pagamentiInSospeso.length + avvisiAdp.length === 0;
-              if (vuoto) return <p className="empty">Tutto in ordine — niente in sospeso.</p>;
-              return <>
-                {avvisiAdp.map((x) => (
-                  <div key={x.prenotazioneId} className="row" style={{ cursor: 'pointer' }} onClick={() => setTab('adempimenti')}>
-                    <span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>{x.inRitardo ? 'schedine in ritardo' : 'schedine da fare'}</span> {x.alloggio}
-                    <small>arrivo {dataIt(x.checkin)} · {x.stato}{x.inRitardo ? '' : ` · tra ${Math.max(0, Math.round(x.oreAllaScadenza))} ore`}{x.motivi[0] ? ` · ${x.motivi[0]}` : ''}</small>
-                  </div>
-                ))}
-                {cm.schedineDaInviare.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>schedina</span> {s.cognome} {s.nome} <small>{s.alloggio}{s.scadeIl ? ` · entro ${new Date(s.scadeIl).toLocaleString('it-IT')}` : ''}</small></div>)}
-                {cm.pulizieDaFare.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>pulizia</span> {p.alloggio} <small>{dataIt(p.data)}</small>
-                  {sess.puoModificare && <button className="mini" style={{ marginLeft: 'auto' }} onClick={async () => { if (confirm(`Pulizia ${p.alloggio} del ${dataIt(p.data)}: segnare come fatta?`)) { await api('conferma-pulizia', { id: p.id }); await carica(); } }}>✓ fatto</button>}
-                </div>)}
-                {cm.scadenzeVicine.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#8C7BD822', color: '#8C7BD8' }}>scadenza</span> {s.titolo} <small>{dataIt(s.dataScadenza)}{s.immobile ? ` · ${s.immobile}` : ''}</small></div>)}
-                {cm.pagamentiInSospeso.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#1D6DF022', color: '#1D6DF0' }}>pagamento</span> {p.ospite} <small>{p.alloggio} · {dataIt(p.checkin)} · {eur(Number(p.lordo))}</small></div>)}
-              </>;
-            })()}
-          </div>
+          {sess.ruolo !== 'Pulizie' && <CosaManca dati={dati} ruoloTitolare={sess.ruolo === 'Titolare'} onApriPrenotazione={(id) => { const p = dati.prenotazioni.find((x) => x.id === id); if (p) setPrenSel(p); }} onVai={(t) => setTab(t as typeof tab)} />}
         </div>
         </>
       )}
@@ -293,7 +260,7 @@ export default function Nuovo() {
           <div className="card">
             <h2>Le sezioni di questa pagina</h2>
             <ul className="guidalist">
-              <li><b>Dashboard</b> — il riepilogo del giorno: chi arriva/parte, soldi del mese, cosa manca, occupazione. In alto le scorciatoie rapide</li>
+              <li><b>Dashboard</b> — in alto il riepilogo di tutti gli immobili per mese (frecce per cambiare mese, filtro per proprietario): incasso lordo, commissioni OTA, netto al proprietario, spese, tassa di soggiorno riscossa, occupazione e prezzo medio a notte, ciascuno con la sua spiegazione. Gli importi sono gli stessi dei Rendiconti dello stesso mese. Poi chi arriva e parte e “Cosa manca” diviso in blocchi: pagamenti da incassare (7 giorni), pulizie di oggi e domani, scadenze (30 giorni), schedine mancanti o in ritardo, sovrapposizioni di calendario</li>
               <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
