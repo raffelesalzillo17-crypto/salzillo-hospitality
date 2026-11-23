@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { richiediSessione } from '@/lib/db/auth';
 import * as M from '@/lib/db/mutations';
 import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
-import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } from '@/lib/db/regole';
+import { aggiornaRegola, creaRegola, eliminaRegola, installaModelliPredefiniti, riconcilia, segnaAttivita } from '@/lib/db/regole';
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
@@ -43,7 +43,7 @@ const SOLO_TITOLARE = new Set([
 const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto', 'cerca-duplicati-scadenze']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
-const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
+const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo', 'aggiungi-pagamento']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
       case 'crea-regola': r = await creaRegola(dati as Parameters<typeof creaRegola>[0]); break;
       case 'aggiorna-regola': r = await aggiornaRegola(id!, dati); break;
       case 'elimina-regola': r = await eliminaRegola(id!); break;
+      case 'installa-modelli-regole': r = await installaModelliPredefiniti(); break;
       default:
         return NextResponse.json({ ok: false, error: `Azione sconosciuta: ${azione}` }, { status: 400 });
     }

@@ -6,13 +6,13 @@
 
 import { and, asc, desc, eq, gte, inArray, lte, notInArray } from 'drizzle-orm';
 import { getDb } from './index';
-import { alloggi, attivitaPianificate, ospiti, prenotazioni, regoleAutomazione } from './schema';
+import { alloggi, attivitaPianificate, documenti, ospiti, pagamenti, prenotazioni, regoleAutomazione, schedine } from './schema';
 import { STATI_NON_BLOCCANTI } from './disponibilita';
 import { strutturaPerAlloggio } from '../strutture';
 import { toWaNumber } from '../pulizie';
 import {
-  AZIONI, EVENTI, STATI_APERTI, aggiungiGiorni, dataRoma, fineGiornoRoma, pianifica,
-  type AttivitaEsistente, type AzioneRegola, type EventoRegola, type Regola, type Soggiorno, type StatoAttivita,
+  AZIONI, CONDIZIONI, EVENTI, STATI_APERTI, aggiungiGiorni, dataRoma, fineGiornoRoma, pianifica, riepilogoSoggiorno,
+  type AttivitaEsistente, type CondizioneRegola, type RigaRiepilogo, type AzioneRegola, type EventoRegola, type Regola, type Soggiorno, type StatoAttivita,
 } from '../regole';
 
 type RigaRegola = typeof regoleAutomazione.$inferSelect;
@@ -22,6 +22,7 @@ const comeRegola = (r: RigaRegola): Regola => ({
   offsetGiorni: r.offset_giorni, ora: r.ora,
   azione: (AZIONI as readonly string[]).includes(r.azione) ? (r.azione as AzioneRegola) : 'Promemoria per me',
   modello: r.modello, alloggioId: r.alloggio_id, canale: r.canale, minNotti: r.min_notti,
+  condizione: (CONDIZIONI as readonly string[]).includes(r.condizione ?? '') ? (r.condizione as CondizioneRegola) : null,
 });
 
 export async function leggiRegole(): Promise<Regola[]> {
@@ -48,6 +49,10 @@ export async function aggiornaRegola(id: string, d: Record<string, unknown>) {
   if (d.alloggioId !== undefined) set.alloggio_id = d.alloggioId ? String(d.alloggioId) : null;
   if (d.canale !== undefined) set.canale = d.canale ? String(d.canale) : null;
   if (d.minNotti !== undefined) set.min_notti = d.minNotti ? Number(d.minNotti) : null;
+  if (d.condizione !== undefined) {
+    if (d.condizione && !(CONDIZIONI as readonly string[]).includes(String(d.condizione))) throw new Error('Condizione non valida');
+    set.condizione = d.condizione || null;
+  }
   const [r] = await getDb().update(regoleAutomazione).set(set).where(eq(regoleAutomazione.id, id)).returning();
   if (!r) throw new Error('Regola non trovata');
   // le attività aperte seguono subito la regola cambiata
@@ -57,8 +62,9 @@ export async function aggiornaRegola(id: string, d: Record<string, unknown>) {
 
 export async function creaRegola(d: {
   nome: string; evento: string; offsetGiorni?: number; ora?: string; azione: string; modello: string;
-  alloggioId?: string; canale?: string; minNotti?: number;
+  alloggioId?: string; canale?: string; minNotti?: number; condizione?: string;
 }) {
+  if (d.condizione && !(CONDIZIONI as readonly string[]).includes(d.condizione)) throw new Error('Condizione non valida');
   if (!d.nome?.trim() || !d.modello?.trim()) throw new Error('Servono almeno nome e testo');
   if (!(EVENTI as readonly string[]).includes(d.evento)) throw new Error('Evento non valido');
   if (!(AZIONI as readonly string[]).includes(d.azione)) throw new Error('Azione non valida');
@@ -66,7 +72,7 @@ export async function creaRegola(d: {
   const [r] = await getDb().insert(regoleAutomazione).values({
     nome: d.nome.trim(), evento: d.evento, offset_giorni: d.offsetGiorni ?? 0, ora: d.ora ?? '10:00',
     azione: d.azione, modello: d.modello.trim(), alloggio_id: d.alloggioId || null, canale: d.canale || null,
-    min_notti: d.minNotti || null, attiva: true,
+    min_notti: d.minNotti || null, attiva: true, condizione: d.condizione || null,
   }).returning();
   await riconcilia();
   return comeRegola(r);
@@ -84,15 +90,33 @@ async function leggiSoggiorni(daISO: string): Promise<Soggiorno[]> {
   const righe = await getDb().select({
     id: prenotazioni.id, alloggioId: prenotazioni.alloggio_id, alloggioNome: alloggi.nome,
     checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
-    creatoIl: prenotazioni.creato_il, nome: ospiti.nome, cognome: ospiti.cognome, telefono: ospiti.telefono,
+    creatoIl: prenotazioni.creato_il, nome: ospiti.nome, cognome: ospiti.cognome, telefono: ospiti.telefono, email: ospiti.email,
+    lordo: prenotazioni.lordo,
   }).from(prenotazioni)
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
     .innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
     .where(and(notInArray(prenotazioni.stato, [...STATI_NON_BLOCCANTI]), gte(prenotazioni.checkout, daISO)));
+  // dati per le condizioni delle regole (documenti, caparra, saldo): una lettura sola per tutte
+  const db = getDb();
+  const [docs, sched, pag] = await Promise.all([
+    db.select({ p: documenti.prenotazione_id }).from(documenti).where(eq(documenti.tipo, 'Documento identità')),
+    db.select({ p: schedine.prenotazione_id }).from(schedine),
+    db.select({ p: pagamenti.prenotazione_id, tipo: pagamenti.tipo, importo: pagamenti.importo }).from(pagamenti),
+  ]);
+  const conDocumenti = new Set<string>([...docs.map((d) => d.p ?? ''), ...sched.map((s) => s.p)]);
+  const versato = new Map<string, number>(); const caparre = new Set<string>();
+  for (const p of pag) {
+    const imp = Number(p.importo) * (p.tipo === 'Rimborso' ? -1 : 1);
+    versato.set(p.p, (versato.get(p.p) ?? 0) + imp);
+    if (p.tipo === 'Caparra') caparre.add(p.p);
+  }
   return righe.map((r) => ({
     prenotazioneId: r.id, alloggioId: r.alloggioId, alloggioNome: r.alloggioNome,
     checkin: r.checkin, checkout: r.checkout, canale: r.canale,
-    ospiteNome: r.nome, ospiteCognome: r.cognome, telefono: r.telefono, creatoIl: r.creatoIl,
+    ospiteNome: r.nome, ospiteCognome: r.cognome, telefono: r.telefono, email: r.email, creatoIl: r.creatoIl,
+    documentiCaricati: conDocumenti.has(r.id),
+    caparraIncassata: caparre.has(r.id) || (versato.get(r.id) ?? 0) > 0.005,
+    saldoResiduo: Math.max(0, Number(r.lordo) - (versato.get(r.id) ?? 0)),
   }));
 }
 
@@ -233,4 +257,76 @@ export async function testoPromemoriaAutomatici(dryRun = false): Promise<string 
   const testo = formattaBloccoPromemoria(items);
   if (testo && !dryRun) await segnaNotificate(items.map((a) => a.id));
   return testo;
+}
+
+// ── Punto 11: modelli predefiniti e riepilogo per prenotazione ───────────────
+
+/**
+ * Modelli di messaggio pronti. Si creano DISATTIVATI: li accende Raffaele uno per uno ("Attiva"),
+ * così non compare nulla di inatteso. Ognuno si crea solo se non esiste già una regola con quel nome.
+ */
+export const MODELLI_PREDEFINITI: { nome: string; evento: string; offsetGiorni: number; ora: string; modello: string; condizione?: CondizioneRegola }[] = [
+  { nome: 'Documenti mancanti — richiesta all\'ospite', evento: 'Check-in', offsetGiorni: -3, ora: '10:00', condizione: 'documenti-mancanti',
+    modello: 'Ciao {nome}! Per il tuo arrivo a {alloggio} il {checkin} ci servono i documenti di identità degli ospiti (la legge richiede di comunicarli alla Questura). Me li puoi mandare qui in chat, anche con una foto? Grazie mille!' },
+  { nome: 'Caparra da incassare — sollecito', evento: 'Conferma prenotazione', offsetGiorni: 2, ora: '10:00', condizione: 'caparra-da-incassare',
+    modello: 'Ciao {nome}! Per confermare il soggiorno a {alloggio} dal {checkin} al {checkout} serve la caparra. Ti mando i dati per il pagamento: dimmi pure come preferisci. Grazie!' },
+  { nome: 'Saldo da incassare — prima dell\'arrivo', evento: 'Check-in', offsetGiorni: -2, ora: '10:00', condizione: 'saldo-da-incassare',
+    modello: 'Ciao {nome}! Manca poco al tuo arrivo a {alloggio} ({checkin}). Ti ricordo il saldo del soggiorno: dimmi come preferisci pagare. A presto!' },
+  { nome: 'Istruzioni di arrivo — il giorno prima', evento: 'Check-in', offsetGiorni: -1, ora: '10:00',
+    modello: 'Ciao {nome}! Domani ti aspettiamo a {alloggio}. Qui trovi le istruzioni per l\'arrivo: {link_checkin}' },
+  { nome: 'Ringraziamento dopo la partenza', evento: 'Check-out', offsetGiorni: 1, ora: '11:00',
+    modello: 'Ciao {nome}, grazie per aver scelto {alloggio}! Spero sia andato tutto bene. Se ti va, lascia una recensione: per noi conta tantissimo. A presto!' },
+];
+
+export async function installaModelliPredefiniti(): Promise<{ create: string[]; giaPresenti: string[] }> {
+  const db = getDb();
+  const esistenti = new Set((await db.select({ nome: regoleAutomazione.nome }).from(regoleAutomazione)).map((r) => r.nome));
+  const create: string[] = []; const giaPresenti: string[] = [];
+  for (const m of MODELLI_PREDEFINITI) {
+    if (esistenti.has(m.nome)) { giaPresenti.push(m.nome); continue; }
+    await db.insert(regoleAutomazione).values({
+      nome: m.nome, evento: m.evento, offset_giorni: m.offsetGiorni, ora: m.ora, azione: 'Messaggio ospite',
+      modello: m.modello, attiva: false, condizione: m.condizione ?? null,
+    });
+    create.push(m.nome);
+  }
+  return { create, giaPresenti };
+}
+
+export type RigaPerPrenotazione = Omit<RigaRiepilogo, 'scadenza'> & {
+  scadenza?: string; linkWhatsapp?: string | null; linkEmail?: string | null;
+};
+export type RiepilogoPrenotazione = {
+  prenotazioneId: string; ospite: string; alloggio: string; checkin: string; checkout: string; canale: string;
+  telefono: string | null; email: string | null; righe: RigaPerPrenotazione[];
+};
+
+/** Per ogni prenotazione in arrivo (prossimi 90 giorni, anche in corso): stato di ogni messaggio che le regole attive prevedono. */
+export async function riepilogoPerPrenotazione(adesso: Date = new Date()): Promise<RiepilogoPrenotazione[]> {
+  const oggi = dataRoma(adesso);
+  const limite = aggiungiGiorni(oggi, 90);
+  const regole = await leggiRegole();
+  if (!regole.some((r) => r.attiva)) return [];
+  const soggiorni = (await leggiSoggiorni(oggi)).filter((s) => s.checkin <= limite).sort((a, b) => a.checkin.localeCompare(b.checkin));
+  const righeEsistenti = await getDb().select().from(attivitaPianificate).where(gte(attivitaPianificate.checkin, aggiungiGiorni(oggi, -60)));
+  const esistenti: AttivitaEsistente[] = righeEsistenti.map((r) => ({
+    id: r.id, regolaId: r.regola_id, alloggioId: r.alloggio_id, checkin: r.checkin,
+    scadenza: r.scadenza, stato: r.stato as StatoAttivita, testo: r.testo,
+  }));
+  const out: RiepilogoPrenotazione[] = [];
+  for (const s of soggiorni) {
+    const righe = riepilogoSoggiorno({ regole, soggiorno: s, esistenti, adesso, extra: extraPerSoggiorno(s) });
+    if (!righe.length) continue;
+    out.push({
+      prenotazioneId: s.prenotazioneId, ospite: `${s.ospiteNome} ${s.ospiteCognome}`.trim(), alloggio: s.alloggioNome,
+      checkin: s.checkin, checkout: s.checkout, canale: s.canale, telefono: s.telefono, email: s.email ?? null,
+      righe: righe.map((r) => ({
+        ...r, scadenza: r.scadenza?.toISOString(),
+        linkWhatsapp: r.azione === 'Messaggio ospite' && r.testo && (r.stato === 'Pronto' || r.stato === 'In programma') ? linkWhatsapp(s.telefono, r.testo) : null,
+        linkEmail: r.azione === 'Messaggio ospite' && r.testo && s.email && (r.stato === 'Pronto' || r.stato === 'In programma')
+          ? `mailto:${s.email}?subject=${encodeURIComponent(s.alloggioNome)}&body=${encodeURIComponent(r.testo)}` : null,
+      })),
+    });
+  }
+  return out;
 }

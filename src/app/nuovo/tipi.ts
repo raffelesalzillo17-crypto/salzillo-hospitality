@@ -184,5 +184,15 @@ export type AttivitaPromemoria = {
 export type RegolaPromemoria = {
   id: string; nome: string; attiva: boolean; evento: string; offsetGiorni: number; ora: string;
   azione: string; modello: string; alloggioId: string | null; canale: string | null; minNotti: number | null;
+  condizione?: string | null;
 };
-export type Promemoria = { aperte: AttivitaPromemoria[]; chiuse: AttivitaPromemoria[]; regole: RegolaPromemoria[] };
+/** Punto 11: stato di ogni messaggio previsto, per prenotazione. */
+export type RigaMessaggioPrenotazione = {
+  regolaId: string; regola: string; azione: string; stato: 'Pronto' | 'Inviato' | 'In programma' | 'Bloccato' | 'Non necessario' | 'Saltato';
+  motivo?: string; attivitaId?: string; testo?: string; scadenza?: string; linkWhatsapp?: string | null; linkEmail?: string | null;
+};
+export type PromemoriaPrenotazione = {
+  prenotazioneId: string; ospite: string; alloggio: string; checkin: string; checkout: string; canale: string;
+  telefono: string | null; email: string | null; righe: RigaMessaggioPrenotazione[];
+};
+export type Promemoria = { aperte: AttivitaPromemoria[]; chiuse: AttivitaPromemoria[]; regole: RegolaPromemoria[]; perPrenotazione?: PromemoriaPrenotazione[] };

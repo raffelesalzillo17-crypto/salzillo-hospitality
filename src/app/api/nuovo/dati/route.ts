@@ -10,7 +10,7 @@ import { richiediSessione, alloggiVisibili, creaToken, COOKIE, OPZIONI_COOKIE } 
 import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati, schedineDaVerificare, inviiFattiAlloggiati } from '@/lib/alloggiatiInvio';
-import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
+import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia, riepilogoPerPrenotazione } from '@/lib/db/regole';
 import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/registro';
 import { leggiOspitiDiProva } from '@/lib/db/ospitiGestione';
 import { avvisiAdempimenti } from '@/lib/adempimenti';
@@ -68,8 +68,8 @@ export async function GET(req: NextRequest) {
       ? await (async () => {
           try {
             await riconcilia();
-            const [aperte, chiuse, regole] = await Promise.all([attivitaAperte(), attivitaChiuse(), leggiRegole()]);
-            return { aperte, chiuse, regole };
+            const [aperte, chiuse, regole, perPrenotazione] = await Promise.all([attivitaAperte(), attivitaChiuse(), leggiRegole(), riepilogoPerPrenotazione()]);
+            return { aperte, chiuse, regole, perPrenotazione };
           } catch (e) { console.error('[nuovo/dati] promemoria non disponibili:', e instanceof Error ? e.message : e); return undefined; }
         })()
       : undefined;

@@ -25,6 +25,17 @@ export type EventoRegola = (typeof EVENTI)[number];
 export const AZIONI = ['Messaggio ospite', 'Promemoria per me'] as const;
 export type AzioneRegola = (typeof AZIONI)[number];
 
+/** Punto 11 (23/11/2026): una regola può valere solo se una condizione è vera per quella prenotazione. */
+export const CONDIZIONI = ['documenti-mancanti', 'caparra-da-incassare', 'saldo-da-incassare'] as const;
+export type CondizioneRegola = (typeof CONDIZIONI)[number];
+export const ETICHETTE_CONDIZIONE: Record<CondizioneRegola, string> = {
+  'documenti-mancanti': 'solo se mancano i documenti',
+  'caparra-da-incassare': 'solo se la caparra non è stata incassata',
+  'saldo-da-incassare': 'solo se resta un saldo da incassare',
+};
+/** Canali che incassano da soli: caparra e saldo non c'entrano (pagano Airbnb/Booking, o prenotazione fuori dal sistema). */
+const CANALI_SENZA_INCASSO = ['Airbnb', 'Booking', 'No Tax'];
+
 export type StatoAttivita = 'Da fare' | 'Notificata' | 'Fatta' | 'Saltata' | 'Annullata';
 export const STATI_APERTI: readonly StatoAttivita[] = ['Da fare', 'Notificata'];
 
@@ -43,6 +54,8 @@ export type Regola = {
   alloggioId: string | null;
   canale: string | null;
   minNotti: number | null;
+  /** Solo se la condizione è vera la regola produce l'attività (vedi `condizioneVera`). */
+  condizione?: CondizioneRegola | null;
 };
 
 export type Soggiorno = {
@@ -56,6 +69,12 @@ export type Soggiorno = {
   ospiteCognome: string;
   telefono: string | null;
   creatoIl: Date;
+  /** Email dell'ospite: alternativa al telefono per i messaggi. */
+  email?: string | null;
+  /** Per le condizioni: documenti d'identità o schedine presenti; caparra incassata; saldo ancora da incassare (in euro). */
+  documentiCaricati?: boolean;
+  caparraIncassata?: boolean;
+  saldoResiduo?: number;
 };
 
 export type AttivitaEsistente = {
@@ -146,8 +165,26 @@ export function scadenzaRegola(regola: Pick<Regola, 'evento' | 'offsetGiorni' | 
   return istanteRoma(aggiungiGiorni(dataEvento(regola, s), regola.offsetGiorni), regola.ora);
 }
 
+/** La condizione della regola è vera per questa prenotazione? Senza condizione: sempre. Dati non noti = condizione non vera (meglio un messaggio in meno che uno sbagliato). */
+export function condizioneVera(cond: CondizioneRegola | null | undefined, s: Soggiorno): boolean {
+  if (!cond) return true;
+  if (cond === 'documenti-mancanti') return s.documentiCaricati === false;
+  if (CANALI_SENZA_INCASSO.includes(s.canale)) return false;
+  if (cond === 'caparra-da-incassare') return s.caparraIncassata === false;
+  return (s.saldoResiduo ?? 0) > 0.005;
+}
+
+/** Perché una condizione NON è vera (per spiegarlo all'utente). */
+export function motivoCondizioneFalsa(cond: CondizioneRegola, s: Soggiorno): string {
+  if (cond === 'documenti-mancanti') return s.documentiCaricati === undefined ? 'stato dei documenti non noto' : 'documenti già caricati';
+  if (CANALI_SENZA_INCASSO.includes(s.canale)) return `pagamento gestito da ${s.canale}, non serve`;
+  if (cond === 'caparra-da-incassare') return s.caparraIncassata === undefined ? 'stato della caparra non noto' : 'caparra già incassata';
+  return 'nessun saldo da incassare';
+}
+
 export function rispettaFiltri(regola: Regola, s: Soggiorno): boolean {
   if (!regola.attiva) return false;
+  if (!condizioneVera(regola.condizione, s)) return false;
   if (regola.alloggioId && regola.alloggioId !== s.alloggioId) return false;
   if (regola.canale && regola.canale !== s.canale) return false;
   if (regola.minNotti && nottiTra(s.checkin, s.checkout) < regola.minNotti) return false;
@@ -262,4 +299,51 @@ export function pianifica(opts: {
     }
   }
   return ops;
+}
+
+// ── Riepilogo per prenotazione (punto 11) ────────────────────────────────────
+
+export type StatoMessaggio = 'Pronto' | 'Inviato' | 'In programma' | 'Bloccato' | 'Non necessario' | 'Saltato';
+export type RigaRiepilogo = {
+  regolaId: string; regola: string; azione: AzioneRegola; stato: StatoMessaggio;
+  /** Spiegazione per gli stati Bloccato / Non necessario / Saltato. */
+  motivo?: string;
+  attivitaId?: string; testo?: string; scadenza?: Date;
+};
+
+/**
+ * Per UNA prenotazione, lo stato di ogni regola attiva che la riguarda (alloggio/canale/notti), così
+ * si vede a colpo d'occhio cosa è pronto da mandare, cosa è già andato e cosa è bloccato e perché.
+ * Funzione pura: non scrive nulla e non manda nulla.
+ */
+export function riepilogoSoggiorno(opts: {
+  regole: Regola[]; soggiorno: Soggiorno; esistenti: AttivitaEsistente[]; adesso: Date; extra: ExtraSoggiorno;
+}): RigaRiepilogo[] {
+  const { regole, soggiorno: s, esistenti, adesso, extra } = opts;
+  const righe: RigaRiepilogo[] = [];
+  for (const regola of regole) {
+    if (!regola.attiva) continue;
+    // stessi filtri del motore, ma la condizione si spiega invece di scartare in silenzio
+    if (!rispettaFiltri({ ...regola, condizione: null }, s)) continue;
+    const base = { regolaId: regola.id, regola: regola.nome, azione: regola.azione };
+    if (regola.condizione && !condizioneVera(regola.condizione, s)) {
+      righe.push({ ...base, stato: 'Non necessario', motivo: motivoCondizioneFalsa(regola.condizione, s) });
+      continue;
+    }
+    const att = esistenti.find((e) => e.regolaId === regola.id && e.alloggioId === s.alloggioId && e.checkin === s.checkin);
+    if (att && att.stato === 'Fatta') { righe.push({ ...base, stato: 'Inviato', attivitaId: att.id, testo: att.testo }); continue; }
+    if (att && att.stato === 'Saltata') { righe.push({ ...base, stato: 'Saltato', motivo: 'momento utile già passato o saltato a mano', attivitaId: att.id, testo: att.testo }); continue; }
+    const { testo, mancanti } = riempiModello(regola.modello, variabiliSoggiorno(s, extra));
+    if (mancanti.length) { righe.push({ ...base, stato: 'Bloccato', motivo: `manca: ${mancanti.join(', ')}` }); continue; }
+    if (att && (att.stato === 'Da fare' || att.stato === 'Notificata')) {
+      if (regola.azione === 'Messaggio ospite' && !s.telefono && !s.email) {
+        righe.push({ ...base, stato: 'Bloccato', motivo: 'aggiungi il telefono o l\'email dell\'ospite', attivitaId: att.id, testo: att.testo });
+      } else {
+        righe.push({ ...base, stato: dataRoma(att.scadenza) <= dataRoma(adesso) ? 'Pronto' : 'In programma', attivitaId: att.id, testo: att.testo, scadenza: att.scadenza });
+      }
+      continue;
+    }
+    righe.push({ ...base, stato: 'In programma', testo, scadenza: scadenzaRegola(regola, s) });
+  }
+  return righe;
 }

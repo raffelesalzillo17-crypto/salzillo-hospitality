@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Alloggio, AttivitaPromemoria, Promemoria, RegolaPromemoria } from '../tipi';
+import type { Alloggio, AttivitaPromemoria, Promemoria, PromemoriaPrenotazione, RegolaPromemoria, RigaMessaggioPrenotazione } from '../tipi';
 import { api } from '../utilita';
 import { FormModale } from './ui';
 
@@ -20,6 +20,19 @@ const AZIONI = [
   { v: 'Promemoria per me', t: 'Promemoria per me' },
 ];
 const CANALI = [{ v: 'tutti', t: 'Tutti i canali' }, ...['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => ({ v: c, t: c }))];
+
+const CONDIZIONI = [
+  { v: 'nessuna', t: 'Sempre (nessuna condizione)' },
+  { v: 'documenti-mancanti', t: 'Solo se mancano i documenti d\'identità' },
+  { v: 'caparra-da-incassare', t: 'Solo se la caparra non è stata incassata' },
+  { v: 'saldo-da-incassare', t: 'Solo se resta un saldo da incassare' },
+];
+const ETICHETTA_CONDIZIONE: Record<string, string> = {
+  'documenti-mancanti': 'solo se mancano i documenti', 'caparra-da-incassare': 'solo se la caparra non è incassata', 'saldo-da-incassare': 'solo se resta un saldo',
+};
+const COLORE_STATO: Record<string, string> = {
+  Pronto: '#1FAA6E', Inviato: '#8A8A8A', 'In programma': '#3B82C4', Bloccato: '#C97A16', 'Non necessario': '#8A8A8A', Saltato: '#8A8A8A',
+};
 
 function quando(r: Pick<RegolaPromemoria, 'offsetGiorni' | 'evento' | 'ora'>): string {
   const n = Math.abs(r.offsetGiorni);
@@ -71,6 +84,60 @@ function CardAttivita({ a, puoModificare, onCambiato }: { a: AttivitaPromemoria;
   );
 }
 
+function RigaMessaggio({ r, puoModificare, onCambiato }: { r: RigaMessaggioPrenotazione; puoModificare: boolean; onCambiato: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [apri, setApri] = useState(false);
+  async function segna(stato: 'Fatta' | 'Saltata') {
+    if (!r.attivitaId) return;
+    setBusy(true);
+    try { await api('segna-attivita', { id: r.attivitaId, dati: { stato } }); await onCambiato(); } finally { setBusy(false); }
+  }
+  const aperto = r.stato === 'Pronto' || r.stato === 'In programma';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0', borderTop: '1px dashed var(--line)' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <span className="chip" style={{ background: COLORE_STATO[r.stato] + '22', color: COLORE_STATO[r.stato] }}>{r.stato}</span>
+        <span>{r.regola}</span>
+        {r.motivo && <span className="empty">· {r.motivo}</span>}
+        {r.scadenza && r.stato === 'In programma' && <span className="empty">· dal {fmtScadenza(r.scadenza)}</span>}
+      </div>
+      {aperto && r.testo && (
+        <span className="azioni" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {r.linkWhatsapp && <a className="add" href={r.linkWhatsapp} target="_blank" rel="noopener">💬 WhatsApp</a>}
+          {r.linkEmail && <a className="add" href={r.linkEmail}>✉️ Email</a>}
+          {!r.linkWhatsapp && !r.linkEmail && r.azione === 'Messaggio ospite' && <span className="empty">⚠️ manca telefono ed email dell&apos;ospite</span>}
+          <button className="mini" onClick={() => setApri(!apri)}>{apri ? 'Nascondi testo' : 'Vedi testo'}</button>
+          {puoModificare && r.attivitaId && <button className="mini" disabled={busy} onClick={() => segna('Fatta')}>✓ Inviato</button>}
+          {puoModificare && r.attivitaId && <button className="mini" disabled={busy} onClick={() => segna('Saltata')}>Salta</button>}
+        </span>
+      )}
+      {apri && r.testo && <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, color: 'var(--ink-muted)' }}>{r.testo}</div>}
+    </div>
+  );
+}
+
+function PerPrenotazione({ elenco, puoModificare, onCambiato }: { elenco: PromemoriaPrenotazione[]; puoModificare: boolean; onCambiato: () => Promise<void> }) {
+  return (
+    <div className="card">
+      <div className="cardhead"><h2>Per prenotazione <small>({elenco.length})</small></h2></div>
+      <p className="sub" style={{ marginTop: -4 }}>
+        Per ogni prenotazione in arrivo, lo stato dei messaggi previsti dalle regole attive: <b>Pronto</b> da mandare, <b>Inviato</b>, <b>Bloccato</b> (con il motivo),
+        <b> Non necessario</b> (con il motivo). Nessun messaggio parte da solo: tu apri WhatsApp o email, controlli e invii; poi tocchi &ldquo;Inviato&rdquo;.
+      </p>
+      {elenco.map((p) => (
+        <div key={p.prenotazioneId} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <b>{p.ospite}</b>
+            <span className="empty">{p.alloggio} · {ggmm(p.checkin)} → {ggmm(p.checkout)} · {p.canale}</span>
+          </div>
+          {p.righe.map((r) => <RigaMessaggio key={r.regolaId} r={r} puoModificare={puoModificare} onCambiato={onCambiato} />)}
+        </div>
+      ))}
+      {elenco.length === 0 && <p className="empty">Nessuna prenotazione in arrivo con messaggi previsti. Attiva qualche regola qui sotto.</p>}
+    </div>
+  );
+}
+
 export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolare, onCambiato }: {
   promemoria: Promemoria; alloggi: Alloggio[]; puoModificare: boolean; ruoloTitolare: boolean; onCambiato: () => Promise<void>;
 }) {
@@ -78,6 +145,7 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
   const [mostraChiuse, setMostraChiuse] = useState(false);
   const [err, setErr] = useState('');
   const { aperte, chiuse, regole } = promemoria;
+  const [msgModelli, setMsgModelli] = useState('');
 
   const opzAlloggi = [{ v: 'tutti', t: 'Tutti gli alloggi' }, ...alloggi.map((a) => ({ v: a.id, t: a.nome }))];
 
@@ -93,6 +161,15 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }
 
+  async function installaModelli() {
+    setErr(''); setMsgModelli('');
+    try {
+      const r = await api('installa-modelli-regole', {}) as { create?: string[]; giaPresenti?: string[] };
+      setMsgModelli(r?.create?.length ? `✓ Aggiunti ${r.create.length} modelli, tutti DISATTIVATI: attiva quelli che vuoi con il tasto "Attiva".` : 'I modelli ci sono già tutti.');
+      await onCambiato();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }
+
   const campi = [
     { k: 'nome', label: 'Nome della regola', req: true },
     { k: 'evento', label: 'Quando (evento di riferimento)', tipo: 'select' as const, opzioni: EVENTI },
@@ -103,11 +180,12 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
     { k: 'alloggioId', label: 'Solo per l\'alloggio', tipo: 'select' as const, opzioni: opzAlloggi },
     { k: 'canale', label: 'Solo per il canale', tipo: 'select' as const, opzioni: CANALI },
     { k: 'minNotti', label: 'Solo da quante notti (facoltativo)', tipo: 'number' as const },
+    { k: 'condizione', label: 'Condizione', tipo: 'select' as const, opzioni: CONDIZIONI },
   ];
 
   function iniziali(r: RegolaPromemoria | 'nuova'): Record<string, unknown> {
-    if (r === 'nuova') return { evento: 'Check-in', offsetGiorni: -1, ora: '10:00', azione: 'Messaggio ospite', alloggioId: 'tutti', canale: 'tutti' };
-    return { ...r, alloggioId: r.alloggioId ?? 'tutti', canale: r.canale ?? 'tutti', minNotti: r.minNotti ?? '' };
+    if (r === 'nuova') return { evento: 'Check-in', offsetGiorni: -1, ora: '10:00', azione: 'Messaggio ospite', alloggioId: 'tutti', canale: 'tutti', condizione: 'nessuna' };
+    return { ...r, alloggioId: r.alloggioId ?? 'tutti', canale: r.canale ?? 'tutti', minNotti: r.minNotti ?? '', condizione: r.condizione ?? 'nessuna' };
   }
 
   async function invia(v: Record<string, unknown>) {
@@ -117,6 +195,7 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
       alloggioId: v.alloggioId === 'tutti' || !v.alloggioId ? null : v.alloggioId,
       canale: v.canale === 'tutti' || !v.canale ? null : v.canale,
       minNotti: v.minNotti ?? null,
+      condizione: v.condizione === 'nessuna' || !v.condizione ? null : v.condizione,
     };
     if (modifica === 'nuova') await api('crea-regola', { dati });
     else if (modifica) await api('aggiorna-regola', { id: modifica.id, dati });
@@ -136,12 +215,18 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
         {aperte.length === 0 && <p className="empty">Niente da fare per ora.</p>}
       </div>
 
+      <PerPrenotazione elenco={promemoria.perPrenotazione ?? []} puoModificare={puoModificare} onCambiato={onCambiato} />
+
       <div className="card">
         <div className="cardhead">
           <h2>Regole <small>({regole.length})</small></h2>
-          {ruoloTitolare && <button className="add" onClick={() => setModifica('nuova')}>＋ Nuova regola</button>}
+          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {ruoloTitolare && <button className="mini" onClick={installaModelli}>📑 Aggiungi i modelli pronti</button>}
+            {ruoloTitolare && <button className="add" onClick={() => setModifica('nuova')}>＋ Nuova regola</button>}
+          </span>
         </div>
         {err && <p className="err">{err}</p>}
+        {msgModelli && <p className="empty" style={{ color: '#1FAA6E' }}>{msgModelli}</p>}
         {regole.map((r) => (
           <div key={r.id} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
@@ -150,7 +235,7 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
             </div>
             <span className="empty">{quando(r)} · {r.azione === 'Messaggio ospite' ? 'messaggio per l\'ospite' : 'promemoria per me'}
               {r.alloggioId ? ` · solo ${alloggi.find((a) => a.id === r.alloggioId)?.nome ?? 'un alloggio'}` : ''}
-              {r.canale ? ` · solo ${r.canale}` : ''}{r.minNotti ? ` · da ${r.minNotti} notti` : ''}</span>
+              {r.canale ? ` · solo ${r.canale}` : ''}{r.minNotti ? ` · da ${r.minNotti} notti` : ''}{r.condizione ? ` · ${ETICHETTA_CONDIZIONE[r.condizione] ?? r.condizione}` : ''}</span>
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, color: 'var(--ink-muted)' }}>{r.modello}</div>
             {ruoloTitolare && (
               <span className="azioni" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

@@ -609,6 +609,7 @@ export const regoleAutomazione = pgTable('regole_automazione', {
   alloggio_id: uuid('alloggio_id').references(() => alloggi.id),
   canale: text('canale'),
   min_notti: integer('min_notti'),
+  condizione: text('condizione'),                   // NULL = sempre; vedi CONDIZIONI in src/lib/regole.ts (migrazione 0010)
 });
 
 export const attivitaPianificate = pgTable('attivita_pianificate', {
