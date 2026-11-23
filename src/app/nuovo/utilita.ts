@@ -30,6 +30,20 @@ export async function api(azione: string, payload: Record<string, unknown> = {})
   return d.risultato;
 }
 
+/** Scarica come Excel o CSV una tabella già visibile (es. prenotazioni coi filtri attivi): la formatta il server, che non legge altro dal database. */
+export async function scaricaTabella(nome: string, formato: 'xlsx' | 'csv', intestazioni: string[], righe: (string | number | null)[][]) {
+  const r = await fetch('/api/nuovo/esporta-tabella', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, formato, intestazioni, righe }),
+  });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Esportazione non riuscita'); }
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nome}-${new Date().toISOString().slice(0, 10)}.${formato}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 export async function creaBlocco(alloggioId: string, checkin: string, checkout: string, nota?: string) {
   const r = await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId, checkin, checkout, nota }) });
   const d = await r.json();

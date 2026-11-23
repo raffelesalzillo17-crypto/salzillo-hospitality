@@ -131,11 +131,16 @@ export async function datiCommercialista(anno: number, proprietarioId: string | 
 
 /** Excel con i quattro fogli. */
 export async function costruisciXlsx(d: DatiCommercialista): Promise<Buffer> {
+  return costruisciXlsxFogli(d.fogli);
+}
+
+/** Excel con i fogli dati (usato anche dall'export delle prenotazioni e dal resoconto annuale). */
+export async function costruisciXlsxFogli(fogli: Foglio[]): Promise<Buffer> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Salzillo Hospitality'; wb.created = new Date();
-  for (const f of d.fogli) {
-    const ws = wb.addWorksheet(f.nome);
+  for (const f of fogli) {
+    const ws = wb.addWorksheet(f.nome.slice(0, 31));
     ws.addRow(f.intestazioni).font = { bold: true };
     for (const r of f.righe) ws.addRow(r);
     f.intestazioni.forEach((h, i) => {

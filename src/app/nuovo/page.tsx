@@ -10,6 +10,7 @@ import { FormPreventivo } from './componenti/preventivo';
 import { RigaPulizia } from './componenti/pulizie';
 import { PromemoriaBox } from './componenti/promemoria';
 import { Rendiconti } from './componenti/rendiconti';
+import { ResocontoAnnuale } from './componenti/resoconto';
 import { FormModale, TemaToggle } from './componenti/ui';
 import { SezioneRegistro } from './componenti/registro';
 import { SezioneOspiti } from './componenti/ospiti';
@@ -19,7 +20,7 @@ import { SezioneScadenze } from './componenti/scadenze';
 import { RiepilogoDashboard, CosaManca } from './componenti/dashboard';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
-import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
+import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur, scaricaTabella } from './utilita';
 
 
 /* Anteprima del NUOVO sistema Salzillo Hospitality (database).
@@ -233,6 +234,7 @@ export default function Nuovo() {
       {tab === 'promemoria' && dati.promemoria && <PromemoriaBox promemoria={dati.promemoria} alloggi={dati.alloggi} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} />}
 
       {tab === 'rendiconti' && <Rendiconti anagrafica={dati.anagrafica} oggi={oggi} documenti={dati.documenti ?? []} />}
+      {tab === 'rendiconti' && sess.vedeFinanziario && <ResocontoAnnuale oggi={oggi} />}
 
       {tab === 'link' && <LinkUtiliBox link={dati.linkUtili ?? []} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
@@ -270,6 +272,7 @@ export default function Nuovo() {
               <li><b>Preventivi</b> — Bozza → Inviato → Accettato. "Converti in prenotazione" crea la prenotazione con gli stessi dati e dice se qualcosa differisce. Un preventivo accettato è <b>bloccato</b>: non si modifica né si elimina; se i dati cambiano crei una <b>nuova versione</b> (copia in Bozza). Se in seguito la prenotazione cambia importo, date o ospiti, sotto il preventivo compare l’elenco delle differenze. Gli altri si eliminano con conferma e restano 30 giorni nel cestino</li>
               <li><b>Documenti ospiti</b> (Titolare e operatore) — una cartella per ospite con i file su Drive (contratti, ricevute…). I documenti d’identità li vede solo il Titolare</li>
               <li><b>Promemoria</b> — regole che preparano messaggi (WhatsApp o email) per gli ospiti. Una regola può avere una <b>condizione</b>: solo se mancano i documenti, solo se la caparra o il saldo non sono incassati (non vale per Airbnb/Booking). "Per prenotazione" mostra, per ogni arrivo, cosa è <b>Pronto</b>, <b>Inviato</b>, <b>Bloccato</b> (con il motivo, per esempio manca il telefono) o <b>Non necessario</b>. Nessun messaggio parte da solo: lo invii tu e tocchi "Inviato". "Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu</li>
+              <li><b>Export e resoconto annuale</b> — in Prenotazioni i tasti "Excel" e "CSV" scaricano l'elenco con i filtri attivi, totale compreso (senza accesso ai dati finanziari non escono gli importi). In Rendiconti, sotto il rendiconto, c'è il <b>Resoconto annuale</b>: per ogni mese prenotazioni, incasso lordo, tassa di soggiorno, notti e occupazione; incassi per canale; tassa per alloggio e mese; confronto con l'anno prima. Usa le stesse regole della Dashboard (prenotazioni attive per mese di check-in), quindi i numeri coincidono. Excel a 4 fogli o CSV</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
               <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
@@ -353,6 +356,21 @@ export default function Nuovo() {
                 <option value="">Ogni canale</option>
                 {['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
+              {(['xlsx', 'csv'] as const).map((fmt) => (
+                <button key={fmt} className="mini" disabled={lista.length === 0} onClick={() => {
+                  const conSoldi = sess.vedeFinanziario;
+                  const notti = (p: typeof lista[number]) => Math.max(0, Math.round((Date.parse(p.checkout) - Date.parse(p.checkin)) / 864e5));
+                  const intest = ['Check-in', 'Check-out', 'Notti', 'Ospite', 'Alloggio', 'Canale', 'Ospiti', 'Stato', ...(conSoldi ? ['Lordo', 'Utile', 'Incassato', 'Da incassare'] : [])];
+                  const incassato = (p: typeof lista[number]) => p.pagamenti.reduce((s, x) => s + (x.tipo === 'Rimborso' ? -x.importo : x.importo), 0);
+                  const righe: (string | number | null)[][] = lista.map((p) => [p.checkin, p.checkout, notti(p), p.ospite, p.alloggio, p.canale, p.numeroOspiti, p.stato,
+                    ...(conSoldi ? [p.lordo, p.utile, incassato(p), Math.max(0, p.lordo - incassato(p))] : [])]);
+                  if (conSoldi) righe.push(['Totale (' + lista.length + ')', '', '', '', '', '', '', '', somma.lordo, somma.utile, '', '']);
+                  scaricaTabella('prenotazioni', fmt, intest, righe).catch((e) => alert(e instanceof Error ? e.message : String(e)));
+                }}>{fmt === 'xlsx' ? '⬇ Excel' : '⬇ CSV'}</button>
+              ))}
+              <small className="empty">Scarica le {lista.length} prenotazioni mostrate, con i filtri attivi.</small>
             </div>
             <div className="tablescroll">
               <table className="tbl full">
