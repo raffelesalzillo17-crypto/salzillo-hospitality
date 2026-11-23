@@ -7,7 +7,7 @@ export const neg = (n: number) => (n > 0.005 ? '−' : '') + eur(n);
 export const dataIt = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 
 export const CANALE_COLOR: Record<string, string> = {
-  'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
+  'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'WhatsApp': '#25D366', 'Telefono': '#2BA5A5', 'Altro': '#8A8A8A', 'No Tax': '#8C7BD8',
 };
 
 // La scheda 'documenti' mostra soprattutto i preventivi (più le richieste dal sito e i file

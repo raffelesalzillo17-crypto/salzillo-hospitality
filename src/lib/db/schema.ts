@@ -25,7 +25,8 @@ import {
 
 export const tipoProprietario = pgEnum('tipo_proprietario', ['Persona fisica', 'Società']);
 export const regimeFiscale = pgEnum('regime_fiscale', ['Con cedolare', 'No tax']);
-export const canale = pgEnum('canale', ['Airbnb', 'Booking', 'Diretto', 'No Tax']);
+// WhatsApp, Telefono e Altro aggiunti con drizzle/manuali/0011_canali_diretti.sql (punto 3, 23/11/2026)
+export const canale = pgEnum('canale', ['Airbnb', 'Booking', 'Diretto', 'No Tax', 'WhatsApp', 'Telefono', 'Altro']);
 export const statoPrenotazione = pgEnum('stato_prenotazione', [
   'Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show',
 ]);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { CANALI } from '@/lib/canali';
 import { timingSafeEqual } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
       if (!stanza || !nome || !cognome || !ISO.test(String(checkin)) || !ISO.test(String(checkout)) || !canale || lordo === undefined || !Number.isFinite(Number(lordo))) {
         return NextResponse.json({ ok: false, error: 'Dati mancanti o non validi (stanza, nome, cognome, date AAAA-MM-GG, canale, importo lordo)' }, { status: 400 });
       }
-      if (!['Airbnb', 'Booking', 'Diretto', 'No Tax'].includes(String(canale))) return NextResponse.json({ ok: false, error: 'Canale non valido (Airbnb, Booking, Diretto, No Tax)' }, { status: 400 });
+      if (!(CANALI as readonly string[]).includes(String(canale))) return NextResponse.json({ ok: false, error: 'Canale non valido (' + CANALI.join(', ') + ')' }, { status: 400 });
       const alloggioId = await alloggioIdPerStanza(String(stanza));
       if (!alloggioId) return NextResponse.json({ ok: false, error: `Stanza sconosciuta: ${stanza}` }, { status: 400 });
       const r = await M.creaPrenotazione({

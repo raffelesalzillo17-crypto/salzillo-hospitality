@@ -98,7 +98,7 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
   if (vedeFinanziario) {
     const pren = await db.select({ id: prenotazioni.id, lordo: prenotazioni.lordo, checkin: prenotazioni.checkin, alloggio: alloggi.nome, nome: ospiti.nome, cognome: ospiti.cognome })
       .from(prenotazioni).innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id)).innerJoin(ospiti, eq(ospiti.id, prenotazioni.ospite_id))
-      .where(and(eq(prenotazioni.stato, 'Attiva'), sql`${prenotazioni.canale} IN ('Diretto', 'No Tax')`, lte(prenotazioni.checkin, tra7), gte(prenotazioni.checkout, oggiISO), filtroImm(alloggi.immobile_id)))
+      .where(and(eq(prenotazioni.stato, 'Attiva'), sql`${prenotazioni.canale} IN ('Diretto', 'WhatsApp', 'Telefono', 'Altro', 'No Tax')`, lte(prenotazioni.checkin, tra7), gte(prenotazioni.checkout, oggiISO), filtroImm(alloggi.immobile_id)))
       .orderBy(prenotazioni.checkin);
     if (pren.length) {
       const pag = await db.select({ p: pagamenti.prenotazione_id, tipo: pagamenti.tipo, importo: pagamenti.importo }).from(pagamenti).where(inArray(pagamenti.prenotazione_id, pren.map((x) => x.id)));

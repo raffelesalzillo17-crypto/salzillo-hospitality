@@ -1,4 +1,5 @@
 import { GoogleGenAI, FunctionCallingConfigMode, type FunctionDeclaration, type Content, type Part } from '@google/genai';
+import { CANALI } from './canali';
 import fs from 'fs';
 import path from 'path';
 import { NOMI_STRUTTURE } from '@/lib/strutture';
@@ -133,7 +134,7 @@ function searchWiki(query: string): string {
 
 // Elenco strutture ora centralizzato in src/lib/strutture.ts (09/09/2026).
 const STANZE_VALIDE = NOMI_STRUTTURE;
-const CANALI_VALIDI = ['Airbnb', 'Booking', 'Diretto', 'No Tax'];
+const CANALI_VALIDI: string[] = [...CANALI];
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 export type PendingAction =

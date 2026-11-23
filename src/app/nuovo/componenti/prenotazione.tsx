@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CANALI, canaleConIncasso } from '@/lib/canali';
 import type { Alloggio, DatiSch, Ospite, Prenotazione, TabelleAll } from '../tipi';
 import { SCH_VUOTA, api, dataIt, eur, neg, normAll, ridimensiona } from '../utilita';
 
@@ -342,7 +343,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
                   const saluto = new Date().getHours() < 14 ? 'Buongiorno' : 'Buonasera';
                   const primo = p.ospite.trim().split(/\s+/)[0];
                   const pdfUrl = `${window.location.origin}/api/nuovo/documento?tipo=conferma&prenotazione=${p.id}`;
-                  const conTotale = p.canale === 'Diretto' || p.canale === 'No Tax';
+                  const conTotale = canaleConIncasso(p.canale);
                   const msg = [
                     `${saluto} ${primo}, sono Raffaele di Salzillo Hospitality.`,
                     `Ecco la conferma della tua prenotazione per ${p.alloggio}:`,
@@ -387,7 +388,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
             <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
             <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
             <label>Ospiti<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
-            <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{CANALI.map((c) => <option key={c}>{c}</option>)}</select></label>
             <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
             <label>Stato<select value={f.stato} onChange={(e) => setF({ ...f, stato: e.target.value })}>{['Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show'].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
@@ -458,7 +459,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
           <label>Persone<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
-          <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{['Airbnb', 'Booking', 'Diretto', 'No Tax'].map((c) => <option key={c}>{c}</option>)}</select></label>
+          <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{CANALI.map((c) => <option key={c}>{c}</option>)}</select></label>
           <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
           <label>Codice conferma (Airbnb/Booking)<input value={f.codiceConfermaCanale} onChange={(e) => setF({ ...f, codiceConfermaCanale: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
