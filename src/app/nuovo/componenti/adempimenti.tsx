@@ -46,7 +46,7 @@ export function SezioneAdempimenti({ oggi, onCambiato }: { oggi: string; onCambi
   const preset = (d: number, u: number) => { setDa(aggiungi(oggi, d)); setA(aggiungi(oggi, u)); };
 
   return (
-    <div className="grid">
+    <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
       <div className="card">
         <h2>Adempimenti — Alloggiati Web</h2>
         <p className="sub">Niente parte da qui. Per ogni arrivo vedi se la schedina è pronta: scarichi il file, lo carichi tu sul portale e poi segni &quot;inviata&quot;. Il termine è 24 ore dall&apos;arrivo; l&apos;ora di arrivo non è registrata, quindi si conta in modo prudente: entro la fine del giorno di check-in.</p>
@@ -65,7 +65,7 @@ export function SezioneAdempimenti({ oggi, onCambiato }: { oggi: string; onCambi
         {err && <p className="err">{err}</p>}
         {arrivi === null ? <p className="empty">Carico…</p> : arrivi.length === 0 ? <p className="empty">Nessun arrivo in questo periodo.</p> : (
           <div className="tablescroll">
-            <table className="tbl full">
+            <table className="tbl full" style={{ minWidth: 640 }}>
               <thead><tr><th>Arrivo</th><th>Alloggio e ospite</th><th>Ospiti / schedine</th><th>Stato</th><th>Termine</th><th></th></tr></thead>
               <tbody>
                 {arrivi.map((x) => {
