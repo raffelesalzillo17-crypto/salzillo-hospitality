@@ -31,6 +31,9 @@ export async function api(azione: string, payload: Record<string, unknown> = {})
 }
 
 /** Scarica come Excel o CSV una tabella già visibile (es. prenotazioni coi filtri attivi): la formatta il server, che non legge altro dal database. */
+/** Sezioni che hanno un indirizzo proprio: /nuovo/<sezione>. */
+export const TAB_URL = ['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti', 'documentiospiti'] as const;
+
 export async function scaricaTabella(nome: string, formato: 'xlsx' | 'csv', intestazioni: string[], righe: (string | number | null)[][]) {
   const r = await fetch('/api/nuovo/esporta-tabella', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, formato, intestazioni, righe }),

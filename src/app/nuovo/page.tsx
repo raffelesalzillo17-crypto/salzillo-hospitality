@@ -21,7 +21,7 @@ import { SezioneScadenze } from './componenti/scadenze';
 import { RiepilogoDashboard, CosaManca } from './componenti/dashboard';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
-import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur, scaricaTabella } from './utilita';
+import { CANALE_COLOR, TAB_LABEL, TAB_URL, api, dataIt, eur, scaricaTabella } from './utilita';
 
 
 /* Anteprima del NUOVO sistema Salzillo Hospitality (database).
@@ -46,6 +46,54 @@ export default function Nuovo() {
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
   const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', periodo: 'futuro' });
+  const [menuAltro, setMenuAltro] = useState(false);
+  // Punto 15 (23/11/2026): ogni sezione ha un indirizzo (/nuovo/calendario, /nuovo/prenotazioni/<id>) e i filtri stanno nell'indirizzo.
+  const [urlPronto, setUrlPronto] = useState(false);
+  const [idDaAprire, setIdDaAprire] = useState<string | null>(null);
+  const [nonTrovata, setNonTrovata] = useState(false);
+
+  useEffect(() => {
+    const leggiUrl = () => {
+      const [t, id] = window.location.pathname.split('/').filter(Boolean).slice(1);
+      const q = new URLSearchParams(window.location.search);
+      if (t && (TAB_URL as readonly string[]).includes(t)) setTab(t as typeof tab);
+      else if (!t) setTab('dashboard');
+      setFPren({ q: q.get('q') ?? '', stato: q.get('stato') ?? '', alloggio: q.get('alloggio') ?? '', canale: q.get('canale') ?? '', periodo: q.get('periodo') ?? 'futuro' });
+      setIdDaAprire(t === 'prenotazioni' && id ? id : null);
+      if (!(t === 'prenotazioni' && id)) { setPrenSel(null); setNonTrovata(false); }
+    };
+    leggiUrl();
+    setUrlPronto(true);
+    window.addEventListener('popstate', leggiUrl);
+    return () => window.removeEventListener('popstate', leggiUrl);
+  }, []);
+
+  // aperta da un link: appena i dati ci sono, apre la scheda di quella prenotazione
+  useEffect(() => {
+    if (!idDaAprire || !dati) return;
+    const p = dati.prenotazioni.find((x) => x.id === idDaAprire);
+    if (p) { setPrenSel(p); setNonTrovata(false); } else setNonTrovata(true);
+    setIdDaAprire(null);
+  }, [idDaAprire, dati]);
+
+  // l'indirizzo segue la sezione, la prenotazione aperta e i filtri
+  useEffect(() => {
+    if (!urlPronto || !sess) return;
+    const filtri = new URLSearchParams();
+    if (tab === 'prenotazioni') {
+      if (fPren.q) filtri.set('q', fPren.q);
+      if (fPren.stato) filtri.set('stato', fPren.stato);
+      if (fPren.alloggio) filtri.set('alloggio', fPren.alloggio);
+      if (fPren.canale) filtri.set('canale', fPren.canale);
+      if (fPren.periodo !== 'futuro') filtri.set('periodo', fPren.periodo);
+    }
+    const percorso = prenSel ? `/nuovo/prenotazioni/${prenSel.id}` : tab === 'dashboard' ? '/nuovo' : `/nuovo/${tab}`;
+    const q = filtri.toString();
+    const nuovo = percorso + (q ? `?${q}` : '');
+    if (nuovo === window.location.pathname + window.location.search) return;
+    if (window.location.pathname === percorso) window.history.replaceState(null, '', nuovo); // solo i filtri cambiano
+    else window.history.pushState(null, '', nuovo);
+  }, [urlPronto, sess, tab, prenSel, fPren]);
 
   async function inviaModale(vals: Record<string, unknown>) {
     if (!modale) return;
@@ -138,7 +186,7 @@ export default function Nuovo() {
       <header className="topbar">
         <div>
           <span className="eyebrow">Salzillo Hospitality</span>
-          <h1>Nuovo sistema <span className="beta">anteprima</span></h1>
+          <h1>Gestionale</h1>
         </div>
         <div className="topright">
           <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={copiaLinkPersonale} title="Il tuo link per entrare da un altro telefono o computer">🔗 il mio link</button> · <button className="linklike" onClick={logout}>esci</button></span>
@@ -149,6 +197,7 @@ export default function Nuovo() {
         </div>
       </header>
 
+      {nonTrovata && <p className="err">La prenotazione del link non esiste o non è tra quelle che puoi vedere.</p>}
       <nav className="tabs">
         {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti', 'documentiospiti'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
@@ -163,6 +212,24 @@ export default function Nuovo() {
             </button>
           ))}
       </nav>
+      {(() => {
+        const visibili = TAB_URL.filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .filter((t) => t !== 'documentiospiti' || sess.ruolo === 'Titolare' || (sess.ruolo === 'Collaboratore' && sess.vedeFinanziario))
+          .filter((t) => t !== 'adempimenti' && t !== 'registro' || sess.ruolo === 'Titolare')
+          .filter((t) => sess.ruolo !== 'Pulizie' || t === 'pulizie' || t === 'guida')
+          .filter((t) => t !== 'promemoria' || !!dati.promemoria);
+        const principali = visibili.filter((t) => ['dashboard', 'calendario', 'prenotazioni', 'pulizie'].includes(t));
+        const altri = visibili.filter((t) => !principali.includes(t));
+        return (
+          <>
+            {menuAltro && <div className="altromenu">{altri.map((t) => <button key={t} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}</div>}
+            <div className="bottomnav">
+              {principali.map((t) => <button key={t} className={tab === t && !menuAltro ? 'on' : ''} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}
+              {altri.length > 0 && <button className={menuAltro ? 'on' : ''} onClick={() => setMenuAltro(!menuAltro)}>Altro ▾</button>}
+            </div>
+          </>
+        );
+      })()}
 
       {tab === 'dashboard' && (
         <>
