@@ -5,6 +5,7 @@ import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
 import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } from '@/lib/db/regole';
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
+import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
 // (è un gestionale interno, non un'API pubblica — semplice e sufficiente).
@@ -25,10 +26,10 @@ const SOLO_TITOLARE = new Set([
   'crea-prezzo', 'crea-proprietario', 'aggiorna-proprietario', 'crea-immobile', 'aggiorna-immobile', 'crea-alloggio', 'aggiorna-alloggio',
   'crea-contratto-gestione', 'aggiorna-contratto-gestione',
   'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola',
-  'ripristina-dal-cestino', 'controlla-drive',
+  'ripristina-dal-cestino', 'controlla-drive', 'proposte-conservazione', 'applica-conservazione',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
-const NON_REGISTRARE = new Set(['anteprima-importi']);
+const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -79,6 +80,9 @@ export async function POST(req: NextRequest) {
       case 'elimina-preventivo': r = await M.eliminaPreventivo(id!, sess.id); break;
       case 'ripristina-dal-cestino': r = await ripristinaDalCestino(id!); break;
       case 'controlla-drive': r = await controllaCondivisioneDrive(); break;
+      // Conservazione documenti (Garante privacy / DM 7/1/2013): l'elenco è solo lettura; la cancellazione è una prenotazione alla volta.
+      case 'proposte-conservazione': r = await proposteConservazione(); break;
+      case 'applica-conservazione': r = await applicaConservazione(id!); break;
       case 'backfill-preventivi-drive': r = await M.backfillPreventiviSuDrive(); break;
       case 'crea-preventivo-da-richiesta': r = await M.creaPreventivoDaRichiesta(id!, { ...(dati as Parameters<typeof M.creaPreventivoDaRichiesta>[1]), creatoDa: sess.id }); break;
       case 'ignora-richiesta': r = await M.ignoraRichiestaPubblica(id!); break;
@@ -119,7 +123,11 @@ export async function POST(req: NextRequest) {
     }
     // Registro delle azioni: chi, cosa e quando. Mai dati degli ospiti: solo azione, tipo di dato e id.
     if (azione && !NON_REGISTRARE.has(azione)) {
-      await registra(sess, azione, azione.split('-').slice(1).join('-') || null, id ?? null);
+      const esito = r as { copieEliminate?: number; schedineAnonimizzate?: number } | null;
+      const dettaglio = azione === 'applica-conservazione' && esito
+        ? `${esito.copieEliminate ?? 0} copie cancellate, ${esito.schedineAnonimizzate ?? 0} schedine senza numero documento`
+        : null;
+      await registra(sess, azione, azione.split('-').slice(1).join('-') || null, id ?? null, dettaglio);
     }
     if (azione && CAMBIANO_PRENOTAZIONI.has(azione)) {
       await riconcilia().catch((e) => console.error('[nuovo/scrivi] riconciliazione promemoria fallita (non bloccante):', e instanceof Error ? e.message : e));

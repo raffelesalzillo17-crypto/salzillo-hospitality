@@ -21,7 +21,7 @@ const NOMI_AZIONE: Record<string, string> = {
   'attiva-utente': 'Accesso attivato/disattivato', 'imposta-permesso': 'Permesso cambiato', 'elimina-operatore-pulizie': 'Operatore eliminato',
   'mostra-password-wifi': 'Password WiFi mostrata', 'mostra-numero-documento': 'Numero documento mostrato', 'rivela-negato': 'Tentativo non permesso di vedere un dato',
   'ripristina-dal-cestino': 'Ripristinato dal cestino', 'crea-prezzo': 'Prezzo impostato', 'cancella-prezzo': 'Prezzo rimosso',
-  'crea-evento': 'Evento creato', 'cancella-evento': 'Evento rimosso', 'controlla-drive': 'Controllo condivisione Drive',
+  'crea-evento': 'Evento creato', 'cancella-evento': 'Evento rimosso', 'controlla-drive': 'Controllo condivisione Drive', 'applica-conservazione': 'Copie dei documenti cancellate dopo la ricevuta',
 };
 const nomeAzione = (a: string) => NOMI_AZIONE[a] ?? a.replace(/-/g, ' ');
 const quando = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -31,11 +31,39 @@ type EsitoDrive = {
   condivisiConPersone: number; radiceCondivisaPubblicamente: boolean; ultimoBackup: string | null;
 };
 
+type Proposta = {
+  prenotazioneId: string; alloggio: string; checkin: string; checkout: string; ospite: string;
+  copieDocumento: number; schedineConNumero: number; ultimoInvio: string;
+};
+
 export function SezioneRegistro({ dati, onCambiato }: { dati: Dati; onCambiato: () => Promise<void> }) {
   const [busy, setBusy] = useState('');
   const [drive, setDrive] = useState<EsitoDrive | null>(null);
   const [errDrive, setErrDrive] = useState('');
+  const [proposte, setProposte] = useState<Proposta[] | null>(null);
+  const [errProposte, setErrProposte] = useState('');
+  const [esitoCons, setEsitoCons] = useState('');
   const registro = dati.registro ?? [];
+
+  async function cercaProposte() {
+    setBusy('proposte'); setErrProposte(''); setEsitoCons('');
+    try { setProposte(await api('proposte-conservazione') as Proposta[]); }
+    catch (e) { setErrProposte(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(''); }
+  }
+
+  async function applicaConservazione(p: Proposta) {
+    if (!confirm(`Cancellare per sempre le copie dei documenti di "${p.ospite}" (${p.alloggio}, arrivo ${p.checkin.split('-').reverse().join('/')})?\n\n` +
+      `• ${p.copieDocumento} file da Drive (NON si recuperano)\n• il numero del documento da ${p.schedineConNumero} schedine\n\nLa ricevuta di Alloggiati resta salvata. Questa azione non si può annullare.`)) return;
+    setBusy(p.prenotazioneId); setErrProposte(''); setEsitoCons('');
+    try {
+      const r = await api('applica-conservazione', { id: p.prenotazioneId }) as { copieEliminate: number; schedineAnonimizzate: number; avvisi: string[] };
+      setEsitoCons(`Fatto: ${r.copieEliminate} copie cancellate, ${r.schedineAnonimizzate} schedine senza numero di documento.${r.avvisi.length ? ' Attenzione: ' + r.avvisi.join('; ') : ''}`);
+      setProposte((cur) => (cur ?? []).filter((x) => x.prenotazioneId !== p.prenotazioneId || r.avvisi.length > 0));
+      await onCambiato();
+    } catch (e) { setErrProposte(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(''); }
+  }
   const cestino = dati.cestino ?? [];
 
   async function ripristina(id: string, etichetta: string) {
@@ -69,6 +97,25 @@ export function SezioneRegistro({ dati, onCambiato }: { dati: Dati; onCambiato: 
             ))}
           </tbody></table>
         )}
+      </div>
+
+      <div className="card">
+        <h2>Copie dei documenti da cancellare</h2>
+        <p className="sub">Il Garante privacy dice che la copia del documento d&apos;identità serve solo per l&apos;invio ad Alloggiati Web: dopo la ricevuta va cancellata (la ricevuta si tiene 5 anni, e qui resta). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta già salvata. Non si cancella niente da solo: confermi tu, una prenotazione alla volta.</p>
+        <button className="add" disabled={busy === 'proposte'} onClick={cercaProposte}>{busy === 'proposte' ? 'Cerco…' : 'Cerca le copie da cancellare'}</button>
+        {errProposte && <p className="empty" style={{ color: '#d33' }}>{errProposte}</p>}
+        {esitoCons && <p className="empty" style={{ color: '#1FAA6E' }}>{esitoCons}</p>}
+        {proposte && (proposte.length === 0 ? <p className="empty">Niente da cancellare adesso.</p> : (
+          <table className="tbl" style={{ marginTop: 10 }}><tbody>
+            {proposte.map((p) => (
+              <tr key={p.prenotazioneId}>
+                <td><b>{p.ospite}</b><br /><small className="sub">{p.alloggio} · {p.checkin.split('-').reverse().join('/')} → {p.checkout.split('-').reverse().join('/')}</small></td>
+                <td><small>{p.copieDocumento} copie su Drive<br />{p.schedineConNumero} numeri di documento</small></td>
+                <td className="num"><button className="mini coral" disabled={busy === p.prenotazioneId} onClick={() => applicaConservazione(p)}>🗑 Cancella copie</button></td>
+              </tr>
+            ))}
+          </tbody></table>
+        ))}
       </div>
 
       <div className="card">
