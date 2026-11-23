@@ -788,10 +788,17 @@ export async function aggiungiPagamento(d: { prenotazioneId: string; tipo: strin
 
 // ── Spese / Scadenze / Pulizie ──────────────────────────────────────────────
 
-export async function creaSpesa(d: { immobileId?: string; categoriaId: string; data?: string; descrizione: string; importo: number; metodoPagamento?: string; note?: string; daRimborsareProprietario?: boolean }) {
+export async function creaSpesa(d: { immobileId?: string; alloggioId?: string; categoriaId: string; data?: string; descrizione: string; importo: number; metodoPagamento?: string; note?: string; daRimborsareProprietario?: boolean }) {
   const db = getDb();
+  if (!(Number(d.importo) > 0)) throw new Error('Importo non valido: scrivi una cifra maggiore di zero.');
+  // Se la spesa riguarda un alloggio, l'immobile è quello dell'alloggio (punto 12, 23/11/2026).
+  if (d.alloggioId) {
+    const [al] = await db.select({ imm: alloggi.immobile_id }).from(alloggi).where(eq(alloggi.id, d.alloggioId));
+    if (!al) throw new Error('Alloggio non trovato');
+    d = { ...d, immobileId: al.imm };
+  }
   const [r] = await db.insert(spese).values({
-    origine: 'Database', immobile_id: d.immobileId || null, categoria_id: d.categoriaId,
+    origine: 'Database', immobile_id: d.immobileId || null, alloggio_id: d.alloggioId || null, categoria_id: d.categoriaId,
     data: d.data || oggiISO(), descrizione: d.descrizione.trim(), importo: s(d.importo),
     metodo_pagamento: (d.metodoPagamento as 'Bonifico') || null,
     da_rimborsare_proprietario: d.daRimborsareProprietario ?? false, note: d.note || null,

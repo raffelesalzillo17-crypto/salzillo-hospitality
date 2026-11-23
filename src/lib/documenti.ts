@@ -108,6 +108,12 @@ export async function salvaDocumento(
   return salvaNellaCartella(cartellaId, nomeFile, contenuto, mimeType);
 }
 
+/** Ricevuta o fattura di una spesa (punto 12, 23/11/2026): cartella "Ricevute spese <anno>" dentro la cartella radice. */
+export async function salvaFileSpesa(anno: number, nomeFile: string, contenuto: Buffer, mimeType: string): Promise<DocumentoSalvato> {
+  const cartellaId = await ensureCartella(`spese-${anno}`, `Ricevute spese ${anno}`);
+  return salvaNellaCartella(cartellaId, nomeFile, contenuto, mimeType);
+}
+
 type TipoDocumento = 'Documento identità' | 'Contratto ospite' | 'Ricevuta' | 'Preventivo' | 'Conferma prenotazione' | 'Contratto gestione' | 'Rendiconto' | 'Ricevuta Alloggiati' | 'Altro';
 
 /**

@@ -51,7 +51,14 @@ export type Anagrafica = {
 
 export type Scadenza = { id: string; titolo: string; ente: string | null; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null };
 
-export type Spesa = { id: string; data: string; descrizione: string; importo: string; categoria: string; immobile: string | null; note: string | null };
+export type Spesa = {
+  id: string; data: string; descrizione: string; importo: string; categoria: string; categoriaId?: string; immobile: string | null; note: string | null;
+  alloggio?: string | null; metodo?: string | null; haRicevuta?: boolean; ricorrente?: boolean;
+};
+export type SpesaRicorrente = {
+  id: string; descrizione: string; importo: string; frequenza: string; giorno: number; prossimaData: string; fine: string | null; attiva: boolean;
+  categoria: string; immobile: string | null; alloggio: string | null;
+};
 
 export type CosaManca = {
   schedineDaInviare: { id: string; cognome: string; nome: string; scadeIl: string | null; alloggio: string }[];
@@ -108,6 +115,7 @@ export type Dati = {
   promemoria?: Promemoria;
   /** Solo Titolare: registro delle azioni e cestino (punto 5, 23/11/2026). */
   adempimentiAvvisi?: ArrivoAdempimento[];
+  speseRicorrenti?: SpesaRicorrente[];
   ospitiDiProva?: { id: string; nome: string; cognome: string; telefono: string | null }[];
   registro?: { id: string; quando: string; utente_nome: string | null; ruolo: string | null; azione: string; dettaglio: string | null }[];
   cestino?: { id: string; tipo: string; etichetta: string; eliminatoIl: string; scadeIl: string }[];

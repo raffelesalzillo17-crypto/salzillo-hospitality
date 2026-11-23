@@ -14,6 +14,7 @@ import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/d
 import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/registro';
 import { leggiOspitiDiProva } from '@/lib/db/ospitiGestione';
 import { avvisiAdempimenti } from '@/lib/adempimenti';
+import { generaSpeseRicorrenti, leggiSpeseRicorrenti } from '@/lib/db/speseGestione';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
   try {
     const oggi = new Date();
     const oggiISO = oggi.toISOString().slice(0, 10);
+    // Spese ricorrenti arrivate a scadenza: si registrano da sole (una volta sola, vedi generaSpeseRicorrenti). Solo con il Titolare, prima di leggere le spese.
+    if (sess.ruolo === 'Titolare') await generaSpeseRicorrenti(oggiISO).catch((e) => console.error('[nuovo/dati] spese ricorrenti:', e instanceof Error ? e.message : e));
     const [tuttePren, ospiti, anagrafica, alloggi, spese, scadenze, riepilogoMese, cosaManca, categorieSpesa, preventivi, pulizie, documenti, richieste, tuttiBlocchi] = await Promise.all([
       leggiPrenotazioniDb(),
       leggiOspitiDb(),
@@ -122,6 +125,7 @@ export async function GET(req: NextRequest) {
       blocchi: soloPulizie ? [] : blocchiFiltr,
       ospitiDiProva: titolare ? await leggiOspitiDiProva() : [],
       // Schedine ancora da fare, in ritardo o a meno di 24 ore dal termine (punto 6): per la Dashboard. Se il calcolo fallisce non blocca il resto.
+      speseRicorrenti: titolare ? await leggiSpeseRicorrenti() : [],
       adempimentiAvvisi: titolare ? await avvisiAdempimenti(oggiISO).catch((e) => { console.error('[nuovo/dati] avvisi adempimenti:', e instanceof Error ? e.message : e); return []; }) : [],
       registro: titolare ? await leggiRegistro(150) : [],
       cestino: titolare ? await leggiCestino() : [],

@@ -278,6 +278,28 @@ export const spese = pgTable('spese', {
   scontrino_documento_id: uuid('scontrino_documento_id').references(() => documenti.id),
   da_rimborsare_proprietario: boolean('da_rimborsare_proprietario').notNull().default(false),
   note: text('note'),
+  // Punto 12 (23/11/2026): alloggio specifico, spesa ricorrente di origine, impronta di import da estratto conto.
+  alloggio_id: uuid('alloggio_id').references(() => alloggi.id),
+  ricorrente_id: uuid('ricorrente_id'),
+  chiave_import: text('chiave_import'),
+});
+
+// Spese che si ripetono (utenze, abbonamenti, commissioni): il gestionale le registra da solo alle scadenze.
+// Create con SQL manuale: drizzle/manuali/0005_spese_ricorrenti_import.sql
+export const speseRicorrenti = pgTable('spese_ricorrenti', {
+  ...base,
+  descrizione: text('descrizione').notNull(),
+  categoria_id: uuid('categoria_id').notNull().references(() => categorieSpesa.id),
+  immobile_id: uuid('immobile_id').references(() => immobili.id),
+  alloggio_id: uuid('alloggio_id').references(() => alloggi.id),
+  importo: numeric('importo', { precision: 10, scale: 2 }).notNull(),
+  metodo_pagamento: metodoPagamento('metodo_pagamento'),
+  frequenza: text('frequenza').notNull(), // Mensile | Trimestrale | Semestrale | Annuale
+  giorno: integer('giorno').notNull().default(1),
+  prossima_data: date('prossima_data').notNull(),
+  fine: date('fine'),
+  attiva: boolean('attiva').notNull().default(true),
+  note: text('note'),
 });
 
 export const scadenze = pgTable('scadenze', {

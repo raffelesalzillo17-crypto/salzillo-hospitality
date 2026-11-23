@@ -407,11 +407,13 @@ export async function leggiSpeseDb() {
   return db
     .select({
       id: spese.id, data: spese.data, descrizione: spese.descrizione, importo: spese.importo,
-      categoria: categorieSpesa.nome, immobile: immobili.nome, note: spese.note,
+      categoria: categorieSpesa.nome, categoriaId: spese.categoria_id, immobile: immobili.nome, alloggio: alloggi.nome, metodo: spese.metodo_pagamento,
+      note: spese.note, haRicevuta: sql<boolean>`${spese.scontrino_documento_id} is not null`, ricorrente: sql<boolean>`${spese.ricorrente_id} is not null`,
     })
     .from(spese)
     .innerJoin(categorieSpesa, eq(categorieSpesa.id, spese.categoria_id))
     .leftJoin(immobili, eq(immobili.id, spese.immobile_id))
+    .leftJoin(alloggi, eq(alloggi.id, spese.alloggio_id))
     .orderBy(desc(spese.data));
 }
 

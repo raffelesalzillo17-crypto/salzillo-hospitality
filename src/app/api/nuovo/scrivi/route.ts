@@ -6,6 +6,7 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
+import { anteprimaEstratto, importaSpese, eliminaSpesa, creaSpesaRicorrente, impostaSpesaRicorrente, eliminaSpesaRicorrente, generaSpeseRicorrenti } from '@/lib/db/speseGestione';
 import { segnaInviataAMano, annullaInvioAMano, segnaSinfoniaInviato } from '@/lib/adempimenti';
 import { cercaProblemiOspiti, unisciOspiti, invertiNomeCognome, segnaOspiteDiProva } from '@/lib/db/ospitiGestione';
 
@@ -33,9 +34,11 @@ const SOLO_TITOLARE = new Set([
   'cerca-problemi-ospiti', 'unisci-ospiti', 'segna-ospite-prova',
   // Adempimenti (punto 6): segnare a mano "inviata" è del Titolare, che carica il file sul portale
   'segna-alloggiati-inviata', 'annulla-segna-alloggiati', 'segna-sinfonia',
+  // Spese (punto 12): import da estratto conto, eliminazione e ricorrenze sono del Titolare
+  'anteprima-estratto', 'importa-spese', 'elimina-spesa', 'crea-spesa-ricorrente', 'imposta-spesa-ricorrente', 'elimina-spesa-ricorrente', 'genera-spese-ricorrenti',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
-const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti']);
+const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -89,6 +92,13 @@ export async function POST(req: NextRequest) {
       // Conservazione documenti (Garante privacy / DM 7/1/2013): l'elenco è solo lettura; la cancellazione è una prenotazione alla volta.
       case 'proposte-conservazione': r = await proposteConservazione(); break;
       case 'cerca-problemi-ospiti': r = await cercaProblemiOspiti(); break;
+      case 'anteprima-estratto': r = await anteprimaEstratto(Array.isArray(dati.righe) ? (dati.righe as Parameters<typeof anteprimaEstratto>[0]) : []); break;
+      case 'importa-spese': r = await importaSpese(Array.isArray(dati.righe) ? (dati.righe as Parameters<typeof importaSpese>[0]) : []); break;
+      case 'elimina-spesa': r = await eliminaSpesa(id!, sess.id); break;
+      case 'crea-spesa-ricorrente': r = await creaSpesaRicorrente(dati as Parameters<typeof creaSpesaRicorrente>[0]); break;
+      case 'imposta-spesa-ricorrente': r = await impostaSpesaRicorrente(id!, { attiva: dati.attiva as boolean | undefined, importo: dati.importo !== undefined ? Number(dati.importo) : undefined }); break;
+      case 'elimina-spesa-ricorrente': r = await eliminaSpesaRicorrente(id!); break;
+      case 'genera-spese-ricorrenti': r = await generaSpeseRicorrenti(new Date().toISOString().slice(0, 10)); break;
       case 'segna-alloggiati-inviata': r = await segnaInviataAMano(id!); break;
       case 'annulla-segna-alloggiati': r = await annullaInvioAMano(id!); break;
       case 'segna-sinfonia': r = await segnaSinfoniaInviato(String(dati.immobileId), Number(dati.anno), Number(dati.mese), dati.inviato === true); break;
