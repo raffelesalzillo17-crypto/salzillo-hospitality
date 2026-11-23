@@ -53,7 +53,10 @@ export type Anagrafica = {
   immobili: { id: string; nome: string; indirizzo: string; comune: string; provincia: string; cin: string | null; alloggi: AlloggioDb[] }[];
 }[];
 
-export type Scadenza = { id: string; titolo: string; ente: string | null; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null };
+export type Scadenza = {
+  id: string; titolo: string; ente: string | null; dataScadenza: string; ricorrenza: string; note: string | null; ultimoCompletamento: string | null; immobile: string | null;
+  stato?: string; chiusaIl?: string | null; motivoChiusura?: string | null; ultimaRicevuta?: boolean; volteFatta?: number;
+};
 
 export type Spesa = {
   id: string; data: string; descrizione: string; importo: string; categoria: string; categoriaId?: string; immobile: string | null; note: string | null;

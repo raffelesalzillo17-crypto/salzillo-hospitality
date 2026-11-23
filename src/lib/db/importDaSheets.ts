@@ -21,6 +21,7 @@ import {
 } from './schema';
 import { COMM_RATE, ALIQUOTA_CEDOLARE } from '../tariffe';
 import { getSheetsClient } from '../sheets';
+import { chiaveTitoloScadenza } from '../scadenzeRegole';
 
 const FILES = {
   prenotazioni: '1SFQhO_SPRvIe8L1lgILRNsE-kUHPEfVqUEo3-wwwRjs',
@@ -337,9 +338,13 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
   const scadRows = await leggi('gestione', 'SCADENZE');
   const RICO = ['Una tantum', 'Mensile', 'Semestrale', 'Annuale'];
   let nScad = 0;
+  // Punto 13 (23/11/2026): il gestionale scrive le sue scadenze anche sul foglio; riimportarle come "Foglio" le duplicava ogni notte.
+  // Una riga del foglio con lo stesso titolo di una scadenza creata nel gestionale non si importa.
+  const giaNelGestionale = new Set((await db.select({ titolo: scadenze.titolo }).from(scadenze).where(eq(scadenze.origine, 'Database'))).map((x) => chiaveTitoloScadenza(x.titolo)));
   for (let i = 1; i < scadRows.length; i++) {
     const [, titolo, dataScad, ricorrenza, note, ultimoCompl] = scadRows[i];
     if (!titolo) continue;
+    if (giaNelGestionale.has(chiaveTitoloScadenza(String(titolo)))) continue;
     await db.insert(scadenze).values({
       origine: 'Foglio',
       titolo: String(titolo), data_scadenza: itToIso(dataScad) ?? new Date().toISOString().slice(0, 10),

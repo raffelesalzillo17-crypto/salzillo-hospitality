@@ -10,7 +10,7 @@
  */
 import { and, desc, eq, gt, isNull, lt, getTableColumns } from 'drizzle-orm';
 import { getDb } from './index';
-import { registroAzioni, cestino, ospiti, preventivi, spese } from './schema';
+import { registroAzioni, cestino, ospiti, preventivi, spese, scadenze } from './schema';
 
 export const GIORNI_CESTINO = 30;
 
@@ -31,7 +31,7 @@ export async function leggiRegistro(limite = 200) {
   return getDb().select().from(registroAzioni).orderBy(desc(registroAzioni.quando)).limit(limite);
 }
 
-const TABELLE = { ospite: ospiti, preventivo: preventivi, spesa: spese } as const;
+const TABELLE = { ospite: ospiti, preventivo: preventivi, spesa: spese, scadenza: scadenze } as const;
 export type TipoCestino = keyof typeof TABELLE;
 
 /** Fotografa una riga prima di eliminarla. Se la fotografia non riesce l'eliminazione NON deve proseguire. */

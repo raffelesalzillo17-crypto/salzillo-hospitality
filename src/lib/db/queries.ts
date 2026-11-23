@@ -435,6 +435,9 @@ export async function leggiScadenzeDb() {
       id: scadenze.id, titolo: scadenze.titolo, ente: scadenze.ente, dataScadenza: scadenze.data_scadenza,
       ricorrenza: scadenze.ricorrenza, note: scadenze.note,
       ultimoCompletamento: scadenze.ultimo_completamento, immobile: immobili.nome,
+      stato: scadenze.stato, chiusaIl: scadenze.chiusa_il, motivoChiusura: scadenze.motivo_chiusura,
+      ultimaRicevuta: sql<boolean>`exists (select 1 from scadenze_storico h where h.scadenza_id = ${scadenze.id} and h.ricevuta_documento_id is not null and h.fatta_il = (select max(h2.fatta_il) from scadenze_storico h2 where h2.scadenza_id = ${scadenze.id}))`,
+      volteFatta: sql<number>`(select count(*)::int from scadenze_storico h where h.scadenza_id = ${scadenze.id})`,
     })
     .from(scadenze)
     .leftJoin(immobili, eq(immobili.id, scadenze.immobile_id))

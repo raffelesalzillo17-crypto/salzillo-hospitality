@@ -15,6 +15,7 @@ import { SezioneRegistro } from './componenti/registro';
 import { SezioneOspiti } from './componenti/ospiti';
 import { SezioneAdempimenti } from './componenti/adempimenti';
 import { SezioneSpese } from './componenti/spese';
+import { SezioneScadenze } from './componenti/scadenze';
 import { RiepilogoDashboard, CosaManca } from './componenti/dashboard';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
@@ -266,7 +267,7 @@ export default function Nuovo() {
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
-              <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
+              <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
               <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send). Dal 23/11/2026 l’invio si blocca se le schedine non sono tante quanti gli ospiti scritti nella prenotazione: correggi il numero di ospiti o aggiungi la schedina mancante (si può forzare solo da &quot;invia comunque&quot;, con un avviso, e resta nel Registro)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
@@ -491,53 +492,7 @@ export default function Nuovo() {
 
       {tab === 'spese' && <SezioneSpese dati={dati} sess={sess} oggi={oggi} onCambiato={carica} />}
 
-      {tab === 'scadenze' && (() => {
-        const oggiD = oggi;
-        const fra30 = new Date(Date.parse(oggi) + 30 * 864e5).toISOString().slice(0, 10);
-        const gruppi = new Map<string, Scadenza[]>();
-        for (const s of [...dati.scadenze].sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza))) {
-          const k = s.ente || (s.immobile ? s.immobile : 'Generali');
-          if (!gruppi.has(k)) gruppi.set(k, []);
-          gruppi.get(k)!.push(s);
-        }
-        const ordine = [...gruppi.keys()].sort();
-        return (
-          <div className="card">
-            <div className="cardhead">
-              <h2>Scadenze <small>({dati.scadenze.length})</small></h2>
-              {sess.puoModificare && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {dati.scadenze.length === 0 && <button className="add" onClick={async () => { if (confirm('Aggiungo le scadenze fiscali/amministrative tipiche di un B&B in Campania?')) { await api('seed-scadenze'); await carica(); } }}>✨ Scadenze tipiche</button>}
-                <button className="add" onClick={() => setModale({ titolo: 'Nuova scadenza', azione: 'crea-scadenza', campi: [
-                  { k: 'titolo', label: 'Titolo', req: true },
-                  { k: 'ente', label: 'Ente / regione', tipo: 'select', opzioni: ['', 'Questura (Alloggiati Web)', 'Regione Campania', 'Comune', 'Agenzia delle Entrate', 'Ministero del Turismo', 'SIAE', 'Altro'].map((v) => ({ v, t: v || '— nessuno —' })) },
-                  { k: 'dataScadenza', label: 'Data', tipo: 'date', req: true },
-                  { k: 'ricorrenza', label: 'Ricorrenza', tipo: 'select', opzioni: ['Una tantum', 'Mensile', 'Semestrale', 'Annuale'].map((r) => ({ v: r, t: r })) },
-                  { k: 'immobileId', label: 'Immobile (vuoto = generale)', tipo: 'select', opzioni: [{ v: '', t: '— generale —' }, ...dati.anagrafica.flatMap((p) => p.immobili.map((i) => ({ v: i.id, t: i.nome })))] },
-                  { k: 'note', label: 'Note' },
-                ] })}>＋ Scadenza</button>
-              </div>}
-            </div>
-            {dati.scadenze.length === 0 && <p className="empty">Nessuna scadenza. Usa &quot;Scadenze tipiche&quot; per partire.</p>}
-            {ordine.map((k) => (
-              <div key={k} className="docgroup">
-                <h3><span>🏛️ {k}</span><span className="empty">{gruppi.get(k)!.length}</span></h3>
-                {gruppi.get(k)!.map((s) => {
-                  const urg = s.dataScadenza <= oggiD ? 'scaduta' : s.dataScadenza <= fra30 ? 'vicina' : '';
-                  return (
-                    <div key={s.id} className="docrow">
-                      <span className={`pill ${urg === 'scaduta' ? 'pill-Scaduto' : urg === 'vicina' ? 'pill-Inviato' : 'pill-Bozza'}`}>{dataIt(s.dataScadenza)}</span>
-                      <b>{s.titolo}</b>
-                      <span className="empty">{s.ricorrenza !== 'Una tantum' ? s.ricorrenza.toLowerCase() : ''} {s.immobile ? `· ${s.immobile}` : ''}</span>
-                      {s.note && <span className="empty" style={{ flexBasis: '100%' }}>{s.note}</span>}
-                      {sess.puoModificare && <span className="azioni"><button className="mini" onClick={async () => { if (confirm('Segnare come fatta?')) { await api('completa-scadenza', { id: s.id }); await carica(); } }}>✓ fatto</button></span>}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+      {tab === 'scadenze' && <SezioneScadenze dati={dati} sess={sess} oggi={oggi} setModale={setModale} onCambiato={carica} />}
 
       {tab === 'pulizie' && (() => {
         const tutte = dati.pulizie ?? [];

@@ -319,6 +319,21 @@ export const scadenze = pgTable('scadenze', {
   ricorrenza: ricorrenza('ricorrenza').notNull().default('Una tantum'),
   note: text('note'),
   ultimo_completamento: date('ultimo_completamento'),
+  // Punto 13 (23/11/2026): stati e archiviazione. SQL: drizzle/manuali/0008_scadenze_stati.sql
+  stato: text('stato').notNull().default('Aperta'), // Aperta | Fatta | Non più applicabile
+  chiusa_il: date('chiusa_il'),
+  motivo_chiusura: text('motivo_chiusura'),
+});
+
+// Ogni volta che una scadenza viene fatta: data prevista, data in cui è stata fatta ed eventuale ricevuta.
+export const scadenzeStorico = pgTable('scadenze_storico', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  creato_il: timestamp('creato_il', { withTimezone: true }).defaultNow().notNull(),
+  scadenza_id: uuid('scadenza_id').notNull().references(() => scadenze.id, { onDelete: 'cascade' }),
+  scadenza_prevista: date('scadenza_prevista').notNull(),
+  fatta_il: date('fatta_il').notNull(),
+  ricevuta_documento_id: uuid('ricevuta_documento_id').references(() => documenti.id),
+  note: text('note'),
 });
 
 // Versamenti dell'imposta di soggiorno al comune (di solito trimestrali). Il dovuto si

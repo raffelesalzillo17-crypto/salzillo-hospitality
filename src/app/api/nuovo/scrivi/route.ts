@@ -6,6 +6,7 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
+import { cercaDuplicatiScadenze, chiudiNonApplicabile, completaScadenzaConStorico, riapriScadenza, unisciScadenze } from '@/lib/db/scadenzeGestione';
 import { anteprimaEstratto, importaSpese, eliminaSpesa, creaSpesaRicorrente, impostaSpesaRicorrente, eliminaSpesaRicorrente, generaSpeseRicorrenti } from '@/lib/db/speseGestione';
 import { segnaInviataAMano, annullaInvioAMano, segnaSinfoniaInviato } from '@/lib/adempimenti';
 import { cercaProblemiOspiti, unisciOspiti, invertiNomeCognome, segnaOspiteDiProva } from '@/lib/db/ospitiGestione';
@@ -35,10 +36,11 @@ const SOLO_TITOLARE = new Set([
   // Adempimenti (punto 6): segnare a mano "inviata" è del Titolare, che carica il file sul portale
   'segna-alloggiati-inviata', 'annulla-segna-alloggiati', 'segna-sinfonia',
   // Spese (punto 12): import da estratto conto, eliminazione e ricorrenze sono del Titolare
+  'cerca-duplicati-scadenze', 'unisci-scadenze',
   'anteprima-estratto', 'importa-spese', 'elimina-spesa', 'crea-spesa-ricorrente', 'imposta-spesa-ricorrente', 'elimina-spesa-ricorrente', 'genera-spese-ricorrenti',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
-const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto']);
+const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto', 'cerca-duplicati-scadenze']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -119,7 +121,11 @@ export async function POST(req: NextRequest) {
       case 'cancella-prezzo': r = await M.cancellaPrezzoPeriodo(id!); break;
       case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;
       case 'aggiorna-contratto-gestione': r = await M.aggiornaContrattoGestione(id!, dati); break;
-      case 'completa-scadenza': r = await M.completaScadenza(id!); break;
+      case 'completa-scadenza': r = await completaScadenzaConStorico(id!, dati.fattaIl as string | undefined); break;
+      case 'non-applicabile-scadenza': r = await chiudiNonApplicabile(id!, String(dati.motivo ?? '')); break;
+      case 'riapri-scadenza': r = await riapriScadenza(id!); break;
+      case 'cerca-duplicati-scadenze': r = await cercaDuplicatiScadenze(); break;
+      case 'unisci-scadenze': r = await unisciScadenze(id!, Array.isArray(dati.daRimuovere) ? (dati.daRimuovere as string[]) : []); break;
       // Pulizie (punto 9): l'addetto pulizie conferma, annulla (solo entro 3 minuti) e spunta la checklist; assegnare l'addetto e l'orario è di chi gestisce
       case 'conferma-pulizia': r = await M.confermaPulizia(id!, (dati.addettoId as string) || (sess.ruolo === 'Pulizie' ? sess.id : undefined), { checklistFatta: Array.isArray(dati.checklistFatta) ? (dati.checklistFatta as string[]) : undefined }); break;
       case 'annulla-pulizia': r = await M.annullaPulizia(id!, sess.ruolo === 'Pulizie' ? 180 : undefined); break;

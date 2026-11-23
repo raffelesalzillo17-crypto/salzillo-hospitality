@@ -83,7 +83,7 @@ export async function riepilogoDashboard(anno: number, mese: number, proprietari
 export type CosaMancaBlocchi = {
   pagamenti: { id: string; ospite: string; alloggio: string; checkin: string; residuo: number }[];
   pulizie: { id: string; data: string; alloggio: string; urgente: boolean }[];
-  scadenze: { id: string; titolo: string; data: string; immobile: string | null }[];
+  scadenze: { id: string; titolo: string; data: string; immobile: string | null; scaduta: boolean }[];
   sovrapposizioni: { alloggio: string; testo: string }[];
   daVerificare: { id: string; alloggio: string; checkin: string; checkout: string; motivo: string }[];
 };
@@ -121,7 +121,7 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
 
   const scadRighe = await db.select({ id: scadenze.id, titolo: scadenze.titolo, data: scadenze.data_scadenza, immobile: immobili.nome })
     .from(scadenze).leftJoin(immobili, eq(immobili.id, scadenze.immobile_id))
-    .where(and(gte(scadenze.data_scadenza, oggiISO), lte(scadenze.data_scadenza, tra30), immobiliAmmessi === 'tutti' ? undefined : sql`(${scadenze.immobile_id} IS NULL OR ${inArray(scadenze.immobile_id, immobiliAmmessi.length ? immobiliAmmessi : ['00000000-0000-0000-0000-000000000000'])})`))
+    .where(and(eq(scadenze.stato, 'Aperta'), lte(scadenze.data_scadenza, tra30), immobiliAmmessi === 'tutti' ? undefined : sql`(${scadenze.immobile_id} IS NULL OR ${inArray(scadenze.immobile_id, immobiliAmmessi.length ? immobiliAmmessi : ['00000000-0000-0000-0000-000000000000'])})`))
     .orderBy(scadenze.data_scadenza);
 
   // Sovrapposizioni: prenotazioni attive e blocchi dello stesso alloggio che si accavallano (da oggi in poi)
@@ -147,5 +147,5 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
     .from(prenotazioni).innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
     .where(and(eq(prenotazioni.da_verificare, true), inArray(prenotazioni.stato, ['Attiva', 'In attesa di conferma']), gte(prenotazioni.checkout, oggiISO), filtroImm(alloggi.immobile_id)))
     .orderBy(prenotazioni.checkin);
-  return { pagamenti: pagamentiRighe, pulizie: pulizieRighe, scadenze: scadRighe, sovrapposizioni: sov, daVerificare: dv.map((x) => ({ ...x, motivo: x.motivo ?? 'da verificare' })) };
+  return { pagamenti: pagamentiRighe, pulizie: pulizieRighe, scadenze: scadRighe.map((s) => ({ ...s, scaduta: s.data < oggiISO })), sovrapposizioni: sov, daVerificare: dv.map((x) => ({ ...x, motivo: x.motivo ?? 'da verificare' })) };
 }

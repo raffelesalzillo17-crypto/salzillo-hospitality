@@ -114,6 +114,12 @@ export async function salvaFileSpesa(anno: number, nomeFile: string, contenuto: 
   return salvaNellaCartella(cartellaId, nomeFile, contenuto, mimeType);
 }
 
+/** Ricevuta di una scadenza fiscale/amministrativa (punto 13, 23/11/2026): cartella "Ricevute scadenze <anno>". */
+export async function salvaFileScadenza(anno: number, nomeFile: string, contenuto: Buffer, mimeType: string): Promise<DocumentoSalvato> {
+  const cartellaId = await ensureCartella(`scadenze-${anno}`, `Ricevute scadenze ${anno}`);
+  return salvaNellaCartella(cartellaId, nomeFile, contenuto, mimeType);
+}
+
 type TipoDocumento = 'Documento identità' | 'Contratto ospite' | 'Ricevuta' | 'Preventivo' | 'Conferma prenotazione' | 'Contratto gestione' | 'Rendiconto' | 'Ricevuta Alloggiati' | 'Altro';
 
 /**
