@@ -7,6 +7,7 @@ export type Prenotazione = {
   daVerificare?: boolean; daVerificareMotivo?: string | null;
   checkinConfermatoIl: string | null; waCheckinNumero: string | null; waCheckinMessaggio: string | null;
   documentiIdentita: number;
+  regimePrenotazione?: string; regimeMotivo?: string | null;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
   schedine: { id: string; cognome: string; nome: string; tipoDocumento: string; numeroDocumento: string; rapporto: string; stato: string; creatoIl: string }[];
 };

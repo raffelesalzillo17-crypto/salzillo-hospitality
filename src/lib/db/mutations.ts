@@ -6,6 +6,7 @@
  */
 
 import { and, eq, isNull, isNotNull, lte, gte, or, sql } from 'drizzle-orm';
+import { regimeValido } from '../regimePrenotazione';
 import { getDb } from './index';
 import {
   proprietari, immobili, alloggi, ospiti, prenotazioni, pagamenti, spese, scadenze, categorieSpesa,
@@ -44,7 +45,7 @@ const nottiTra = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(
  *  di gestione attivo del suo proprietario. Le prenotazioni SALVANO questi valori: se il
  *  regime dell'alloggio cambia domani, le prenotazioni di oggi restano com'erano. */
 export async function calcolaImportiPrenotazione(opts: {
-  alloggioId: string; canale: string; lordo: number;
+  alloggioId: string; canale: string; lordo: number; regimePrenotazione?: string;
 }): Promise<{ commissione: number; cedolare: number; costoPulizia: number; feeGestione: number; utile: number; nettoProprietario: number }> {
   const db = getDb();
   const [a] = await db.select({
@@ -61,7 +62,7 @@ export async function calcolaImportiPrenotazione(opts: {
   const percFee = contratti.length ? Number(contratti[0].percentuale_fee) : 0;
 
   return calcolaImportiPuri({
-    canale: opts.canale, lordo: opts.lordo, regimeFiscale: a.regime, costoPulizia: Number(a.costoPulizia), percentualeFee: percFee,
+    canale: opts.canale, lordo: opts.lordo, regimePrenotazione: opts.regimePrenotazione, regimeFiscale: a.regime, costoPulizia: Number(a.costoPulizia), percentualeFee: percFee,
   });
 }
 
@@ -281,6 +282,7 @@ export async function creaPrenotazione(d: {
   alloggioId: string; ospiteId?: string; ospiteNome?: string; ospiteCognome?: string; ospiteTelefono?: string;
   checkin: string; checkout: string; numeroOspiti?: number; canale: string; lordo: number;
   codiceConfermaCanale?: string; note?: string; creataDa?: string; stato?: string;
+  regimePrenotazione?: string; regimeMotivo?: string;
 }) {
   const db = getDb();
   validaPeriodo(d.checkin, d.checkout);
@@ -294,7 +296,8 @@ export async function creaPrenotazione(d: {
   const nuovoOspite = !d.ospiteId;
   if (nuovoOspite && (!d.ospiteNome || !d.ospiteCognome)) throw new Error('Serve un ospite (id, oppure nome + cognome)');
   const ospiteId = d.ospiteId ?? randomUUID();
-  const imp = await calcolaImportiPrenotazione({ alloggioId: d.alloggioId, canale: d.canale, lordo: d.lordo });
+  const regimePren = d.canale === 'No Tax' ? 'No Tax' : regimeValido(d.regimePrenotazione);
+  const imp = await calcolaImportiPrenotazione({ alloggioId: d.alloggioId, canale: d.canale, lordo: d.lordo, regimePrenotazione: regimePren });
 
   // 2) Scrittura atomica nel database: ospite (se nuovo) + prenotazione + pulizia agganciata al
   //    check-out, in un'unica transazione. Prima erano tre scritture separate e un errore a metà
@@ -312,6 +315,7 @@ export async function creaPrenotazione(d: {
     costo_pulizia: s(imp.costoPulizia), fee_gestione: s(imp.feeGestione), utile: s(imp.utile),
     netto_proprietario: s(imp.nettoProprietario),
     stato, note: d.note || null, creata_da: d.creataDa || null,
+    regime_prenotazione: regimePren, regime_motivo: regimePren === 'Esente da tassa di soggiorno' ? (d.regimeMotivo || null) : null,
   }).returning();
   // Pulizia agganciata al check-out — creata in automatico, non deve essere aggiunta a mano.
   const insPul = db.insert(pulizie).values({ alloggio_id: d.alloggioId, prenotazione_id: prenotazioneId, data: d.checkout });
@@ -380,12 +384,14 @@ export async function aggiornaPrenotazione(id: string, d: Record<string, unknown
   })) if (v !== undefined) set[k] = v;
 
   // se cambiano lordo/canale/alloggio → ricalcola gli importi
-  if (d.lordo !== undefined || d.canale !== undefined || d.alloggioId !== undefined) {
+  if (d.lordo !== undefined || d.canale !== undefined || d.alloggioId !== undefined || d.regimePrenotazione !== undefined) {
     const lordo = d.lordo !== undefined ? Number(d.lordo) : Number(attuale.lordo);
     const canale = (d.canale as string) ?? attuale.canale;
     const alloggioId = (d.alloggioId as string) ?? attuale.alloggio_id;
-    const imp = await calcolaImportiPrenotazione({ alloggioId, canale, lordo });
+    const regimePren = d.regimePrenotazione !== undefined ? (canale === 'No Tax' ? 'No Tax' : regimeValido(d.regimePrenotazione)) : (canale === 'No Tax' ? 'No Tax' : attuale.regime_prenotazione);
+    const imp = await calcolaImportiPrenotazione({ alloggioId, canale, lordo, regimePrenotazione: regimePren });
     Object.assign(set, {
+      regime_prenotazione: regimePren, regime_motivo: regimePren === 'Esente da tassa di soggiorno' ? ((d.regimeMotivo as string) || attuale.regime_motivo || null) : null,
       lordo: s(lordo), canale, alloggio_id: alloggioId, commissione: s(imp.commissione), cedolare: s(imp.cedolare),
       costo_pulizia: s(imp.costoPulizia), fee_gestione: s(imp.feeGestione), utile: s(imp.utile), netto_proprietario: s(imp.nettoProprietario),
     });

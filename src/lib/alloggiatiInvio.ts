@@ -15,6 +15,7 @@
 // mai in batch) — vedi la route src/app/api/nuovo/alloggiati/invia/route.ts.
 
 import { eq, and, sql } from 'drizzle-orm';
+import { esclusaDaAdempimenti } from './regimePrenotazione';
 import { getDb } from './db/index';
 import { schedine, prenotazioni, alloggi, documenti } from './db/schema';
 import {
@@ -57,7 +58,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
       prenotazioneId: prenotazioni.id,
       checkin: prenotazioni.checkin,
       checkout: prenotazioni.checkout,
-      canale: prenotazioni.canale,
+      canale: prenotazioni.canale, regime: prenotazioni.regime_prenotazione,
       alloggioNome: alloggi.nome,
       ospitiAttesi: prenotazioni.numero_ospiti,
     })
@@ -67,7 +68,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
     .where(and(
       eq(schedine.stato, 'Da inviare'),
       eq(alloggi.trasmette_alloggiati, true),
-      sql`${prenotazioni.canale} <> 'No Tax'`,
+      sql`${prenotazioni.canale} <> 'No Tax' AND ${prenotazioni.regime_prenotazione} <> 'No Tax'`,
       eq(prenotazioni.stato, 'Attiva'),
     ))
     .orderBy(prenotazioni.checkin);
@@ -104,7 +105,7 @@ export async function schedineInScadenza(entroOre: number): Promise<SchedinaInSc
     .where(and(
       eq(schedine.stato, 'Da inviare'),
       eq(alloggi.trasmette_alloggiati, true),
-      sql`${prenotazioni.canale} <> 'No Tax'`,
+      sql`${prenotazioni.canale} <> 'No Tax' AND ${prenotazioni.regime_prenotazione} <> 'No Tax'`,
       eq(prenotazioni.stato, 'Attiva'),
       sql`${schedine.scade_il} IS NOT NULL AND ${schedine.scade_il} <= ${soglia}`,
     ))
@@ -159,7 +160,7 @@ export async function inviaSchedinaReale(schedinaId: string): Promise<EsitoInvio
       tipoAlloggiatoCodice: schedine.tipo_alloggiato_codice,
       checkin: prenotazioni.checkin,
       checkout: prenotazioni.checkout,
-      canale: prenotazioni.canale,
+      canale: prenotazioni.canale, regime: prenotazioni.regime_prenotazione,
       prenotazioneStato: prenotazioni.stato,
       trasmetteAlloggiati: alloggi.trasmette_alloggiati,
       alloggioNome: alloggi.nome,
@@ -174,7 +175,7 @@ export async function inviaSchedinaReale(schedinaId: string): Promise<EsitoInvio
     return { ok: false, stato: riga.stato === 'Inviata' ? 'Inviata' : 'Errore', messaggio: `Questa schedina è già in stato "${riga.stato}", non reinviata.` };
   }
   // Ricontrollo del filtro lato server — non fidarsi del solo filtro applicato in UI.
-  if (!riga.trasmetteAlloggiati || riga.canale === 'No Tax' || riga.prenotazioneStato !== 'Attiva') {
+  if (!riga.trasmetteAlloggiati || esclusaDaAdempimenti(riga.canale, riga.regime) || riga.prenotazioneStato !== 'Attiva') {
     return segnaErrore(`Questa prenotazione (${riga.alloggioNome}, canale ${riga.canale}) non rientra nella regola di invio ad Alloggiati Web.`);
   }
   if (!riga.tipoAlloggiatoCodice || !['16', '17', '18', '19', '20'].includes(riga.tipoAlloggiatoCodice)) {
@@ -362,7 +363,7 @@ export async function inviaPrenotazioneReale(prenotazioneId: string, opzioni: { 
       cittadinanzaCodice: schedine.cittadinanza_codice, tipoDocumentoCodice: schedine.tipo_documento_codice,
       numeroDocumento: schedine.numero_documento, luogoRilascioDocumento: schedine.luogo_rilascio_documento,
       tipo: schedine.tipo_alloggiato_codice,
-      checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
+      checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale, regime: prenotazioni.regime_prenotazione,
       prenotazioneStato: prenotazioni.stato, trasmetteAlloggiati: alloggi.trasmette_alloggiati, alloggioNome: alloggi.nome,
       ospitiAttesi: prenotazioni.numero_ospiti,
     })
@@ -374,7 +375,7 @@ export async function inviaPrenotazioneReale(prenotazioneId: string, opzioni: { 
   if (tutte.length === 0) return no('Nessuna schedina su questa prenotazione.');
   const p = tutte[0];
   // Ricontrollo del filtro lato server — non fidarsi del solo filtro applicato in UI.
-  if (!p.trasmetteAlloggiati || p.canale === 'No Tax' || p.prenotazioneStato !== 'Attiva') {
+  if (!p.trasmetteAlloggiati || esclusaDaAdempimenti(p.canale, p.regime) || p.prenotazioneStato !== 'Attiva') {
     return no(`Questa prenotazione (${p.alloggioNome}, canale ${p.canale}) non rientra nella regola di invio ad Alloggiati Web.`);
   }
   // Se una parte del gruppo è già partita (o è rimasta in uno stato incerto) non si può più

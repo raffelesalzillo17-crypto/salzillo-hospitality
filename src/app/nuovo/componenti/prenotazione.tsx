@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CANALI, canaleConIncasso } from '@/lib/canali';
+import { CANALI_SCELTA, canaleConIncasso } from '@/lib/canali';
+import { REGIMI_PRENOTAZIONE } from '@/lib/regimePrenotazione';
 import type { Alloggio, DatiSch, Ospite, Prenotazione, TabelleAll } from '../tipi';
 import { SCH_VUOTA, api, dataIt, eur, neg, normAll, ridimensiona } from '../utilita';
 
@@ -234,7 +235,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
     } catch (e) { setErrTipo(String(e instanceof Error ? e.message : e)); }
   }
   const [modifica, setModifica] = useState(false);
-  const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '' });
+  const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '', regime: p.regimePrenotazione ?? 'Ordinario', regimeMotivo: p.regimeMotivo ?? '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const residuo = Math.max(0, Math.round((p.lordo - p.pagamenti.reduce((s, pg) => s + pg.importo, 0)) * 100) / 100);
@@ -254,7 +255,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
   async function salva() {
     setBusy(true); setErr('');
     try {
-      await api('aggiorna-prenotazione', { id: p.id, dati: { checkin: f.checkin, checkout: f.checkout, canale: f.canale, lordo: Number(f.lordo), numeroOspiti: Number(f.numeroOspiti) || 1, stato: f.stato, note: f.note, alloggioId: f.alloggioId } });
+      await api('aggiorna-prenotazione', { id: p.id, dati: { checkin: f.checkin, checkout: f.checkout, canale: f.canale, lordo: Number(f.lordo), numeroOspiti: Number(f.numeroOspiti) || 1, stato: f.stato, note: f.note, alloggioId: f.alloggioId, regimePrenotazione: f.regime, regimeMotivo: f.regimeMotivo } });
       onSalvato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
@@ -388,7 +389,9 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
             <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
             <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
             <label>Ospiti<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
-            <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{CANALI.map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{(f.canale === 'No Tax' ? [...CANALI_SCELTA, 'No Tax'] : CANALI_SCELTA).map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label>Regime fiscale<select value={f.regime} onChange={(e) => setF({ ...f, regime: e.target.value })}>{REGIMI_PRENOTAZIONE.map((r) => <option key={r}>{r}</option>)}</select></label>
+            {f.regime === 'Esente da tassa di soggiorno' && <label>Motivo dell'esenzione<input value={f.regimeMotivo} onChange={(e) => setF({ ...f, regimeMotivo: e.target.value })} /></label>}
             <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
             <label>Stato<select value={f.stato} onChange={(e) => setF({ ...f, stato: e.target.value })}>{['Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show'].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
@@ -410,7 +413,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
 }) {
   const [f, setF] = useState({
     alloggioId: alloggi[0]?.id ?? '', ospiteId: '', ospiteNome: '', ospiteCognome: '', ospiteTelefono: '',
-    checkin: '', checkout: '', numeroOspiti: '1', canale: 'Diretto', lordo: '', codiceConfermaCanale: '', note: '',
+    checkin: '', checkout: '', numeroOspiti: '1', canale: 'Diretto', lordo: '', codiceConfermaCanale: '', note: '', regime: 'Ordinario', regimeMotivo: '',
   });
   const [anteprima, setAnteprima] = useState<{ utile: number; nettoProprietario: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -432,6 +435,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           ...(nuovoOspite ? { ospiteNome: f.ospiteNome, ospiteCognome: f.ospiteCognome, ospiteTelefono: f.ospiteTelefono } : { ospiteId: f.ospiteId }),
           checkin: f.checkin, checkout: f.checkout, numeroOspiti: Number(f.numeroOspiti),
           canale: f.canale, lordo: Number(f.lordo), codiceConfermaCanale: f.codiceConfermaCanale, note: f.note,
+          regimePrenotazione: f.regime, regimeMotivo: f.regimeMotivo,
         },
       });
       onSalvato();
@@ -459,7 +463,9 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
           <label>Persone<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
-          <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{CANALI.map((c) => <option key={c}>{c}</option>)}</select></label>
+          <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{(CANALI_SCELTA).map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label>Regime fiscale<select value={f.regime} onChange={(e) => setF({ ...f, regime: e.target.value })}>{REGIMI_PRENOTAZIONE.map((r) => <option key={r}>{r}</option>)}</select></label>
+            {f.regime === 'Esente da tassa di soggiorno' && <label>Motivo dell'esenzione<input value={f.regimeMotivo} onChange={(e) => setF({ ...f, regimeMotivo: e.target.value })} /></label>}
           <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
           <label>Codice conferma (Airbnb/Booking)<input value={f.codiceConfermaCanale} onChange={(e) => setF({ ...f, codiceConfermaCanale: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>

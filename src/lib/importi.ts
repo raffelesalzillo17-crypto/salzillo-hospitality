@@ -14,13 +14,15 @@ const arrotonda = (n: number) => Math.round(n * 100) / 100;
 
 export function calcolaImportiPuri(opts: {
   canale: string; lordo: number;
+  /** Regime della prenotazione (punto 3): 'No Tax' = nessuna cedolare, come per il canale No Tax. */
+  regimePrenotazione?: string;
   regimeFiscale: string;        // 'Con cedolare' | 'No tax'
   costoPulizia: number;
   percentualeFee: number;       // % di gestione sul lordo (contratto del proprietario), 0 se assente
 }): ImportiPrenotazione {
   const { lordo, canale } = opts;
   const commissione = arrotonda(lordo * (COMM_RATE[canale] ?? 0));
-  const cedolare = opts.regimeFiscale === 'Con cedolare' && canale !== 'No Tax' ? arrotonda(lordo * ALIQUOTA_CEDOLARE) : 0;
+  const cedolare = opts.regimeFiscale === 'Con cedolare' && canale !== 'No Tax' && opts.regimePrenotazione !== 'No Tax' ? arrotonda(lordo * ALIQUOTA_CEDOLARE) : 0;
   const costoPulizia = opts.costoPulizia;
   const feeGestione = arrotonda(lordo * (opts.percentualeFee / 100));
   const utile = arrotonda(lordo - commissione - cedolare - costoPulizia);

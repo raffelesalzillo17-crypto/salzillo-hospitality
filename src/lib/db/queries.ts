@@ -79,6 +79,8 @@ export type PrenotazioneVista = {
   }[];
   /** Quanti documenti d'identità (foto/PDF) sono stati caricati per questa prenotazione. */
   documentiIdentita: number;
+  /** Punto 3: regime fiscale separato dal canale. */
+  regimePrenotazione: string; regimeMotivo: string | null;
 };
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
@@ -114,6 +116,7 @@ function mappaPrenotazione(
     calendarEventId: String(r.calendar_event_id ?? ''),
     checkinConfermatoIl: r.checkin_confermato_il ? new Date(r.checkin_confermato_il as string | Date).toISOString() : null,
     daVerificare: !!r.da_verificare, daVerificareMotivo: (r.da_verificare_motivo as string | null) ?? null,
+    regimePrenotazione: String(r.regime_prenotazione ?? 'Ordinario'), regimeMotivo: (r.regime_motivo as string | null) ?? null,
     note: String(r.note ?? ''),
     pagamenti: pagamentiRiga,
     schedine: schedineRiga,
@@ -144,6 +147,7 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
       calendar_event_id: prenotazioni.calendar_event_id,
       checkin_confermato_il: prenotazioni.checkin_confermato_il,
       da_verificare: prenotazioni.da_verificare, da_verificare_motivo: prenotazioni.da_verificare_motivo,
+      regime_prenotazione: prenotazioni.regime_prenotazione, regime_motivo: prenotazioni.regime_motivo,
       note: prenotazioni.note,
       ospite_id: prenotazioni.ospite_id,
       ospite_nome: ospiti.nome,
@@ -660,7 +664,7 @@ export async function cosaMancaDb(oggiISO: string) {
     .where(and(
       eq(schedine.stato, 'Da inviare'),
       eq(alloggi.trasmette_alloggiati, true),
-      sql`${prenotazioni.canale} <> 'No Tax'`,
+      sql`${prenotazioni.canale} <> 'No Tax' AND ${prenotazioni.regime_prenotazione} <> 'No Tax'`,
       eq(prenotazioni.stato, 'Attiva'),
     ));
 

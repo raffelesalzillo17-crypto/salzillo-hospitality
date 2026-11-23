@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { anteprimaNoTax, applicaNoTax } from '@/lib/db/migrazioneNoTax';
 import { richiediSessione } from '@/lib/db/auth';
 import * as M from '@/lib/db/mutations';
 import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
@@ -37,13 +38,15 @@ const SOLO_TITOLARE = new Set([
   'segna-alloggiati-inviata', 'annulla-segna-alloggiati', 'segna-sinfonia',
   // Spese (punto 12): import da estratto conto, eliminazione e ricorrenze sono del Titolare
   'cerca-duplicati-scadenze', 'unisci-scadenze',
+  // Regime fiscale (punto 3): l'anteprima e lo spostamento dei No Tax sono solo del Titolare
+  'anteprima-no-tax', 'applica-no-tax',
   'anteprima-estratto', 'importa-spese', 'elimina-spesa', 'crea-spesa-ricorrente', 'imposta-spesa-ricorrente', 'elimina-spesa-ricorrente', 'genera-spese-ricorrenti',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
-const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto', 'cerca-duplicati-scadenze']);
+const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti', 'anteprima-estratto', 'cerca-duplicati-scadenze', 'anteprima-no-tax']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
-const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo', 'aggiungi-pagamento']);
+const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo', 'aggiungi-pagamento', 'applica-no-tax']);
 
 export async function POST(req: NextRequest) {
   const check = await richiediSessione(req);
@@ -154,6 +157,8 @@ export async function POST(req: NextRequest) {
       case 'crea-regola': r = await creaRegola(dati as Parameters<typeof creaRegola>[0]); break;
       case 'aggiorna-regola': r = await aggiornaRegola(id!, dati); break;
       case 'elimina-regola': r = await eliminaRegola(id!); break;
+      case 'anteprima-no-tax': r = await anteprimaNoTax(); break;
+      case 'applica-no-tax': r = await applicaNoTax(Array.isArray(dati.scelte) ? (dati.scelte as { id: string; canale: string }[]) : []); break;
       case 'installa-modelli-regole': r = await installaModelliPredefiniti(); break;
       default:
         return NextResponse.json({ ok: false, error: `Azione sconosciuta: ${azione}` }, { status: 400 });

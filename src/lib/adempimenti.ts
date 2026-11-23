@@ -18,6 +18,7 @@
  * del giorno di check-in (cioè entro la fine del giorno di arrivo).
  */
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { esclusaDaAdempimenti } from './regimePrenotazione';
 import { getDb } from './db';
 import { alloggi, immobili, inviiRegione, ospiti, prenotazioni, schedine } from './db/schema';
 import { formatSchedinaRecord, ordinaGruppoAlloggiati, validateSchedina, type DatiSchedina, type TipoAlloggiatoCodice } from './alloggiatiRecordFormat';
@@ -79,14 +80,14 @@ function costruisciDati(s: RigaSch, checkin: string, checkout: string): { dati?:
   return altri.length ? { errori: altri } : { dati, errori: [] };
 }
 
-type DatiPren = { id: string; alloggio: string; checkin: string; checkout: string; canale: string; stato: string; ospitiAttesi: number; ospite: string };
+type DatiPren = { id: string; alloggio: string; checkin: string; checkout: string; canale: string; regime: string; stato: string; ospitiAttesi: number; ospite: string };
 
 function valutaPrenotazione(p: DatiPren, sch: RigaSch[], ora: number): { arrivo: ArrivoAdempimento; righe: string[] } {
   const motivi: string[] = [];
   let stato: StatoAlloggiati;
   let righe: string[] = [];
-  if (p.canale === 'No Tax') {
-    stato = 'Non soggetta'; motivi.push('Canale "No Tax": come da regola attuale non viene inviata ad Alloggiati Web.');
+  if (esclusaDaAdempimenti(p.canale, p.regime)) {
+    stato = 'Non soggetta'; motivi.push('Regime "No Tax": come da regola attuale non viene inviata ad Alloggiati Web.');
   } else if (sch.length === 0) {
     stato = 'Da preparare'; motivi.push(`Nessuna schedina: mancano i dati ${p.ospitiAttesi === 1 ? "dell'ospite" : `dei ${p.ospitiAttesi} ospiti`}.`);
   } else if (sch.some((s) => s.stato === 'Errore')) {
@@ -128,7 +129,7 @@ function valutaPrenotazione(p: DatiPren, sch: RigaSch[], ora: number): { arrivo:
 async function carica(filtro: ReturnType<typeof and> | undefined) {
   const db = getDb();
   const pren = await db.select({
-    id: prenotazioni.id, alloggio: alloggi.nome, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
+    id: prenotazioni.id, alloggio: alloggi.nome, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale, regime: prenotazioni.regime_prenotazione,
     stato: prenotazioni.stato, ospitiAttesi: prenotazioni.numero_ospiti, cog: ospiti.cognome, nom: ospiti.nome,
   }).from(prenotazioni)
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
@@ -147,7 +148,7 @@ async function carica(filtro: ReturnType<typeof and> | undefined) {
   for (const r of righe) { const l = perPren.get(r.prenotazioneId) ?? []; l.push(r); perPren.set(r.prenotazioneId, l); }
   return {
     perPren,
-    pren: pren.map((p): DatiPren => ({ id: p.id, alloggio: p.alloggio, checkin: p.checkin, checkout: p.checkout, canale: p.canale, stato: p.stato, ospitiAttesi: p.ospitiAttesi || 1, ospite: `${p.cog} ${p.nom}`.trim() })),
+    pren: pren.map((p): DatiPren => ({ id: p.id, alloggio: p.alloggio, checkin: p.checkin, checkout: p.checkout, canale: p.canale, regime: p.regime, stato: p.stato, ospitiAttesi: p.ospitiAttesi || 1, ospite: `${p.cog} ${p.nom}`.trim() })),
   };
 }
 

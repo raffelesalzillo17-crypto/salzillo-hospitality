@@ -6,3 +6,6 @@ export const CANALI = ['Airbnb', 'Booking', 'Diretto', 'WhatsApp', 'Telefono', '
 export const CANALI_DIRETTI: readonly string[] = ['Diretto', 'WhatsApp', 'Telefono', 'Altro'];
 /** Canali in cui il pagamento lo gestisce Raffaele (anche No Tax, come prima). */
 export const canaleConIncasso = (c: string) => CANALI_DIRETTI.includes(c) || c === 'No Tax';
+
+/** Canali scelgibili nei moduli: "No Tax" non è un canale ma un regime fiscale (punto 3); compare solo sulle prenotazioni che lo hanno ancora. */
+export const CANALI_SCELTA = ['Airbnb', 'Booking', 'Diretto', 'WhatsApp', 'Telefono', 'Altro'] as const;

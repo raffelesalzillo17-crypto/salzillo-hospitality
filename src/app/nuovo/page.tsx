@@ -9,7 +9,8 @@ import { DettaglioPrenotazione, FormPrenotazione } from './componenti/prenotazio
 import { FormPreventivo } from './componenti/preventivo';
 import { RigaPulizia } from './componenti/pulizie';
 import { PromemoriaBox } from './componenti/promemoria';
-import { CANALI } from '@/lib/canali';
+import { CANALI_SCELTA } from '@/lib/canali';
+import { MigrazioneNoTax } from './componenti/migrazioneNoTax';
 import { Rendiconti } from './componenti/rendiconti';
 import { ResocontoAnnuale } from './componenti/resoconto';
 import { FormModale, TemaToggle } from './componenti/ui';
@@ -338,7 +339,7 @@ export default function Nuovo() {
               <li><b>Documenti ospiti</b> (Titolare e operatore) — una cartella per ospite con i file su Drive (contratti, ricevute…). I documenti d’identità li vede solo il Titolare</li>
               <li><b>Promemoria</b> — regole che preparano messaggi (WhatsApp o email) per gli ospiti. Una regola può avere una <b>condizione</b>: solo se mancano i documenti, solo se la caparra o il saldo non sono incassati (non vale per Airbnb/Booking). "Per prenotazione" mostra, per ogni arrivo, cosa è <b>Pronto</b>, <b>Inviato</b>, <b>Bloccato</b> (con il motivo, per esempio manca il telefono) o <b>Non necessario</b>. Nessun messaggio parte da solo: lo invii tu e tocchi "Inviato". "Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu</li>
               <li><b>Export e resoconto annuale</b> — in Prenotazioni i tasti "Excel" e "CSV" scaricano l'elenco con i filtri attivi, totale compreso (senza accesso ai dati finanziari non escono gli importi). In Rendiconti, sotto il rendiconto, c'è il <b>Resoconto annuale</b>: per ogni mese prenotazioni, incasso lordo, tassa di soggiorno, notti e occupazione; incassi per canale; tassa per alloggio e mese; confronto con l'anno prima. Usa le stesse regole della Dashboard (prenotazioni attive per mese di check-in), quindi i numeri coincidono. Excel a 4 fogli o CSV</li>
-              <li><b>Canali</b> — oltre ad Airbnb, Booking, Diretto e No Tax ci sono <b>WhatsApp</b>, <b>Telefono</b> e <b>Altro</b>: si comportano come Diretto (nessuna commissione, caparra e saldo da incassare, contratto e ricevuta). Compaiono nel modulo prenotazione, nei filtri, nelle regole dei promemoria e nei resoconti. "No Tax" resta com'è</li>
+              <li><b>Canali</b> — oltre ad Airbnb, Booking, Diretto e No Tax ci sono <b>WhatsApp</b>, <b>Telefono</b> e <b>Altro</b>: si comportano come Diretto (nessuna commissione, caparra e saldo da incassare, contratto e ricevuta). Compaiono nel modulo prenotazione, nei filtri, nelle regole dei promemoria e nei resoconti. Il <b>Regime fiscale</b> è ora un campo a parte (Ordinario, Esente da tassa di soggiorno con motivo, No Tax). "No Tax" non è un canale: in Prenotazioni, il Titolare trova "Canale No Tax" con l'anteprima per scegliere il canale vero di ogni prenotazione; nulla si sposta senza la sua conferma e il regime No Tax resta (esclusa da Alloggiati, ricevute e cedolare)</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
               <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
@@ -381,6 +382,8 @@ export default function Nuovo() {
 
       {tab === 'calendario' && <SezioneCalendario dati={dati} attive={attive} oggi={oggi} onSel={setPrenSel} puoModificare={sess.puoModificare} titolare={sess.ruolo === 'Titolare'} onCambiato={carica} />}
 
+      {tab === 'prenotazioni' && sess.ruolo === 'Titolare' && dati.prenotazioni.some((p) => p.canale === 'No Tax') && <MigrazioneNoTax presenti={dati.prenotazioni.filter((p) => p.canale === 'No Tax').length} onCambiato={carica} />}
+
       {tab === 'prenotazioni' && (() => {
         const q = fPren.q.trim().toLowerCase();
         const lista = dati.prenotazioni.filter((p) => {
@@ -420,7 +423,7 @@ export default function Nuovo() {
               </select>
               <select value={fPren.canale} onChange={(e) => setFPren({ ...fPren, canale: e.target.value })}>
                 <option value="">Ogni canale</option>
-                {CANALI.map((c) => <option key={c} value={c}>{c}</option>)}
+                {[...CANALI_SCELTA, ...(dati.prenotazioni.some((p) => p.canale === 'No Tax') ? ['No Tax'] : [])].map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>

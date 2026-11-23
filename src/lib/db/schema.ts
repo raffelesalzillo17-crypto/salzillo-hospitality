@@ -182,6 +182,9 @@ export const prenotazioni = pgTable('prenotazioni', {
   // Punto 2 (23/11/2026): sparita dal calendario dell'OTA → si segna da verificare, mai cancellata da sola.
   da_verificare: boolean('da_verificare').notNull().default(false),
   da_verificare_motivo: text('da_verificare_motivo'),
+  // Punto 3 (23/11/2026): regime fiscale della prenotazione, separato dal canale (migrazione 0012). 'Ordinario' | 'Esente da tassa di soggiorno' | 'No Tax'
+  regime_prenotazione: text('regime_prenotazione').notNull().default('Ordinario'),
+  regime_motivo: text('regime_motivo'),
 });
 
 export const pagamenti = pgTable('pagamenti', {
