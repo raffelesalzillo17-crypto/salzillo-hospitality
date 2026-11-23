@@ -10,6 +10,7 @@
 
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
+import { mascheraDocumento } from '../mascheratura';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
   scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
@@ -175,7 +176,7 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
     const lista = schedinePerPren.get(s.prenotazione_id) ?? [];
     lista.push({
       id: s.id, cognome: s.cognome, nome: s.nome, tipoDocumento: s.tipoDocumento ?? '',
-      numeroDocumento: s.numeroDocumento ?? '', rapporto: s.rapporto ?? '', stato: s.stato,
+      numeroDocumento: mascheraDocumento(s.numeroDocumento), rapporto: s.rapporto ?? '', stato: s.stato,
       creatoIl: new Date(s.creatoIl).toISOString(),
     });
     schedinePerPren.set(s.prenotazione_id, lista);
@@ -234,7 +235,7 @@ export async function leggiAnagraficaDb() {
     ...p,
     immobili: imms.filter((i) => i.proprietario_id === p.id).map((i) => ({
       ...i,
-      alloggi: allo.filter((a) => a.immobile_id === i.id),
+      alloggi: allo.filter((a) => a.immobile_id === i.id).map((a) => ({ ...a, wifi_password: null, wifi_password_impostata: !!a.wifi_password })),
     })),
   }));
 }
@@ -366,7 +367,8 @@ export async function leggiAlloggiDb() {
     .select({
       id: alloggi.id, nome: alloggi.nome, attivo: alloggi.attivo, regimeFiscale: alloggi.regime_fiscale,
       costoPulizia: alloggi.costo_pulizia, haSelfCheckin: alloggi.ha_self_checkin,
-      emoji: alloggi.emoji, wifiSsid: alloggi.wifi_ssid, wifiPassword: alloggi.wifi_password,
+      // La password WiFi non esce mai da qui (punto 5, 23/11/2026): solo se è impostata. Il valore si legge da /api/nuovo/rivela.
+      emoji: alloggi.emoji, wifiSsid: alloggi.wifi_ssid, wifiPasswordImpostata: sql<boolean>`${alloggi.wifi_password} is not null and ${alloggi.wifi_password} <> ''`,
       checkinGuideUrl: alloggi.checkin_guide_url, trasmetteAlloggiati: alloggi.trasmette_alloggiati,
       impostaSoggiornoComune: alloggi.imposta_soggiorno_comune,
       immobile: immobili.nome, indirizzo: immobili.indirizzo,

@@ -11,6 +11,7 @@ import { strutturaPerAlloggio } from '@/lib/strutture';
 import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati, schedineDaVerificare, inviiFattiAlloggiati } from '@/lib/alloggiatiInvio';
 import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
+import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/registro';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -66,6 +67,10 @@ export async function GET(req: NextRequest) {
           } catch (e) { console.error('[nuovo/dati] promemoria non disponibili:', e instanceof Error ? e.message : e); return undefined; }
         })()
       : undefined;
+    // L'addetto pulizie riceve SOLO i dati delle pulizie (punto 5, 23/11/2026): niente ospiti, prenotazioni, documenti, spese.
+    const soloPulizie = sess.ruolo === 'Pulizie';
+    const titolare = sess.ruolo === 'Titolare';
+    if (titolare) await svuotaCestinoScaduto();
     const operatoriPulizie = tuttiUtenti.filter((u) => u.ruolo === 'Pulizie' && u.attivo).map((u) => ({ id: u.id, nome: u.nome }));
 
     // Filtro di visibilità
@@ -90,13 +95,13 @@ export async function GET(req: NextRequest) {
       ok: true,
       oggi: oggiISO,
       sessione: { nome: sess.nome, ruolo: sess.ruolo, vedeFinanziario: sess.vedeFinanziario, puoModificare: sess.immobiliModificabili === 'tutti' || sess.immobiliModificabili.length > 0 },
-      prenotazioni: pren,
-      ospiti,
-      anagrafica: anagFiltr,
+      prenotazioni: soloPulizie ? [] : pren,
+      ospiti: soloPulizie ? [] : ospiti,
+      anagrafica: soloPulizie ? [] : anagFiltr,
       alloggi: alloggiFiltr,
-      spese: sess.vedeFinanziario ? spese : [],
-      scadenze,
-      cosaManca,
+      spese: sess.vedeFinanziario && !soloPulizie ? spese : [],
+      scadenze: soloPulizie ? [] : scadenze,
+      cosaManca: soloPulizie ? { schedineDaInviare: [], scadenzeVicine: [], pulizieDaFare: [], pagamentiInSospeso: [] } : cosaManca,
       pulizie: pulizieFiltr,
       operatoriPulizie,
       utenti: sess.ruolo === 'Titolare' ? tuttiUtenti : [],
@@ -104,15 +109,17 @@ export async function GET(req: NextRequest) {
       schedineAlloggiati: sess.ruolo === 'Titolare' ? await schedineDaInviareAlloggiati() : [],
       schedineDaVerificare: sess.ruolo === 'Titolare' ? await schedineDaVerificare() : [],
       inviiAlloggiati: sess.ruolo === 'Titolare' ? await inviiFattiAlloggiati() : [],
-      categorieSpesa,
-      preventivi: sess.vedeFinanziario ? preventivi : [],
-      richieste: sess.vedeFinanziario ? richieste : [],
-      documenti: sess.vedeFinanziario ? documenti : [],
-      eventi,
-      prezzi,
-      linkUtili,
-      promemoria,
-      blocchi: blocchiFiltr,
+      categorieSpesa: soloPulizie ? [] : categorieSpesa,
+      preventivi: sess.vedeFinanziario && !soloPulizie ? preventivi : [],
+      richieste: sess.vedeFinanziario && !soloPulizie ? richieste : [],
+      documenti: sess.vedeFinanziario && !soloPulizie ? documenti : [],
+      eventi: soloPulizie ? [] : eventi,
+      prezzi: soloPulizie || !titolare ? [] : prezzi,
+      linkUtili: soloPulizie ? [] : linkUtili,
+      promemoria: soloPulizie ? undefined : promemoria,
+      blocchi: soloPulizie ? [] : blocchiFiltr,
+      registro: titolare ? await leggiRegistro(150) : [],
+      cestino: titolare ? await leggiCestino() : [],
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({
         immobile: r.immobile, proprietario: r.proprietario,
         prenotazioni: r.prenotazioni, lordo: Number(r.lordo),

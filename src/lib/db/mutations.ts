@@ -15,6 +15,7 @@ import {
 } from './schema';
 import { nuovaChiaveAccesso, LUNGHEZZA_MINIMA_CHIAVE } from './auth';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
+import { mettiNelCestino } from './registro';
 import { randomUUID } from 'node:crypto';
 import { calcolaImportiPuri } from '../importi';
 import {
@@ -179,7 +180,9 @@ export async function aggiornaAlloggio(id: string, d: Record<string, unknown>) {
   const db = getDb();
   const map: Record<string, unknown> = {
     nome: d.nome, regime_fiscale: d.regimeFiscale, costo_pulizia: d.costoPulizia != null ? s(Number(d.costoPulizia)) : undefined,
-    emoji: d.emoji, wifi_ssid: d.wifiSsid, wifi_password: d.wifiPassword, attivo: d.attivo,
+    emoji: d.emoji, wifi_ssid: d.wifiSsid,
+    // La password WiFi non arriva più al browser (punto 5, 23/11/2026): il campo del form parte vuoto e vuoto = "non cambiarla".
+    wifi_password: d.wifiPassword === '' ? undefined : d.wifiPassword, attivo: d.attivo,
     ha_self_checkin: d.haSelfCheckin, trasmette_alloggiati: d.trasmetteAlloggiati, trasmette_regione: d.trasmetteRegione,
     imposta_soggiorno_comune: d.impostaSoggiornoComune,
     imposta_soggiorno_importo: d.impostaSoggiornoImporto != null ? s(Number(d.impostaSoggiornoImporto)) : undefined,
@@ -234,7 +237,7 @@ export async function aggiornaOspite(id: string, d: Record<string, unknown>) {
  *  documento, schedina) — pensato per ripulire i doppioni creati da un sync o dei test,
  *  mai per un ospite con dati veri dietro. Non tocca la riga sul foglio Google (resta lì
  *  come storico secondario, stesso trattamento di eliminaPreventivo). */
-export async function eliminaOspite(id: string) {
+export async function eliminaOspite(id: string, eliminatoDa?: string) {
   const db = getDb();
   const [pren] = await db.select({ n: sql<number>`count(*)` }).from(prenotazioni).where(eq(prenotazioni.ospite_id, id));
   const [op] = await db.select({ n: sql<number>`count(*)` }).from(ospitiPrenotazione).where(eq(ospitiPrenotazione.ospite_id, id));
@@ -243,6 +246,10 @@ export async function eliminaOspite(id: string) {
   const [sch] = await db.select({ n: sql<number>`count(*)` }).from(schedine).where(eq(schedine.ospite_id, id));
   const totale = Number(pren.n) + Number(op.n) + Number(prev.n) + Number(doc.n) + Number(sch.n);
   if (totale > 0) throw new Error(`Questo ospite ha ${totale} prenotazione/documento agganciati — non si può eliminare.`);
+  // Cestino: si fotografa la riga PRIMA di eliminarla (30 giorni per ripensarci). Se la fotografia fallisce, non si elimina.
+  const [riga] = await db.select().from(ospiti).where(eq(ospiti.id, id));
+  if (!riga) throw new Error('Ospite non trovato');
+  await mettiNelCestino('ospite', riga, `${riga.cognome} ${riga.nome}`.trim(), eliminatoDa);
   await db.delete(ospiti).where(eq(ospiti.id, id));
   return { ok: true };
 }
@@ -594,8 +601,11 @@ function rigaPreventivoDa(p: typeof preventivi.$inferSelect, ctx: { alloggioNome
  *  che resta come storico secondario. Solo per uso interno, mai chiamata dal sito pubblico.
  *  Se il preventivo era nato da una richiesta del sito, quella richiesta torna "Nuova" (si
  *  può rifare) invece di restare agganciata a un preventivo che non esiste più. */
-export async function eliminaPreventivo(id: string) {
+export async function eliminaPreventivo(id: string, eliminatoDa?: string) {
   const db = getDb();
+  const [riga] = await db.select().from(preventivi).where(eq(preventivi.id, id));
+  if (!riga) throw new Error('Preventivo non trovato');
+  await mettiNelCestino('preventivo', riga, `Preventivo ${riga.codice}`, eliminatoDa);
   await db.update(richiestePubbliche).set({ stato: 'Nuova', preventivo_id: null, aggiornato_il: new Date() }).where(eq(richiestePubbliche.preventivo_id, id));
   await db.delete(preventivi).where(eq(preventivi.id, id));
   return { ok: true };

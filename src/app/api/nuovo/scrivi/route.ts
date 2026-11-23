@@ -3,6 +3,8 @@ import { richiediSessione } from '@/lib/db/auth';
 import * as M from '@/lib/db/mutations';
 import { risolviSchedinaAmbigua } from '@/lib/alloggiatiInvio';
 import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } from '@/lib/db/regole';
+import { registra, ripristinaDalCestino } from '@/lib/db/registro';
+import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
 // (è un gestionale interno, non un'API pubblica — semplice e sufficiente).
@@ -11,7 +13,22 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 
 export const dynamic = 'force-dynamic';
 
-const SOLO_TITOLARE = new Set(['invita-collaboratore', 'link-accesso', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie', 'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola']);
+// Ruoli (punto 5, 23/11/2026): Titolare = tutto. Operatore (ruolo "Collaboratore") = prenotazioni, calendario, ospiti,
+// pagamenti, pulizie: NON elimina nulla, NON tocca prezzi né impostazioni (proprietari, immobili, alloggi,
+// contratti, regole), NON vede documenti completi né password WiFi (mascherati alla fonte). Addetto pulizie = solo
+// "conferma-pulizia" (controllato sotto) e riceve soltanto i dati delle pulizie. "cancella-prenotazione" resta
+// all'operatore: è un annullamento di stato (con conferma e nel registro), non un'eliminazione del record.
+const SOLO_TITOLARE = new Set([
+  'invita-collaboratore', 'link-accesso', 'imposta-permesso', 'attiva-utente', 'elimina-operatore-pulizie',
+  'elimina-ospite', 'elimina-proprietario', 'elimina-immobile', 'elimina-alloggio', 'elimina-preventivo', 'elimina-pulizia',
+  'cancella-evento', 'cancella-link-utile', 'cancella-prezzo',
+  'crea-prezzo', 'crea-proprietario', 'aggiorna-proprietario', 'crea-immobile', 'aggiorna-immobile', 'crea-alloggio', 'aggiorna-alloggio',
+  'crea-contratto-gestione', 'aggiorna-contratto-gestione',
+  'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola',
+  'ripristina-dal-cestino', 'controlla-drive',
+]);
+// Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
+const NON_REGISTRARE = new Set(['anteprima-importi']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -42,7 +59,7 @@ export async function POST(req: NextRequest) {
       case 'cancella-prenotazione': r = await M.cancellaPrenotazione(id!, !!dati.conPenale, dati.importoPenale as number | undefined); break;
       case 'crea-ospite': r = await M.creaOspite(dati as Parameters<typeof M.creaOspite>[0]); break;
       case 'aggiorna-ospite': r = await M.aggiornaOspite(id!, dati); break;
-      case 'elimina-ospite': r = await M.eliminaOspite(id!); break;
+      case 'elimina-ospite': r = await M.eliminaOspite(id!, sess.id); break;
       case 'aggiungi-pagamento': r = await M.aggiungiPagamento(dati as Parameters<typeof M.aggiungiPagamento>[0]); break;
       case 'crea-proprietario': r = await M.creaProprietario(dati as Parameters<typeof M.creaProprietario>[0]); break;
       case 'aggiorna-proprietario': r = await M.aggiornaProprietario(id!, dati); break;
@@ -59,7 +76,9 @@ export async function POST(req: NextRequest) {
       case 'crea-preventivo': r = await M.creaPreventivo({ ...(dati as Parameters<typeof M.creaPreventivo>[0]), creatoDa: sess.id }); break;
       case 'stato-preventivo': r = await M.aggiornaStatoPreventivo(id!, String(dati.stato)); break;
       case 'accetta-preventivo': r = await M.accettaPreventivo(id!, sess.id); break;
-      case 'elimina-preventivo': r = await M.eliminaPreventivo(id!); break;
+      case 'elimina-preventivo': r = await M.eliminaPreventivo(id!, sess.id); break;
+      case 'ripristina-dal-cestino': r = await ripristinaDalCestino(id!); break;
+      case 'controlla-drive': r = await controllaCondivisioneDrive(); break;
       case 'backfill-preventivi-drive': r = await M.backfillPreventiviSuDrive(); break;
       case 'crea-preventivo-da-richiesta': r = await M.creaPreventivoDaRichiesta(id!, { ...(dati as Parameters<typeof M.creaPreventivoDaRichiesta>[1]), creatoDa: sess.id }); break;
       case 'ignora-richiesta': r = await M.ignoraRichiestaPubblica(id!); break;
@@ -97,6 +116,10 @@ export async function POST(req: NextRequest) {
       case 'elimina-regola': r = await eliminaRegola(id!); break;
       default:
         return NextResponse.json({ ok: false, error: `Azione sconosciuta: ${azione}` }, { status: 400 });
+    }
+    // Registro delle azioni: chi, cosa e quando. Mai dati degli ospiti: solo azione, tipo di dato e id.
+    if (azione && !NON_REGISTRARE.has(azione)) {
+      await registra(sess, azione, azione.split('-').slice(1).join('-') || null, id ?? null);
     }
     if (azione && CAMBIANO_PRENOTAZIONI.has(azione)) {
       await riconcilia().catch((e) => console.error('[nuovo/scrivi] riconciliazione promemoria fallita (non bloccante):', e instanceof Error ? e.message : e));

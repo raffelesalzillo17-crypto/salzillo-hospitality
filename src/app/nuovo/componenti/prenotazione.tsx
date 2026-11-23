@@ -205,12 +205,22 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare, schedine,
   );
 }
 
-export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamentoSubito, onClose, onSalvato, onCambiato }: {
-  p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; apriPagamentoSubito?: boolean; onClose: () => void; onSalvato: () => void;
+export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocumenti, apriPagamentoSubito, onClose, onSalvato, onCambiato }: {
+  p: Prenotazione; alloggi: Alloggio[]; puoModificare: boolean; puoVedereDocumenti?: boolean; apriPagamentoSubito?: boolean; onClose: () => void; onSalvato: () => void;
   /** Ricarica i dati senza chiudere la scheda (documenti e schedine appena aggiunti). */
   onCambiato: () => Promise<void>;
 }) {
   const [errTipo, setErrTipo] = useState('');
+  // Numeri di documento: mascherati di default; solo il Titolare può mostrarli (viene registrato).
+  const [visti, setVisti] = useState<Record<string, string>>({});
+  async function mostraDocumento(id: string) {
+    if (visti[id] !== undefined) { setVisti(({ [id]: _tolto, ...resto }) => resto); return; }
+    try {
+      const r = await (await fetch('/api/nuovo/rivela', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'documento', id }) })).json();
+      if (!r.ok) throw new Error(r.error || 'Errore');
+      setVisti((v) => ({ ...v, [id]: r.valore }));
+    } catch (e) { setErrTipo(e instanceof Error ? e.message : String(e)); }
+  }
   async function cambiaTipo(id: string, tipoAlloggiatoCodice: string) {
     setErrTipo('');
     try {
@@ -304,7 +314,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, apriPagamento
                         </select>
                       ) : <small className="sub">({s.rapporto || '—'})</small>}
                     </td>
-                    <td className="num"><small>{s.tipoDocumento || '—'} {s.numeroDocumento} · {s.stato}</small></td>
+                    <td className="num"><small>{s.tipoDocumento || '—'} {visti[s.id] ?? s.numeroDocumento} · {s.stato}</small>{puoVedereDocumenti && s.numeroDocumento && <button className="mini" style={{ marginLeft: 6 }} onClick={() => mostraDocumento(s.id)}>{visti[s.id] !== undefined ? 'nascondi' : 'mostra'}</button>}</td>
                   </tr>
                 ))}
                 {avvisoRuoli(p.schedine) && <tr><td colSpan={2}><small style={{ color: '#d33' }}>⚠️ {avvisoRuoli(p.schedine)}</small></td></tr>}

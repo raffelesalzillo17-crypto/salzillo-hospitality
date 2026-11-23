@@ -35,7 +35,7 @@ export type RigaMese = { immobile: string; proprietario: string; prenotazioni: n
 
 export type AlloggioDb = {
   id: string; nome: string; regime_fiscale: string; costo_pulizia: string; attivo: boolean;
-  emoji: string | null; wifi_ssid: string | null; wifi_password: string | null;
+  emoji: string | null; wifi_ssid: string | null; wifi_password: string | null; wifi_password_impostata?: boolean;
   trasmette_alloggiati: boolean; trasmette_regione: boolean;
   imposta_soggiorno_comune: string | null; imposta_soggiorno_importo: string;
 };
@@ -102,6 +102,9 @@ export type Dati = {
   blocchi?: { id: string; alloggioId: string; alloggio: string; checkin: string; checkout: string; nota: string | null }[];
   linkUtili?: LinkUtile[];
   promemoria?: Promemoria;
+  /** Solo Titolare: registro delle azioni e cestino (punto 5, 23/11/2026). */
+  registro?: { id: string; quando: string; utente_nome: string | null; ruolo: string | null; azione: string; dettaglio: string | null }[];
+  cestino?: { id: string; tipo: string; etichetta: string; eliminatoIl: string; scadeIl: string }[];
 };
 
 export type LinkUtile = { id: string; titolo: string; url: string; descrizione: string | null; ordine: number };

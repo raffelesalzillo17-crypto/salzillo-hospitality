@@ -574,3 +574,32 @@ export const attivitaPianificate = pgTable('attivita_pianificate', {
   unico: unique().on(t.regola_id, t.alloggio_id, t.checkin),
   perStato: index('attivita_pianificate_stato_scadenza_idx').on(t.stato, t.scadenza),
 }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registro delle azioni e cestino (punto 5 delle richieste, 23/11/2026).
+// Create con SQL manuale: drizzle/manuali/0003_registro_azioni_cestino.sql
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const registroAzioni = pgTable('registro_azioni', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  quando: timestamp('quando', { withTimezone: true }).defaultNow().notNull(),
+  utente_id: uuid('utente_id'),
+  utente_nome: text('utente_nome'),
+  ruolo: text('ruolo'),
+  azione: text('azione').notNull(),
+  entita: text('entita'),
+  entita_id: text('entita_id'),
+  dettaglio: text('dettaglio'), // mai dati degli ospiti: solo cose come "password mostrata" o un esito
+});
+
+export const cestino = pgTable('cestino', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tipo: text('tipo').notNull(), // 'ospite' | 'preventivo'
+  entita_id: uuid('entita_id').notNull(),
+  etichetta: text('etichetta').notNull(),
+  dati: jsonb('dati').notNull(), // fotografia della riga eliminata, per rimetterla com'era
+  eliminato_il: timestamp('eliminato_il', { withTimezone: true }).defaultNow().notNull(),
+  eliminato_da: uuid('eliminato_da'),
+  scade_il: timestamp('scade_il', { withTimezone: true }).notNull(),
+  ripristinato_il: timestamp('ripristinato_il', { withTimezone: true }),
+});

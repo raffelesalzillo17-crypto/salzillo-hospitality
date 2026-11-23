@@ -11,6 +11,7 @@ import { RigaPulizia } from './componenti/pulizie';
 import { PromemoriaBox } from './componenti/promemoria';
 import { Rendiconti } from './componenti/rendiconti';
 import { FormModale, TemaToggle } from './componenti/ui';
+import { SezioneRegistro } from './componenti/registro';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
@@ -28,7 +29,7 @@ export default function Nuovo() {
   const [authChecked, setAuthChecked] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida' | 'registro'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -55,7 +56,11 @@ export default function Nuovo() {
 
   async function carica() {
     const d = await (await fetch('/api/nuovo/dati')).json();
-    if (d.ok) { setDati(d); setSess(d.sessione); } else setErrore(d.error || 'Errore');
+    if (d.ok) {
+      setDati(d); setSess(d.sessione);
+      // L'addetto pulizie vede solo le pulizie: parte da lì (punto 5, 23/11/2026).
+      if (d.sessione?.ruolo === 'Pulizie') setTab((t) => (t === 'pulizie' || t === 'guida' ? t : 'pulizie'));
+    } else setErrore(d.error || 'Errore');
   }
 
   useEffect(() => {
@@ -139,8 +144,10 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida'] as const)
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .filter((t) => t !== 'registro' || sess.ruolo === 'Titolare')
+          .filter((t) => sess.ruolo !== 'Pulizie' || t === 'pulizie' || t === 'guida')
           .filter((t) => t !== 'promemoria' || !!dati.promemoria)
           .map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -286,8 +293,10 @@ export default function Nuovo() {
               <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
+              <li><b>Registro</b> (solo Titolare) — il cestino (ospiti e preventivi eliminati si recuperano per 30 giorni), il registro di chi ha fatto cosa e quando, e il controllo che le cartelle Drive con i documenti non siano condivise pubblicamente</li>
               <li><b>Link utili</b> — rubrica di link comodi (sito vetrina, check-in, WhatsApp, e quelli che aggiungi tu) da avere a portata di mano e condividere</li>
             </ul>
+            <p className="empty" style={{ marginTop: 8 }}><b>Chi può fare cosa.</b> <b>Titolare</b>: tutto. <b>Operatore</b> (Collaboratore): prenotazioni, calendario, ospiti, pagamenti e pulizie; non elimina niente, non tocca prezzi e impostazioni, e vede i numeri dei documenti solo come ••••1234. <b>Addetto pulizie</b>: vede e conferma solo le pulizie. La password WiFi e il numero completo di un documento si vedono solo dal Titolare, con il pulsante &quot;mostra&quot;, e ogni visualizzazione resta nel Registro.</p>
             <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
           </div>
           <div className="card">
@@ -313,6 +322,8 @@ export default function Nuovo() {
           </div>
         </div>
       )}
+
+      {tab === 'registro' && sess.ruolo === 'Titolare' && <SezioneRegistro dati={dati} onCambiato={carica} />}
 
       {tab === 'calendario' && <SezioneCalendario dati={dati} attive={attive} oggi={oggi} onSel={setPrenSel} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
@@ -448,7 +459,7 @@ export default function Nuovo() {
               <div className="cardhead">
                 <h2>{pr.nome} <small>proprietario</small></h2>
                 <span style={{ display: 'flex', gap: 8 }}>
-                  {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo immobile di ${pr.nome}`, azione: 'crea-immobile', campi: [
+                  {sess.ruolo === 'Titolare' && <button className="add" onClick={() => setModale({ titolo: `Nuovo immobile di ${pr.nome}`, azione: 'crea-immobile', campi: [
                     { k: 'proprietarioId', label: 'Proprietario', tipo: 'select', opzioni: dati.anagrafica.map((x) => ({ v: x.id, t: x.nome })) },
                     { k: 'nome', label: 'Nome (es. Via Clanio 60)', req: true }, { k: 'indirizzo', label: 'Indirizzo', req: true },
                     { k: 'comune', label: 'Comune', req: true }, { k: 'provincia', label: 'Provincia', req: true },
@@ -474,7 +485,7 @@ export default function Nuovo() {
                       }}>🗑️</button>
                     )}
                     {sess.ruolo === 'Titolare' && im.alloggi.some((a) => a.trasmette_regione) && <button className="add" onClick={() => setSinfoniaImm(im.id)}>Sinfonia</button>}
-                    {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
+                    {sess.ruolo === 'Titolare' && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
                       { k: 'immobileId', label: 'Immobile', tipo: 'select', opzioni: pr.immobili.map((x) => ({ v: x.id, t: x.nome })) },
                       { k: 'nome', label: 'Nome (es. Il Tulipano)', req: true },
                       { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
@@ -487,27 +498,37 @@ export default function Nuovo() {
                     ], iniziali: { immobileId: im.id, costoPulizia: 20 } })}>＋ Alloggio</button>}
                   </div>
                   {im.alloggi.map((a) => (
-                    <div key={a.id} className="row" onClick={() => sess.puoModificare && setModale({ titolo: `Modifica ${a.nome}`, azione: 'aggiorna-alloggio', id: a.id, campi: [
+                    <div key={a.id} className="row" onClick={() => sess.ruolo === 'Titolare' && setModale({ titolo: `Modifica ${a.nome}`, azione: 'aggiorna-alloggio', id: a.id, campi: [
                       { k: 'nome', label: 'Nome' },
                       { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
                       { k: 'costoPulizia', label: 'Costo pulizia €', tipo: 'number' },
                       { k: 'attivo', label: 'Attivo', tipo: 'checkbox' },
-                      { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password' },
+                      { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password (lascia vuoto per non cambiarla)' },
                       { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
                       { k: 'trasmetteRegione', label: 'Trasmette al portale regionale', tipo: 'checkbox' },
                       { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune' },
                       { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — €/persona/notte', tipo: 'number' },
                     ], iniziali: {
                       nome: a.nome, regimeFiscale: a.regime_fiscale, costoPulizia: a.costo_pulizia, attivo: a.attivo,
-                      wifiSsid: a.wifi_ssid, wifiPassword: a.wifi_password, trasmetteAlloggiati: a.trasmette_alloggiati,
+                      wifiSsid: a.wifi_ssid, wifiPassword: '', trasmetteAlloggiati: a.trasmette_alloggiati,
                       trasmetteRegione: a.trasmette_regione, impostaSoggiornoComune: a.imposta_soggiorno_comune,
                       impostaSoggiornoImporto: a.imposta_soggiorno_importo,
-                    } })} style={{ cursor: sess.puoModificare ? 'pointer' : 'default' }}>
+                    } })} style={{ cursor: sess.ruolo === 'Titolare' ? 'pointer' : 'default' }}>
                       <b>{a.emoji} {a.nome}</b>
                       <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale}</span>
                       {a.imposta_soggiorno_comune && <small>tassa soggiorno {a.imposta_soggiorno_comune}</small>}
                       {!a.attivo && <small>non attivo</small>}
                       {sess.ruolo === 'Titolare' && <button className="linklike" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); setCalAlloggio({ id: a.id, nome: a.nome }); }}>📅 calendari</button>}
+                      {sess.ruolo === 'Titolare' && a.wifi_password_impostata && (
+                        <button className="linklike" title="Mostra la password WiFi (viene registrato)" onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const r = await (await fetch('/api/nuovo/rivela', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'wifi', id: a.id }) })).json();
+                            if (!r.ok) throw new Error(r.error || 'Errore');
+                            window.prompt(`Password WiFi di ${a.nome} (la visualizzazione è stata registrata):`, r.valore);
+                          } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+                        }}>🔑 mostra password</button>
+                      )}
                       {sess.ruolo === 'Titolare' && (
                         <button className="mini" title="Elimina alloggio" onClick={async (e) => {
                           e.stopPropagation();
@@ -640,7 +661,7 @@ export default function Nuovo() {
         <AlloggiatiWebBox schedine={dati.schedineAlloggiati ?? []} daVerificare={dati.schedineDaVerificare ?? []} inviate={dati.inviiAlloggiati ?? []} onCambiato={carica} />
       )}
 
-      {prenSel && <DettaglioPrenotazione p={dati.prenotazioni.find((x) => x.id === prenSel.id) ?? prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare}
+      {prenSel && <DettaglioPrenotazione p={dati.prenotazioni.find((x) => x.id === prenSel.id) ?? prenSel} alloggi={dati.alloggi} puoModificare={sess.puoModificare} puoVedereDocumenti={sess.ruolo === 'Titolare'}
         onCambiato={carica}
         apriPagamentoSubito={prenSelAzione === 'pagamento'}
         onClose={() => { setPrenSel(null); setPrenSelAzione(null); }}
