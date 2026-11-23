@@ -351,7 +351,7 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
           onClick={(e) => e.stopPropagation()} onMouseLeave={() => setAnteprima(null)}>
           <b>{ap.ospite}</b>
           <div>{dataIt(ap.checkin)} → {dataIt(ap.checkout)} · {Math.max(1, Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5))} nott{Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5) === 1 ? 'e' : 'i'} · {ap.numeroOspiti} ospit{ap.numeroOspiti === 1 ? 'e' : 'i'}</div>
-          <div><span className="chip" style={{ background: (CANALE_COLOR[ap.canale] || '#888') + '33', color: CANALE_COLOR[ap.canale] || '#888' }}>{ap.canale}</span> {ap.stato !== 'Attiva' && <small>{ap.stato}</small>}</div>
+          <div><span className="chip" style={{ background: (CANALE_COLOR[ap.canale] || '#888') + '33', color: CANALE_COLOR[ap.canale] || '#888' }}>{ap.canale}</span> {ap.regimePrenotazione === 'No Tax' && <span className="chip" style={{ background: '#8C7BD833', color: '#8C7BD8' }}>🚫 No Tax: esente da ogni imposta</span>} {ap.regimePrenotazione === 'Esente da tassa di soggiorno' && <span className="chip" style={{ background: '#C97A1633', color: '#C97A16' }}>esente tassa di soggiorno</span>} {ap.stato !== 'Attiva' && <small>{ap.stato}</small>}</div>
           {pagamento && <div style={{ color: pagamento.colore, fontWeight: 700 }}>{pagamento.testo}</div>}
           {ap.daVerificare && <div style={{ color: '#8C7BD8' }}>⚠️ Da verificare: {ap.daVerificareMotivo ?? 'sparita dal calendario'}</div>}
           {conflittoIds.has(ap.id) && <div style={{ color: '#E5484D' }}>⚠️ Si sovrappone a un altro calendario</div>}
@@ -360,7 +360,8 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
         </div>
       )}
       <div className="callegend">
-        {Object.entries(CANALE_COLOR).map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
+        {Object.entries(CANALE_COLOR).filter(([k]) => k !== 'No Tax').map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
+        <span><i style={{ background: '#1FAA6E', outline: '2px dashed #8C7BD8', outlineOffset: -2 }} />🚫 No Tax (esente da imposte)</span>
         <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
         <span><i style={{ background: 'var(--coral)', borderRadius: '50%' }} />Pulizia da fare (clicca per confermare)</span>
         <span><i style={{ background: '#1FAA6E', borderRadius: '50%', opacity: .75 }} />Pulizia fatta</span>
@@ -472,8 +473,8 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
           <button key={p.id} className="cal-bar" aria-label={`${p.ospite}, ${p.canale}, dal ${dataIt(p.checkin)} al ${dataIt(p.checkout)}`}
             onClick={(e) => { if (coarse) { e.stopPropagation(); mostra(e, p); } else onSel(p); }}
             onMouseEnter={(e) => { if (!coarse) mostra(e, p); }} onMouseLeave={() => { if (!coarse) onAnteprima(null); }}
-            style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}>
-            <span>{p.daVerificare || conflittoIds.has(p.id) ? '⚠️ ' : ''}{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
+            style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c, ...(p.regimePrenotazione === 'No Tax' ? { outline: '2px dashed #fff', outlineOffset: -3 } : {}) }}>
+            <span>{p.regimePrenotazione === 'No Tax' ? '🚫 ' : ''}{p.daVerificare || conflittoIds.has(p.id) ? '⚠️ ' : ''}{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
           </button>
         );
       })}
