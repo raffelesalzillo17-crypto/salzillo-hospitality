@@ -308,6 +308,21 @@ export async function confermaPuliziaSuFoglio(d: RigaPuliziaConferma): Promise<v
   }
 }
 
+/** Annulla la conferma di una pulizia sul foglio (operatore e data di fine): serve per l'"annulla" entro pochi secondi. */
+export async function annullaConfermaPuliziaSuFoglio(d: { data: string; alloggioNome: string }): Promise<void> {
+  try {
+    const sheets = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: fileIdForTab('PULIZIE'), range: 'PULIZIE!A2:B100000' });
+    const righe = res.data.values ?? [];
+    const stanza = ALLOGGIO_FOGLIO[d.alloggioNome] ?? d.alloggioNome;
+    const i = righe.findIndex((r) => String(r[0] ?? '') === isoToIt(d.data) && String(r[1] ?? '') === stanza);
+    if (i === -1) return;
+    await sheets.spreadsheets.values.update({ spreadsheetId: fileIdForTab('PULIZIE'), range: `PULIZIE!K${i + 2}:L${i + 2}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [['', '']] } });
+  } catch (e) {
+    console.error('[sync-foglio] annullo conferma pulizia fallito (non bloccante):', e);
+  }
+}
+
 // ── Preventivi ───────────────────────────────────────────────────────────────
 // Tab PREVENTIVI (file "prenotazioni") — non esisteva nel vecchio sistema (concetto nuovo
 // di /nuovo): lo creiamo qui al primo utilizzo, con intestazioni proprie.

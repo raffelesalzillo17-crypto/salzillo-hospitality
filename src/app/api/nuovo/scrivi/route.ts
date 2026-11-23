@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: 'Body non valido' }, { status: 400 }); }
   const { azione, id, dati = {} } = body;
 
+  const AZIONI_PULIZIE = ['conferma-pulizia', 'annulla-pulizia', 'aggiorna-pulizia'];
   const puoScrivere = sess.ruolo === 'Titolare' || sess.ruolo === 'Collaboratore'
-    || (sess.ruolo === 'Pulizie' && azione === 'conferma-pulizia');
+    || (sess.ruolo === 'Pulizie' && !!azione && AZIONI_PULIZIE.includes(azione));
   if (!puoScrivere) {
     return NextResponse.json({ ok: false, error: 'Il tuo ruolo non può modificare i dati' }, { status: 403 });
   }
@@ -119,7 +120,12 @@ export async function POST(req: NextRequest) {
       case 'crea-contratto-gestione': r = await M.creaContrattoGestione(dati as Parameters<typeof M.creaContrattoGestione>[0]); break;
       case 'aggiorna-contratto-gestione': r = await M.aggiornaContrattoGestione(id!, dati); break;
       case 'completa-scadenza': r = await M.completaScadenza(id!); break;
-      case 'conferma-pulizia': r = await M.confermaPulizia(id!, (dati.addettoId as string) || sess.id); break;
+      // Pulizie (punto 9): l'addetto pulizie conferma, annulla (solo entro 3 minuti) e spunta la checklist; assegnare l'addetto e l'orario è di chi gestisce
+      case 'conferma-pulizia': r = await M.confermaPulizia(id!, (dati.addettoId as string) || (sess.ruolo === 'Pulizie' ? sess.id : undefined), { checklistFatta: Array.isArray(dati.checklistFatta) ? (dati.checklistFatta as string[]) : undefined }); break;
+      case 'annulla-pulizia': r = await M.annullaPulizia(id!, sess.ruolo === 'Pulizie' ? 180 : undefined); break;
+      case 'aggiorna-pulizia': r = await M.aggiornaPulizia(id!, sess.ruolo === 'Pulizie'
+        ? { note: dati.note as string | undefined, checklistFatta: Array.isArray(dati.checklistFatta) ? (dati.checklistFatta as string[]) : undefined }
+        : { addettoId: dati.addettoId as string | null | undefined, oraPrevista: dati.oraPrevista as string | null | undefined, note: dati.note as string | null | undefined, checklistFatta: Array.isArray(dati.checklistFatta) ? (dati.checklistFatta as string[]) : undefined }); break;
       case 'crea-pulizia': r = await M.creaPulizia(dati as Parameters<typeof M.creaPulizia>[0]); break;
       case 'elimina-pulizia': r = await M.eliminaPulizia(id!); break;
       case 'conferma-checkin-prenotazione': r = await M.confermaCheckinPrenotazione(id!); break;

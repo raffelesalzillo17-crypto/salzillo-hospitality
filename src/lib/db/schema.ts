@@ -125,6 +125,7 @@ export const alloggi = pgTable('alloggi', {
   imposta_soggiorno_comune: text('imposta_soggiorno_comune'),
   imposta_soggiorno_importo: numeric('imposta_soggiorno_importo', { precision: 6, scale: 2 }).notNull().default('0'),
   imposta_soggiorno_max_notti: integer('imposta_soggiorno_max_notti'),
+  checklist_pulizie: text('checklist_pulizie'), // una voce per riga; vuoto = voci predefinite (punto 9)
   ical_token: text('ical_token'), // segreto del link di export iCal; null = link vecchio (solo id), ancora valido (punto 2, 23/11/2026)
 });
 
@@ -258,6 +259,8 @@ export const pulizie = pgTable('pulizie', {
   pagata: boolean('pagata').notNull().default(false),
   importo: numeric('importo', { precision: 8, scale: 2 }),
   note: text('note'),
+  ora_prevista: text('ora_prevista'), // HH:MM, facoltativo (punto 9, 23/11/2026)
+  checklist_fatta: text('checklist_fatta'), // JSON: le voci della checklist spuntate
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

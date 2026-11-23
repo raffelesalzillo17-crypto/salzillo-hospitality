@@ -82,7 +82,7 @@ export async function riepilogoDashboard(anno: number, mese: number, proprietari
 
 export type CosaMancaBlocchi = {
   pagamenti: { id: string; ospite: string; alloggio: string; checkin: string; residuo: number }[];
-  pulizie: { id: string; data: string; alloggio: string }[];
+  pulizie: { id: string; data: string; alloggio: string; urgente: boolean }[];
   scadenze: { id: string; titolo: string; data: string; immobile: string | null }[];
   sovrapposizioni: { alloggio: string; testo: string }[];
   daVerificare: { id: string; alloggio: string; checkin: string; checkout: string; motivo: string }[];
@@ -109,9 +109,15 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
     }
   }
 
-  const pulizieRighe = await db.select({ id: pulizie.id, data: pulizie.data, alloggio: alloggi.nome })
+  const pulizieBase = await db.select({ id: pulizie.id, data: pulizie.data, alloggio: alloggi.nome, alloggioId: pulizie.alloggio_id, prenotazioneId: pulizie.prenotazione_id })
     .from(pulizie).innerJoin(alloggi, eq(alloggi.id, pulizie.alloggio_id))
     .where(and(sql`${pulizie.confermata_il} IS NULL`, gte(pulizie.data, oggiISO), lte(pulizie.data, domani), filtroImm(alloggi.immobile_id))).orderBy(pulizie.data);
+  // Urgente: nello stesso alloggio c'è un check-in lo stesso giorno della pulizia (punto 9)
+  const arriviVicini = pulizieBase.length
+    ? await db.select({ alloggioId: prenotazioni.alloggio_id, checkin: prenotazioni.checkin, id: prenotazioni.id }).from(prenotazioni)
+      .where(and(sql`${prenotazioni.stato} in ('Attiva', 'In attesa di conferma')`, gte(prenotazioni.checkin, oggiISO), lte(prenotazioni.checkin, domani)))
+    : [];
+  const pulizieRighe = pulizieBase.map((p) => ({ id: p.id, data: p.data, alloggio: p.alloggio, urgente: arriviVicini.some((a) => a.alloggioId === p.alloggioId && a.checkin === p.data && a.id !== p.prenotazioneId) }));
 
   const scadRighe = await db.select({ id: scadenze.id, titolo: scadenze.titolo, data: scadenze.data_scadenza, immobile: immobili.nome })
     .from(scadenze).leftJoin(immobili, eq(immobili.id, scadenze.immobile_id))

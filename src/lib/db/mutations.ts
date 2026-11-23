@@ -15,6 +15,7 @@ import {
 } from './schema';
 import { nuovaChiaveAccesso, LUNGHEZZA_MINIMA_CHIAVE } from './auth';
 import { validaTelefono, validaEmail, validaCodiceFiscale } from '../ospitiQualita';
+import { oggiRoma, oraValida, puoSegnarsiFatta } from '../pulizieRegole';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import { mettiNelCestino } from './registro';
 import { randomUUID } from 'node:crypto';
@@ -26,7 +27,7 @@ import {
 import {
   scriviNuovaPrenotazioneSuFoglio, aggiornaPrenotazioneSuFoglio,
   scriviSpesaSuFoglio, scriviScadenzaSuFoglio, aggiornaScadenzaSuFoglio,
-  scriviOspiteSuFoglio, aggiornaOspiteSuFoglio, confermaPuliziaSuFoglio,
+  scriviOspiteSuFoglio, aggiornaOspiteSuFoglio, confermaPuliziaSuFoglio, annullaConfermaPuliziaSuFoglio,
   scriviPreventivoSuFoglio, aggiornaPreventivoSuFoglio,
   scriviEventoLocaleSuFoglio, aggiornaEventoLocaleSuFoglio, eliminaEventoLocaleSuFoglio,
   scriviProprietarioSuFoglio, scriviImmobileSuFoglio, scriviAlloggioSuFoglio,
@@ -188,6 +189,7 @@ export async function aggiornaAlloggio(id: string, d: Record<string, unknown>) {
     imposta_soggiorno_comune: d.impostaSoggiornoComune,
     imposta_soggiorno_importo: d.impostaSoggiornoImporto != null ? s(Number(d.impostaSoggiornoImporto)) : undefined,
     messaggio_guida: d.messaggioGuida, promemoria_pulizia: d.promemoriaPulizia,
+    checklist_pulizie: d.checklistPulizie,
   };
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
   for (const [k, v] of Object.entries(map)) if (v !== undefined) set[k] = v === '' ? null : v;
@@ -869,9 +871,19 @@ export async function completaScadenza(id: string) {
   return r;
 }
 
-export async function confermaPulizia(id: string, addettoId?: string) {
+/** Segna una pulizia come fatta. Regole (punto 9, 23/11/2026): solo dal giorno del check-out in poi, mai prima; se non si indica chi
+ *  ha pulito resta l'addetto già assegnato. La conferma a due passaggi e l'annullo sono dell'interfaccia; il controllo della data è qui. */
+export async function confermaPulizia(id: string, addettoId?: string, opz: { checklistFatta?: string[] } = {}) {
   const db = getDb();
-  const [r] = await db.update(pulizie).set({ confermata_il: new Date(), addetto_id: addettoId || null, aggiornato_il: new Date() }).where(eq(pulizie.id, id)).returning();
+  const [prima] = await db.select().from(pulizie).where(eq(pulizie.id, id));
+  if (!prima) throw new Error('Pulizia non trovata');
+  if (prima.confermata_il) throw new Error('Questa pulizia è già segnata come fatta.');
+  if (!puoSegnarsiFatta(prima.data, oggiRoma())) throw new Error(`Non si può segnare come fatta prima del giorno del check-out (${prima.data.split('-').reverse().join('/')}).`);
+  const [r] = await db.update(pulizie).set({
+    confermata_il: new Date(), addetto_id: addettoId || prima.addetto_id || null, aggiornato_il: new Date(),
+    ...(opz.checklistFatta ? { checklist_fatta: JSON.stringify(opz.checklistFatta) } : {}),
+  }).where(eq(pulizie.id, id)).returning();
+  addettoId = addettoId || prima.addetto_id || undefined;
 
   const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, r.alloggio_id));
   let operatore: string | null = null;
@@ -880,6 +892,31 @@ export async function confermaPulizia(id: string, addettoId?: string) {
     operatore = u?.nome ?? null;
   }
   await confermaPuliziaSuFoglio({ data: r.data, alloggioNome: alloggio?.nome ?? '', operatore });
+  return r;
+}
+
+/** Annulla il "fatta". L'addetto della sola confermata (Pulizie) può farlo entro `entroSecondi`; Titolare e operatore sempre. */
+export async function annullaPulizia(id: string, entroSecondi?: number) {
+  const db = getDb();
+  const [prima] = await db.select().from(pulizie).where(eq(pulizie.id, id));
+  if (!prima) throw new Error('Pulizia non trovata');
+  if (!prima.confermata_il) throw new Error('Questa pulizia non è segnata come fatta.');
+  if (entroSecondi !== undefined && Date.now() - new Date(prima.confermata_il).getTime() > entroSecondi * 1000) throw new Error('Il tempo per annullare è scaduto: chiedi al Titolare.');
+  const [r] = await db.update(pulizie).set({ confermata_il: null, checklist_fatta: null, aggiornato_il: new Date() }).where(eq(pulizie.id, id)).returning();
+  const [alloggio] = await db.select({ nome: alloggi.nome }).from(alloggi).where(eq(alloggi.id, r.alloggio_id));
+  await annullaConfermaPuliziaSuFoglio({ data: r.data, alloggioNome: alloggio?.nome ?? '' });
+  return r;
+}
+
+/** Addetto assegnato, orario, note e voci della checklist spuntate. Si può fare anche prima del giorno della pulizia. */
+export async function aggiornaPulizia(id: string, d: { addettoId?: string | null; oraPrevista?: string | null; note?: string | null; checklistFatta?: string[] }) {
+  const set: Record<string, unknown> = { aggiornato_il: new Date() };
+  if (d.addettoId !== undefined) set.addetto_id = d.addettoId || null;
+  if (d.oraPrevista !== undefined) set.ora_prevista = oraValida(d.oraPrevista);
+  if (d.note !== undefined) set.note = (d.note ?? '').trim().slice(0, 500) || null;
+  if (d.checklistFatta !== undefined) set.checklist_fatta = JSON.stringify(d.checklistFatta.slice(0, 30));
+  const [r] = await getDb().update(pulizie).set(set).where(eq(pulizie.id, id)).returning();
+  if (!r) throw new Error('Pulizia non trovata');
   return r;
 }
 

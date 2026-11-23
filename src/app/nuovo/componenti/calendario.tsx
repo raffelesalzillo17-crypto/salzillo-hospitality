@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Alloggio, Blocco, Dati, EventoLoc, LinkUtile, Operatore, Prenotazione, PrezzoPer, Pulizia } from '../tipi';
+import { BottoneFatto } from './pulizie';
 import { CANALE_COLOR, api, creaBlocco, dataIt, eur, mancanoDocumenti, rimuoviBloccoApi } from '../utilita';
 
 export function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiato }: {
@@ -303,12 +304,7 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
   const [puAperta, setPuAperta] = useState<string | null>(null);
   const [addettoSel, setAddettoSel] = useState('');
 
-  async function confermaPuliziaCal(puId: string) {
-    setBusy(true);
-    try { await api('conferma-pulizia', { id: puId, dati: { addettoId: addettoSel || undefined } }); setPuAperta(null); setAddettoSel(''); await onCambiato?.(); }
-    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  }
+  const oggiLocale = new Date().toISOString().slice(0, 10);
 
   const occupato = (i: number) => {
     const g = giorni[i];
@@ -410,7 +406,11 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
                         {operatoriPulizie.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
                       </select>
                     )}
-                    <button className="mini" disabled={busy} onClick={() => confermaPuliziaCal(pu.id)}>{busy ? '…' : '✓ fatto'}</button>
+                    {/* Punto 9: conferma a due passaggi, annullo per 10 secondi, mai prima del giorno del check-out (il server lo controlla comunque) */}
+                    <BottoneFatto disabilitato={pu.data > oggiLocale} motivo={`da fare dal ${dataIt(pu.data)}`}
+                      conferma={async () => { await api('conferma-pulizia', { id: pu.id, dati: { addettoId: addettoSel || undefined } }); }}
+                      annulla={async () => { await api('annulla-pulizia', { id: pu.id }); }}
+                      finito={async () => { setPuAperta(null); setAddettoSel(''); await onCambiato?.(); }} />
                   </>
                 )}
                 <button className="linklike" onClick={() => setPuAperta(null)}>chiudi</button>

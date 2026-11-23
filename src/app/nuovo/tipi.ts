@@ -14,6 +14,8 @@ export type Prenotazione = {
 export type Pulizia = {
   id: string; data: string; alloggioId: string; alloggio: string; confermataIl: string | null; note: string | null;
   origine: string; addettoNome: string | null; prenotazioneId: string | null; pagata: boolean; importo: string | null;
+  // Punto 9 (23/11/2026): addetto assegnato, orario, checklist e prossimo arrivo (stesso giorno = urgente)
+  addettoId?: string | null; oraPrevista?: string | null; checklist?: string[]; checklistFatta?: string[]; prossimoCheckin?: string | null;
 };
 
 export type Operatore = { id: string; nome: string };
@@ -43,6 +45,7 @@ export type AlloggioDb = {
   emoji: string | null; wifi_ssid: string | null; wifi_password: string | null; wifi_password_impostata?: boolean;
   trasmette_alloggiati: boolean; trasmette_regione: boolean;
   imposta_soggiorno_comune: string | null; imposta_soggiorno_importo: string;
+  checklist_pulizie?: string | null;
 };
 
 export type Anagrafica = {

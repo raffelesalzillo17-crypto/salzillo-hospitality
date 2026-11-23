@@ -102,7 +102,7 @@ export function RiepilogoDashboard({ dati, oggi, ruoloTitolare }: { dati: Dati; 
 
 type Blocchi = {
   pagamenti: { id: string; ospite: string; alloggio: string; checkin: string; residuo: number }[];
-  pulizie: { id: string; data: string; alloggio: string }[];
+  pulizie: { id: string; data: string; alloggio: string; urgente: boolean }[];
   scadenze: { id: string; titolo: string; data: string; immobile: string | null }[];
   sovrapposizioni: { alloggio: string; testo: string }[];
   daVerificare: { id: string; alloggio: string; checkin: string; checkout: string; motivo: string }[];
@@ -143,7 +143,7 @@ export function CosaManca({ dati, ruoloTitolare, onApriPrenotazione, onVai }: { 
             {b.pagamenti.map((p) => <div key={p.id} className="row" style={{ cursor: 'pointer' }} onClick={() => onApriPrenotazione(p.id)}>{p.ospite} <small>{p.alloggio} · arrivo {dataIt(p.checkin)}</small><b style={{ marginLeft: 'auto' }}>{eur(p.residuo)}</b></div>)}
           </Blocco>
           <Blocco titolo="Pulizie di oggi e domani" chip={b.pulizie.length} colore="#C97A16" vuoto="Nessuna pulizia da fare.">
-            {b.pulizie.map((p) => <div key={p.id} className="row" style={{ cursor: 'pointer' }} onClick={() => onVai('pulizie')}>{p.alloggio} <small>{dataIt(p.data)}</small></div>)}
+            {b.pulizie.map((p) => <div key={p.id} className="row" style={{ cursor: 'pointer', ...(p.urgente ? { borderLeft: '3px solid #E5484D', paddingLeft: 6 } : {}) }} onClick={() => onVai('pulizie')}>{p.alloggio} <small>{dataIt(p.data)}</small>{p.urgente && <span className="chip" style={{ background: '#E5484D22', color: '#E5484D', fontWeight: 800 }}>⚡ urgente: arrivo lo stesso giorno</span>}</div>)}
           </Blocco>
           <Blocco titolo="Scadenze (prossimi 30 giorni)" chip={b.scadenze.length} colore="#8C7BD8" vuoto="Nessuna scadenza in arrivo.">
             {b.scadenze.map((s) => <div key={s.id} className="row" style={{ cursor: 'pointer' }} onClick={() => onVai('scadenze')}>{s.titolo} <small>{dataIt(s.data)}{s.immobile ? ` · ${s.immobile}` : ''}</small></div>)}

@@ -11,6 +11,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import { mascheraDocumento } from '../mascheratura';
+import { checklistDi } from '../pulizieRegole';
 import { soggiorniPerOspite } from './ospitiGestione';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
@@ -440,19 +441,32 @@ export async function leggiScadenzeDb() {
     .orderBy(scadenze.data_scadenza);
 }
 
+/** Pulizie con addetto, orario, note e checklist (voci dell'alloggio e voci spuntate), e il prossimo check-in dello stesso alloggio:
+ *  se è lo stesso giorno della pulizia, la pulizia è urgente (punto 9, 23/11/2026). */
 export async function leggiPulizieDb() {
   const db = getDb();
-  return db
+  const righe = await db
     .select({
       id: pulizie.id, data: pulizie.data, alloggioId: pulizie.alloggio_id, alloggio: alloggi.nome,
       confermataIl: pulizie.confermata_il, note: pulizie.note, origine: pulizie.origine,
-      addettoNome: utenti.nome, prenotazioneId: pulizie.prenotazione_id,
+      addettoId: pulizie.addetto_id, addettoNome: utenti.nome, prenotazioneId: pulizie.prenotazione_id,
       pagata: pulizie.pagata, importo: pulizie.importo,
+      oraPrevista: pulizie.ora_prevista, checklistFatta: pulizie.checklist_fatta, checklistAlloggio: alloggi.checklist_pulizie,
     })
     .from(pulizie)
     .innerJoin(alloggi, eq(alloggi.id, pulizie.alloggio_id))
     .leftJoin(utenti, eq(utenti.id, pulizie.addetto_id))
     .orderBy(desc(pulizie.data));
+  const arrivi = await db.select({ alloggioId: prenotazioni.alloggio_id, checkin: prenotazioni.checkin, id: prenotazioni.id })
+    .from(prenotazioni).where(sql`${prenotazioni.stato} in ('Attiva', 'In attesa di conferma')`);
+  return righe.map((r) => {
+    const prossimi = arrivi.filter((a) => a.alloggioId === r.alloggioId && a.checkin >= r.data && a.id !== r.prenotazioneId).map((a) => a.checkin).sort();
+    let fatte: string[] = [];
+    try { const j = r.checklistFatta ? JSON.parse(r.checklistFatta) : []; if (Array.isArray(j)) fatte = j.map(String); } catch { /* checklist illeggibile: si riparte vuota */ }
+    const { checklistAlloggio, checklistFatta: _c, ...resto } = r;
+    void _c;
+    return { ...resto, prossimoCheckin: prossimi[0] ?? null, checklist: checklistDi(checklistAlloggio), checklistFatta: fatte };
+  });
 }
 
 // ── Riepiloghi (dashboard / rendiconti) ────────────────────────────────────

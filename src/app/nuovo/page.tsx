@@ -267,7 +267,7 @@ export default function Nuovo() {
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
-              <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
+              <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send). Dal 23/11/2026 l’invio si blocca se le schedine non sono tante quanti gli ospiti scritti nella prenotazione: correggi il numero di ospiti o aggiungi la schedina mancante (si può forzare solo da &quot;invia comunque&quot;, con un avviso, e resta nel Registro)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
               <li><b>Adempimenti</b> (solo Titolare) — gli arrivi del periodo con lo stato delle schedine per Alloggiati Web (da preparare, pronta, inviata, con errore), il file nel tracciato ufficiale da scaricare e caricare tu sul portale, “segna inviata” a mano e lo stato mensile di Sinfonia. Niente parte da solo. In Dashboard, sotto “Cosa manca”, compaiono le schedine mancanti o in ritardo (termine: 24 ore dall’arrivo)</li>
@@ -449,12 +449,13 @@ export default function Nuovo() {
                       { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
                       { k: 'trasmetteRegione', label: 'Trasmette al portale regionale', tipo: 'checkbox' },
                       { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune' },
+                      { k: 'checklistPulizie', label: 'Checklist pulizie (una voce per riga; vuoto = biancheria, cortesia, rifornimenti)', tipo: 'textarea' },
                       { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — €/persona/notte', tipo: 'number' },
                     ], iniziali: {
                       nome: a.nome, regimeFiscale: a.regime_fiscale, costoPulizia: a.costo_pulizia, attivo: a.attivo,
                       wifiSsid: a.wifi_ssid, wifiPassword: '', trasmetteAlloggiati: a.trasmette_alloggiati,
                       trasmetteRegione: a.trasmette_regione, impostaSoggiornoComune: a.imposta_soggiorno_comune,
-                      impostaSoggiornoImporto: a.imposta_soggiorno_importo,
+                      impostaSoggiornoImporto: a.imposta_soggiorno_importo, checklistPulizie: a.checklist_pulizie ?? '',
                     } })} style={{ cursor: sess.ruolo === 'Titolare' ? 'pointer' : 'default' }}>
                       <b>{a.emoji} {a.nome}</b>
                       <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale}</span>
@@ -542,13 +543,16 @@ export default function Nuovo() {
         const tutte = dati.pulizie ?? [];
         const operatori = dati.operatoriPulizie ?? [];
         const puoGestire = sess.ruolo !== 'Proprietario';
-        const daFare = tutte.filter((pu) => !pu.confermataIl).sort((a, b) => a.data.localeCompare(b.data));
+        // Una pulizia è "da fare" solo dal giorno del check-out (punto 9, 23/11/2026): quelle future si vedono ma non si possono segnare
+        const daFareTutte = tutte.filter((pu) => !pu.confermataIl).sort((a, b) => a.data.localeCompare(b.data));
+        const daFare = daFareTutte.filter((pu) => pu.data <= oggi);
+        const inArrivo = daFareTutte.filter((pu) => pu.data > oggi);
         const fatte = tutte.filter((pu) => pu.confermataIl).slice(0, 20);
         return (
           <>
           <div className="card">
             <div className="cardhead">
-              <h2>Pulizie <small>({daFare.length} da fare)</small></h2>
+              <h2>Pulizie <small>({daFare.length} da fare{inArrivo.length ? `, ${inArrivo.length} in arrivo` : ''})</small></h2>
               {puoGestire && <button className="add" onClick={() => setModale({
                 titolo: 'Pulizia extra', azione: 'crea-pulizia',
                 iniziali: { alloggioId: dati.alloggi.find((a) => a.attivo)?.id },
@@ -562,15 +566,20 @@ export default function Nuovo() {
               })}>＋ Pulizia extra</button>}
             </div>
             <p className="sub">Quelle di check-out si aggiungono da sole quando registri una prenotazione. Usa &quot;Pulizia extra&quot; solo per richieste in più durante il soggiorno (a pagamento) o pulizie fuori da un soggiorno.</p>
-            {daFare.length === 0 ? <p className="empty">Nessuna pulizia da fare.</p> : daFare.map((pu) => (
-              <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} onCambiato={carica} />
+            {daFare.length === 0 ? <p className="empty">Nessuna pulizia da fare oggi.</p> : daFare.map((pu) => (
+              <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} />
             ))}
+            {inArrivo.length > 0 && <>
+              <h3 style={{ marginTop: 16 }}><span>In arrivo <small>(si fanno dal giorno del check-out)</small></span></h3>
+              {inArrivo.map((pu) => <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} />)}
+            </>}
             <h3 style={{ marginTop: 16 }}><span>Fatte di recente</span></h3>
             {fatte.length === 0 ? <p className="empty">Nessuna pulizia ancora confermata.</p> : fatte.map((pu) => (
               <div key={pu.id} className="docrow">
                 <span className="pill pill-Accettato">{dataIt(pu.data)}</span>
                 <b>{pu.alloggio}</b>
                 <span className="empty">{pu.addettoNome ? `fatta da ${pu.addettoNome}` : 'fatta'} il {new Date(pu.confermataIl!).toLocaleDateString('it-IT')}</span>
+                {pu.confermataIl && pu.confermataIl.slice(0, 10) < pu.data && <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }} title="Segnata fatta prima del giorno del check-out">fatta in anticipo</span>}
                 {pu.pagata && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>pagata{pu.importo ? ` · ${eur(Number(pu.importo))}` : ''}</span>}
                 {pu.note && <span className="empty" style={{ flexBasis: '100%' }}>{pu.note}</span>}
               </div>
