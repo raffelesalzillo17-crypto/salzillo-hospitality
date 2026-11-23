@@ -34,7 +34,7 @@ export default function Nuovo() {
   const [authChecked, setAuthChecked] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida' | 'registro' | 'adempimenti'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida' | 'registro' | 'adempimenti' | 'documentiospiti'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -148,8 +148,9 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti'] as const)
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti', 'documentiospiti'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .filter((t) => t !== 'documentiospiti' || sess.ruolo === 'Titolare' || (sess.ruolo === 'Collaboratore' && sess.vedeFinanziario))
           .filter((t) => t !== 'adempimenti' || sess.ruolo === 'Titolare')
           .filter((t) => t !== 'registro' || sess.ruolo === 'Titolare')
           .filter((t) => sess.ruolo !== 'Pulizie' || t === 'pulizie' || t === 'guida')
@@ -235,7 +236,8 @@ export default function Nuovo() {
 
       {tab === 'link' && <LinkUtiliBox link={dati.linkUtili ?? []} puoModificare={sess.puoModificare} onCambiato={carica} />}
 
-      {tab === 'documenti' && <Documenti preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
+      {tab === 'documenti' && <Documenti sezione="preventivi" preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
+      {tab === 'documentiospiti' && <Documenti sezione="documenti" preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
       {tab === 'guida' && (
         <div className="grid">
@@ -265,7 +267,8 @@ export default function Nuovo() {
               <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Due viste, <b>Mese</b> e <b>Settimana</b> (la settimana parte dal lunedì; da telefono si apre la settimana, che sta tutta sullo schermo), pulsante <b>Oggi</b>. Passando col mouse (o toccando, da telefono) su una prenotazione compare un’anteprima con ospite, notti, canale e stato del pagamento. Per bloccare delle notti trascini su una riga vuota (da telefono: tocchi il primo e l’ultimo giorno) e ti viene sempre chiesta conferma. In alto compare un avviso se ci sono sovrapposizioni con i calendari Airbnb/Booking. Prezzi per data e alloggio solo per il Titolare. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
-              <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
+              <li><b>Preventivi</b> — Bozza → Inviato → Accettato. "Converti in prenotazione" crea la prenotazione con gli stessi dati e dice se qualcosa differisce. Un preventivo accettato è <b>bloccato</b>: non si modifica né si elimina; se i dati cambiano crei una <b>nuova versione</b> (copia in Bozza). Se in seguito la prenotazione cambia importo, date o ospiti, sotto il preventivo compare l’elenco delle differenze. Gli altri si eliminano con conferma e restano 30 giorni nel cestino</li>
+              <li><b>Documenti ospiti</b> (Titolare e operatore) — una cartella per ospite con i file su Drive (contratti, ricevute…). I documenti d’identità li vede solo il Titolare</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
               <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>

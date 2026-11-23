@@ -12,6 +12,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import { mascheraDocumento } from '../mascheratura';
 import { checklistDi } from '../pulizieRegole';
+import { differenzePreventivoPrenotazione } from '../preventiviRegole';
 import { soggiorniPerOspite } from './ospitiGestione';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
@@ -256,7 +257,7 @@ export async function leggiAnagraficaDb() {
 /** Elenco preventivi (per la sezione Documenti). Più recenti prima. */
 export async function leggiPreventiviDb() {
   const db = getDb();
-  return db
+  const righe = await db
     .select({
       id: preventivi.id, codice: preventivi.codice, stato: preventivi.stato,
       checkin: preventivi.checkin, checkout: preventivi.checkout, numeroOspiti: preventivi.numero_ospiti,
@@ -267,12 +268,24 @@ export async function leggiPreventiviDb() {
       prenotazioneId: preventivi.prenotazione_id,
       alloggioId: preventivi.alloggio_id, alloggio: alloggi.nome, immobile: immobili.nome,
       ospiteId: preventivi.ospite_id, ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome, ospiteTelefono: ospiti.telefono,
+      versione: preventivi.versione, versioneDi: preventivi.versione_di,
     })
     .from(preventivi)
     .innerJoin(alloggi, eq(alloggi.id, preventivi.alloggio_id))
     .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
     .leftJoin(ospiti, eq(ospiti.id, preventivi.ospite_id))
     .orderBy(desc(preventivi.creato_il));
+  // Per i preventivi accettati: le differenze tra il preventivo e la prenotazione collegata (importo, date, ospiti…), sempre visibili.
+  const legate = righe.filter((r) => r.prenotazioneId).map((r) => r.prenotazioneId as string);
+  const pren = legate.length ? await db.select({ id: prenotazioni.id, alloggioId: prenotazioni.alloggio_id, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, numeroOspiti: prenotazioni.numero_ospiti, ospiteId: prenotazioni.ospite_id, lordo: prenotazioni.lordo, stato: prenotazioni.stato, alloggio: alloggi.nome }).from(prenotazioni).innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id)).where(inArray(prenotazioni.id, legate)) : [];
+  return righe.map((r) => {
+    const b = pren.find((x) => x.id === r.prenotazioneId);
+    const differenze = b ? differenzePreventivoPrenotazione(
+      { alloggioId: r.alloggioId, checkin: r.checkin, checkout: r.checkout, numeroOspiti: r.numeroOspiti, ospiteId: r.ospiteId, totale: Number(r.totale) },
+      { alloggioId: b.alloggioId, checkin: b.checkin, checkout: b.checkout, numeroOspiti: b.numeroOspiti, ospiteId: b.ospiteId, lordo: Number(b.lordo), stato: b.stato },
+      { alloggioPreventivo: r.alloggio, alloggioPrenotazione: b.alloggio }) : [];
+    return { ...r, differenze };
+  });
 }
 
 /** Richieste dal sito vetrina non ancora trasformate in preventivo (stato 'Nuova'). */

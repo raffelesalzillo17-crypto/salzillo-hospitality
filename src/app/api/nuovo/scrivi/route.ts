@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
       case 'crea-preventivo': r = await M.creaPreventivo({ ...(dati as Parameters<typeof M.creaPreventivo>[0]), creatoDa: sess.id }); break;
       case 'stato-preventivo': r = await M.aggiornaStatoPreventivo(id!, String(dati.stato)); break;
       case 'accetta-preventivo': r = await M.accettaPreventivo(id!, sess.id); break;
+      case 'nuova-versione-preventivo': r = await M.nuovaVersionePreventivo(id!, sess.id); break;
       case 'elimina-preventivo': r = await M.eliminaPreventivo(id!, sess.id); break;
       case 'ripristina-dal-cestino': r = await ripristinaDalCestino(id!); break;
       case 'controlla-drive': r = await controllaCondivisioneDrive(); break;

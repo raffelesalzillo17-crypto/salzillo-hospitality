@@ -16,6 +16,7 @@ import {
 import { nuovaChiaveAccesso, LUNGHEZZA_MINIMA_CHIAVE } from './auth';
 import { validaTelefono, validaEmail, validaCodiceFiscale } from '../ospitiQualita';
 import { oggiRoma, oraValida, puoSegnarsiFatta } from '../pulizieRegole';
+import { differenzePreventivoPrenotazione, MSG_BLOCCATO, preventivoBloccato } from '../preventiviRegole';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import { mettiNelCestino } from './registro';
 import { randomUUID } from 'node:crypto';
@@ -627,6 +628,7 @@ export async function eliminaPreventivo(id: string, eliminatoDa?: string) {
   const db = getDb();
   const [riga] = await db.select().from(preventivi).where(eq(preventivi.id, id));
   if (!riga) throw new Error('Preventivo non trovato');
+  if (preventivoBloccato(riga.stato, riga.prenotazione_id)) throw new Error(MSG_BLOCCATO);
   await mettiNelCestino('preventivo', riga, `Preventivo ${riga.codice}`, eliminatoDa);
   await db.update(richiestePubbliche).set({ stato: 'Nuova', preventivo_id: null, aggiornato_il: new Date() }).where(eq(richiestePubbliche.preventivo_id, id));
   await db.delete(preventivi).where(eq(preventivi.id, id));
@@ -635,6 +637,10 @@ export async function eliminaPreventivo(id: string, eliminatoDa?: string) {
 
 export async function aggiornaStatoPreventivo(id: string, stato: string) {
   const db = getDb();
+  const [attuale] = await db.select({ stato: preventivi.stato, prenotazione: preventivi.prenotazione_id }).from(preventivi).where(eq(preventivi.id, id));
+  if (!attuale) throw new Error('Preventivo non trovato');
+  if (preventivoBloccato(attuale.stato, attuale.prenotazione)) throw new Error(MSG_BLOCCATO);
+  if (stato === 'Accettato') throw new Error('Per accettare un preventivo usa "Converti in prenotazione": crea la prenotazione con gli stessi dati.');
   const set: Record<string, unknown> = { stato: stato as 'Bozza', aggiornato_il: new Date() };
   if (stato === 'Inviato') set.inviato_il = new Date();
   const [r] = await db.update(preventivi).set(set).where(eq(preventivi.id, id)).returning();
@@ -694,7 +700,30 @@ export async function accettaPreventivo(id: string, utenteId?: string) {
 
   const ctx = await contestoPreventivoPerFoglio(r);
   await aggiornaPreventivoSuFoglio(rigaPreventivoDa(r, ctx));
-  return { preventivo: r, prenotazione: pren };
+  // Confronto di controllo: la prenotazione appena creata deve avere gli stessi dati del preventivo; se qualcosa differisce si segnala.
+  const [b] = await db.select().from(prenotazioni).where(eq(prenotazioni.id, pren.id));
+  const differenze = differenzePreventivoPrenotazione(
+    { alloggioId: r.alloggio_id, checkin: r.checkin, checkout: r.checkout, numeroOspiti: r.numero_ospiti, ospiteId: r.ospite_id, totale: Number(r.totale) },
+    { alloggioId: b.alloggio_id, checkin: b.checkin, checkout: b.checkout, numeroOspiti: b.numero_ospiti, ospiteId: b.ospite_id, lordo: Number(b.lordo), stato: b.stato });
+  return { preventivo: r, prenotazione: pren, differenze };
+}
+
+/** Nuova versione di un preventivo (anche accettato): una copia in Bozza con un codice nuovo, legata all'originale. L'accettato resta com'è. */
+export async function nuovaVersionePreventivo(id: string, utenteId?: string) {
+  const db = getDb();
+  const [p] = await db.select().from(preventivi).where(eq(preventivi.id, id));
+  if (!p) throw new Error('Preventivo non trovato');
+  const radice = p.versione_di ?? p.id;
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(preventivi).where(sql`${preventivi.id} = ${radice} or ${preventivi.versione_di} = ${radice}`);
+  const nuovo = await creaPreventivo({
+    alloggioId: p.alloggio_id, checkin: p.checkin, checkout: p.checkout, numeroOspiti: p.numero_ospiti,
+    prezzoNotte: p.prezzo_notte != null ? Number(p.prezzo_notte) : undefined, prezzo: p.prezzo_notte == null ? Number(p.totale_pieno) : undefined,
+    // lo sconto salvato è già l'importo in euro (anche se era una percentuale): si ricopia tale e quale
+    sconto: Number(p.sconto), scontoTipo: 'euro', validoOre: p.valido_ore, ospiteId: p.ospite_id ?? undefined,
+    note: p.note ?? undefined, creatoDa: utenteId,
+  });
+  const [r] = await db.update(preventivi).set({ versione: Number(n) + 1, versione_di: radice, sconto_tipo: p.sconto_tipo, aggiornato_il: new Date() }).where(eq(preventivi.id, nuovo.id)).returning();
+  return r;
 }
 
 // ── Eventi locali / Prezzi per periodo ──────────────────────────────────────

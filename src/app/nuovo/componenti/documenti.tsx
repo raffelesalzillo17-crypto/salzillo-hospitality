@@ -5,7 +5,9 @@ import type { DocumentoCaricato, Ospite, Preventivo, Richiesta } from '../tipi';
 import { api, dataIt, eur } from '../utilita';
 
 // ── Documenti / Preventivi ─────────────────────────────────────────────────
-export function Documenti({ preventivi, documenti, richieste, ospiti, puoModificare, ruoloTitolare, onCambiato, onNuovoPreventivo }: {
+export function Documenti({ sezione = 'preventivi', preventivi, documenti, richieste, ospiti, puoModificare, ruoloTitolare, onCambiato, onNuovoPreventivo }: {
+  /** Punto 10 (23/11/2026): due sezioni separate, Preventivi e Documenti ospiti (accesso limitato). */
+  sezione?: 'preventivi' | 'documenti';
   preventivi: Preventivo[]; documenti: DocumentoCaricato[]; richieste: Richiesta[]; ospiti: Ospite[]; puoModificare: boolean; ruoloTitolare: boolean; onCambiato: () => Promise<void>; onNuovoPreventivo: () => void;
 }) {
   const [q, setQ] = useState('');
@@ -14,11 +16,17 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
   const [apri, setApri] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
   const [prezzoRichiesta, setPrezzoRichiesta] = useState<Record<string, string>>({});
 
-  async function azione(id: string, a: 'stato-preventivo' | 'accetta-preventivo' | 'elimina-preventivo', stato?: string) {
-    setBusy(id); setErr('');
-    try { await api(a, { id, dati: stato ? { stato } : {} }); await onCambiato(); }
+  async function azione(id: string, a: 'stato-preventivo' | 'accetta-preventivo' | 'elimina-preventivo' | 'nuova-versione-preventivo', stato?: string) {
+    setBusy(id); setErr(''); setMsg('');
+    try {
+      const r = await api(a, { id, dati: stato ? { stato } : {} }) as { differenze?: string[]; versione?: number; codice?: string } | undefined;
+      if (a === 'accetta-preventivo') setMsg(r?.differenze?.length ? `⚠️ Prenotazione creata, ma con differenze dal preventivo:\n• ${r.differenze.join('\n• ')}` : '✓ Prenotazione creata con gli stessi dati del preventivo: nessuna differenza.');
+      if (a === 'nuova-versione-preventivo') setMsg(`✓ Creata la nuova versione ${r?.codice ?? ''} (versione ${r?.versione ?? ''}) in Bozza.`);
+      await onCambiato();
+    }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(''); }
   }
@@ -41,7 +49,7 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
   }
 
   const ql = q.trim().toLowerCase();
-  const filtr = preventivi.filter((p) => {
+  const filtr = (sezione === 'documenti' ? [] : preventivi).filter((p) => {
     const nome = `${p.ospiteCognome ?? ''} ${p.ospiteNome ?? ''}`.trim();
     if (ql && !`${nome} ${p.codice} ${p.alloggio}`.toLowerCase().includes(ql)) return false;
     if (statoF && p.stato !== statoF) return false;
@@ -56,7 +64,7 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
     gruppi.get(k)!.righe.push(p);
   }
   const dql = q.trim().toLowerCase();
-  for (const d of documenti) {
+  for (const d of (sezione === 'preventivi' ? [] : documenti)) {
     if (!d.ospiteId) continue;
     const o = ospiti.find((x) => x.id === d.ospiteId);
     const nome = o ? `${o.cognome} ${o.nome}`.trim() : 'Senza nome';
@@ -101,9 +109,9 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
   return (
     <div className="card">
       <div className="cardhead">
-        <h2>Preventivi <small>· {preventivi.length} preventivi · {documenti.length} file su Drive</small></h2>
+        <h2>{sezione === 'documenti' ? 'Documenti ospiti' : 'Preventivi'} <small>· {sezione === 'documenti' ? `${documenti.length} file su Drive` : `${preventivi.length} preventivi`}</small></h2>
         <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {ruoloTitolare && <button className="mini" disabled={backfillBusy} onClick={async () => {
+          {sezione === 'preventivi' && ruoloTitolare && <button className="mini" disabled={backfillBusy} onClick={async () => {
             setBackfillBusy(true);
             try {
               const r = await api('backfill-preventivi-drive') as { salvati: string[]; saltati: string[] };
@@ -112,20 +120,23 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
             } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
             finally { setBackfillBusy(false); }
           }}>{backfillBusy ? '…' : '📤 Recupera vecchi su Drive'}</button>}
-          {puoModificare && <button className="add" onClick={onNuovoPreventivo}>＋ Nuovo preventivo</button>}
+          {sezione === 'preventivi' && puoModificare && <button className="add" onClick={onNuovoPreventivo}>＋ Nuovo preventivo</button>}
         </span>
       </div>
-      <p className="empty" style={{ marginTop: -4 }}>Una cartella per ospite. Contratti e ricevute generati da qui in poi si aggiungono da soli.</p>
+      <p className="empty" style={{ marginTop: -4 }}>{sezione === 'documenti'
+        ? `Una cartella per ospite, con i file salvati su Drive (contratti, ricevute…). Accesso limitato${ruoloTitolare ? '' : ': i documenti d\'identità li vede solo il Titolare'}.`
+        : 'Un preventivo accettato si blocca: non si modifica né si elimina. Se i dati cambiano, crei una nuova versione.'}</p>
       <div className="filtri">
         <input className="cerca" placeholder="Cerca ospite, codice, alloggio…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={statoF} onChange={(e) => setStatoF(e.target.value)}>
+        {sezione === 'preventivi' && <select value={statoF} onChange={(e) => setStatoF(e.target.value)}>
           <option value="">Ogni stato</option>
           {['Bozza', 'Inviato', 'Accettato', 'Scaduto', 'Rifiutato'].map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        </select>}
       </div>
       {err && <p className="err">{err}</p>}
+      {msg && <p className="empty" style={{ whiteSpace: 'pre-line', color: msg.startsWith('⚠') ? '#C97A16' : '#1FAA6E' }}>{msg}</p>}
 
-      {richieste.length > 0 && (
+      {sezione === 'preventivi' && richieste.length > 0 && (
         <div className="docgroup">
           <h3><span>🌐 Richieste dal sito</span><span className="empty">{richieste.length} da gestire</span></h3>
           {richieste.map((r) => (
@@ -167,6 +178,8 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
                 <div className="docrow">
                   <span className={`pill pill-${p.stato}`}>{p.stato}</span>
                   <b>{p.codice}</b>
+                  {(p.versione ?? 1) > 1 && <span className="chip" style={{ background: '#8C7BD822', color: '#8C7BD8' }}>versione {p.versione}</span>}
+                  {p.stato === 'Accettato' && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }} title="Accettato: non si può più modificare">🔒 bloccato</span>}
                   <span>{p.alloggio} · {dataIt(p.checkin)}→{dataIt(p.checkout)} · {eur(Number(p.totale))}</span>
                   {scaduto && <span className="pill pill-Scaduto">tempo scaduto</span>}
                   <span className="azioni">
@@ -174,18 +187,25 @@ export function Documenti({ preventivi, documenti, richieste, ospiti, puoModific
                     <a className="mini" href={`${url}&download=1`} target="_blank" rel="noopener">PDF</a>
                     {p.ospiteTelefono && <a className="mini coral" href={waUrl(p)} target="_blank" rel="noopener">💬 WhatsApp</a>}
                     {puoModificare && p.stato === 'Bozza' && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Inviato')}>→ Inviato</button>}
-                    {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini coral" disabled={busy === p.id} onClick={() => { if (confirm(`Accettare ${p.codice}? Creo la prenotazione e blocco le date.`)) azione(p.id, 'accetta-preventivo'); }}>✓ Accettato</button>}
+                    {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini coral" disabled={busy === p.id} onClick={() => { if (confirm(`Convertire ${p.codice} in prenotazione?\n\nSi crea una prenotazione Diretta con gli stessi dati (${p.alloggio}, ${dataIt(p.checkin)}→${dataIt(p.checkout)}, ${p.numeroOspiti} ospiti, ${eur(Number(p.totale))}), si bloccano le date e il preventivo diventa accettato e non più modificabile.`)) azione(p.id, 'accetta-preventivo'); }}>✓ Converti in prenotazione</button>}
+                    {puoModificare && <button className="mini" disabled={busy === p.id} onClick={() => { if (confirm(`Creare una nuova versione di ${p.codice}? Si crea una copia in Bozza con un codice nuovo${p.stato === 'Accettato' ? '; quello accettato resta com\'è' : ''}.`)) azione(p.id, 'nuova-versione-preventivo'); }}>📝 Nuova versione</button>}
                     {puoModificare && (p.stato === 'Bozza' || p.stato === 'Inviato') && <button className="mini" disabled={busy === p.id} onClick={() => azione(p.id, 'stato-preventivo', 'Rifiutato')}>✕</button>}
-                    {puoModificare && <button className="mini" disabled={busy === p.id} onClick={() => { if (confirm(`Eliminare del tutto il preventivo ${p.codice}? Non si può annullare.`)) azione(p.id, 'elimina-preventivo'); }}>🗑 Elimina</button>}
+                    {puoModificare && p.stato !== 'Accettato' && <button className="mini" disabled={busy === p.id} onClick={() => { if (confirm(`Eliminare il preventivo ${p.codice}? Resta 30 giorni nel cestino.`)) azione(p.id, 'elimina-preventivo'); }}>🗑 Elimina</button>}
                   </span>
                 </div>
+                {(p.differenze ?? []).length > 0 && (
+                  <div className="err" style={{ margin: '2px 0 6px 8px' }}>
+                    <b>⚠️ La prenotazione non coincide più col preventivo:</b>
+                    {(p.differenze ?? []).map((x, i) => <div key={i}><small>• {x}</small></div>)}
+                  </div>
+                )}
                 {apri === p.id && <iframe src={url} title={p.codice} style={{ width: '100%', height: 420, border: '1px solid var(--line)', borderRadius: 10, background: '#fff', margin: '6px 0' }} />}
               </div>
             );
           })}
         </div>
       ))}
-      <p className="empty" style={{ marginTop: 10 }}>Contratti e ricevute generati dalle rispettive schede si salvano da soli su Drive e compaiono qui. I documenti creati prima del 13/09/2026 restano solo su Drive, non ancora in questo elenco.</p>
+      {sezione === 'documenti' && <p className="empty" style={{ marginTop: 10 }}>Contratti e ricevute generati dalle rispettive schede si salvano da soli su Drive e compaiono qui. I documenti creati prima del 13/09/2026 restano solo su Drive, non ancora in questo elenco.</p>}
     </div>
   );
 }

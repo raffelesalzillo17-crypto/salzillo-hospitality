@@ -118,7 +118,8 @@ export async function GET(req: NextRequest) {
       categorieSpesa: soloPulizie ? [] : categorieSpesa,
       preventivi: sess.vedeFinanziario && !soloPulizie ? preventivi : [],
       richieste: sess.vedeFinanziario && !soloPulizie ? richieste : [],
-      documenti: sess.vedeFinanziario && !soloPulizie ? documenti : [],
+      // Documenti ospiti (punto 10, 23/11/2026): i documenti d'identità li vede solo il Titolare
+      documenti: sess.vedeFinanziario && !soloPulizie ? documenti.filter((d) => titolare || d.tipo !== 'Documento identità') : [],
       eventi: soloPulizie ? [] : eventi,
       prezzi: soloPulizie || !titolare ? [] : prezzi,
       linkUtili: soloPulizie ? [] : linkUtili,

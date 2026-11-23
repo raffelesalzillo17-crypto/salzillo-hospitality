@@ -429,6 +429,9 @@ export const preventivi = pgTable('preventivi', {
   inviato_il: timestamp('inviato_il', { withTimezone: true }),
   accettato_il: timestamp('accettato_il', { withTimezone: true }),
   creato_da: uuid('creato_da').references(() => utenti.id),
+  // Punto 10 (23/11/2026): un preventivo accettato è bloccato; si cambia creando una nuova versione. SQL: drizzle/manuali/0009_preventivi_versioni.sql
+  versione: integer('versione').notNull().default(1),
+  versione_di: uuid('versione_di'),
 });
 
 // Richieste grezze arrivate dal sito vetrina (/soggiorna) — NON sono ancora un preventivo:

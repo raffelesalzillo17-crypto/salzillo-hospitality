@@ -98,6 +98,7 @@ export type Preventivo = {
   creatoIl: string; inviatoIl: string | null; accettatoIl: string | null; prenotazioneId: string | null;
   alloggioId: string; alloggio: string; immobile: string;
   ospiteId: string | null; ospiteNome: string | null; ospiteCognome: string | null; ospiteTelefono: string | null;
+  versione?: number; versioneDi?: string | null; differenze?: string[];
 };
 
 export type Richiesta = {
