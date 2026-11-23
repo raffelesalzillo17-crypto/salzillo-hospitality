@@ -11,6 +11,8 @@
 export type RigaResoconto = {
   checkin: string; checkout: string; canale: string; alloggio: string; ospiti: number; lordo: number;
   impostaImporto: number; impostaMaxNotti: number | null;
+  /** Regime della prenotazione (punto 3): 'No Tax' = esente da ogni imposta, tassa di soggiorno compresa. */
+  regime?: string;
 };
 
 export type MeseResoconto = { mese: number; prenotazioni: number; lordo: number; tassa: number; nottiOccupate: number; occupazione: number };
@@ -19,6 +21,8 @@ export type Resoconto = {
   mesi: MeseResoconto[];
   totali: { prenotazioni: number; lordo: number; tassa: number; nottiOccupate: number; occupazione: number };
   perCanale: { canale: string; prenotazioni: number; lordo: number }[];
+  /** Per regime fiscale (Ordinario, Esente da tassa di soggiorno, No Tax): separato dal canale. */
+  perRegime: { regime: string; prenotazioni: number; lordo: number; tassa: number }[];
   /** Tassa di soggiorno per alloggio, dodici valori (gennaio → dicembre). */
   tassaPerAlloggio: { alloggio: string; mesi: number[]; totale: number }[];
 };
@@ -28,8 +32,8 @@ const giorniDelMese = (anno: number, mese: number) => new Date(Date.UTC(anno, me
 const giorni = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const iso = (anno: number, mese: number, g: number) => `${anno}-${String(mese).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
 
-export function tassaPrenotazione(r: Pick<RigaResoconto, 'checkin' | 'checkout' | 'ospiti' | 'impostaImporto' | 'impostaMaxNotti'>): number {
-  if (!r.impostaImporto) return 0;
+export function tassaPrenotazione(r: Pick<RigaResoconto, 'checkin' | 'checkout' | 'ospiti' | 'impostaImporto' | 'impostaMaxNotti'> & { regime?: string }): number {
+  if (!r.impostaImporto || r.regime === 'No Tax') return 0;
   let notti = Math.max(1, giorni(r.checkin, r.checkout));
   if (r.impostaMaxNotti) notti = Math.min(notti, r.impostaMaxNotti);
   return r2(notti * r.ospiti * r.impostaImporto);
@@ -48,6 +52,7 @@ export function costruisciResoconto(anno: number, righe: RigaResoconto[], allogg
   const mesi: MeseResoconto[] = [];
   const perCanale = new Map<string, { prenotazioni: number; lordo: number }>();
   const tassaAll = new Map<string, number[]>();
+  const perRegime = new Map<string, { prenotazioni: number; lordo: number; tassa: number }>();
   for (let m = 1; m <= 12; m++) {
     const delMese = righe.filter((r) => r.checkin.startsWith(`${anno}-${String(m).padStart(2, '0')}`));
     const notti = righe.reduce((s, r) => s + nottiNelMese(r, anno, m), 0);
@@ -60,6 +65,8 @@ export function costruisciResoconto(anno: number, righe: RigaResoconto[], allogg
     for (const r of delMese) {
       const c = perCanale.get(r.canale) ?? { prenotazioni: 0, lordo: 0 };
       c.prenotazioni++; c.lordo = r2(c.lordo + r.lordo); perCanale.set(r.canale, c);
+      const reg = perRegime.get(r.regime ?? 'Ordinario') ?? { prenotazioni: 0, lordo: 0, tassa: 0 };
+      reg.prenotazioni++; reg.lordo = r2(reg.lordo + r.lordo); reg.tassa = r2(reg.tassa + tassaPrenotazione(r)); perRegime.set(r.regime ?? 'Ordinario', reg);
       const t = tassaPrenotazione(r);
       if (t) {
         const v = tassaAll.get(r.alloggio) ?? Array(12).fill(0);
@@ -75,6 +82,7 @@ export function costruisciResoconto(anno: number, righe: RigaResoconto[], allogg
       prenotazioni: mesi.reduce((s, x) => s + x.prenotazioni, 0), lordo: r2(mesi.reduce((s, x) => s + x.lordo, 0)), tassa: r2(mesi.reduce((s, x) => s + x.tassa, 0)),
       nottiOccupate: nottiTot, occupazione: alloggiAttivi ? Math.round((nottiTot / (alloggiAttivi * giorniAnno)) * 1000) / 10 : 0,
     },
+    perRegime: [...perRegime.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([regime, x]) => ({ regime, ...x })),
     perCanale: [...perCanale.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([canale, x]) => ({ canale, ...x })),
     tassaPerAlloggio: [...tassaAll.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([alloggio, mesi12]) => ({ alloggio, mesi: mesi12, totale: r2(mesi12.reduce((s, x) => s + x, 0)) })),
   };
@@ -113,6 +121,11 @@ export function fogliResoconto(c: Resoconto, p: Resoconto): FoglioDati[] {
       righe: [...new Set([...c.perCanale.map((x) => x.canale), ...p.perCanale.map((x) => x.canale)])].sort().map((can) => {
         const a = c.perCanale.find((x) => x.canale === can), b = p.perCanale.find((x) => x.canale === can);
         return [can, a?.prenotazioni ?? 0, a?.lordo ?? 0, b?.prenotazioni ?? 0, b?.lordo ?? 0] as (string | number | null)[];
+      }) },
+    { nome: 'Per regime fiscale', intestazioni: ['Regime', 'Prenotazioni', 'Incasso lordo', 'Tassa di soggiorno', `Prenotazioni ${p.anno}`, `Incasso lordo ${p.anno}`],
+      righe: [...new Set([...c.perRegime.map((x) => x.regime), ...p.perRegime.map((x) => x.regime)])].sort().map((reg) => {
+        const a = c.perRegime.find((x) => x.regime === reg), b = p.perRegime.find((x) => x.regime === reg);
+        return [reg, a?.prenotazioni ?? 0, a?.lordo ?? 0, a?.tassa ?? 0, b?.prenotazioni ?? 0, b?.lordo ?? 0] as (string | number | null)[];
       }) },
     { nome: 'Tassa per alloggio', intestazioni: ['Alloggio', ...NOMI_MESI, 'Totale'],
       righe: c.tassaPerAlloggio.map((x) => [x.alloggio, ...x.mesi, x.totale] as (string | number | null)[]),

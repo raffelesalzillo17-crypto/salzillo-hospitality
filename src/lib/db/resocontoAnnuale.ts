@@ -9,12 +9,12 @@ export async function leggiResoconto(anno: number, immobiliAmmessi: string[] | '
   const ammessi = immobiliAmmessi === 'tutti' ? undefined : inArray(alloggi.immobile_id, immobiliAmmessi.length ? immobiliAmmessi : ['00000000-0000-0000-0000-000000000000']);
   const righe = await db.select({
     checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale, alloggio: alloggi.nome,
-    ospiti: prenotazioni.numero_ospiti, lordo: prenotazioni.lordo, imposta: alloggi.imposta_soggiorno_importo, impostaMax: alloggi.imposta_soggiorno_max_notti,
+    ospiti: prenotazioni.numero_ospiti, regime: prenotazioni.regime_prenotazione, lordo: prenotazioni.lordo, imposta: alloggi.imposta_soggiorno_importo, impostaMax: alloggi.imposta_soggiorno_max_notti,
   }).from(prenotazioni).innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
     .where(and(eq(prenotazioni.stato, 'Attiva'), lte(prenotazioni.checkin, `${anno}-12-31`), gte(prenotazioni.checkout, `${anno}-01-01`), ammessi));
   const attivi = await db.select({ id: alloggi.id }).from(alloggi).where(and(eq(alloggi.attivo, true), ammessi));
   const rr: RigaResoconto[] = righe.map((r) => ({
-    checkin: r.checkin, checkout: r.checkout, canale: r.canale, alloggio: r.alloggio, ospiti: r.ospiti, lordo: Number(r.lordo),
+    checkin: r.checkin, checkout: r.checkout, canale: r.canale, alloggio: r.alloggio, ospiti: r.ospiti, regime: r.regime, lordo: Number(r.lordo),
     impostaImporto: Number(r.imposta ?? 0), impostaMaxNotti: r.impostaMax ?? null,
   }));
   return costruisciResoconto(anno, rr, attivi.length);

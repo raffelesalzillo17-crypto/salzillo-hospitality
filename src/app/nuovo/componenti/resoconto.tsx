@@ -35,7 +35,7 @@ export function ResocontoAnnuale({ oggi }: { oggi: string }) {
         <h2>Resoconto annuale <small>· per anno fiscale</small></h2>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={anno} onChange={(e) => setAnno(Number(e.target.value))}>{anni.map((a) => <option key={a} value={a}>{a}</option>)}</select>
-          <a className="mini" href={`/api/nuovo/resoconto-annuale?anno=${anno}&formato=xlsx`} style={{ textDecoration: 'none' }}>⬇ Excel (4 fogli)</a>
+          <a className="mini" href={`/api/nuovo/resoconto-annuale?anno=${anno}&formato=xlsx`} style={{ textDecoration: 'none' }}>⬇ Excel (5 fogli)</a>
           <a className="mini" href={`/api/nuovo/resoconto-annuale?anno=${anno}&formato=csv&foglio=mesi`} style={{ textDecoration: 'none' }}>⬇ CSV mesi</a>
         </span>
       </div>
@@ -91,6 +91,19 @@ export function ResocontoAnnuale({ oggi }: { oggi: string }) {
                   return <tr key={can}><td>{can}</td><td className="num">{a?.prenotazioni ?? 0}</td><td className="num">{eur(a?.lordo ?? 0)}</td><td className="num">{b?.prenotazioni ?? 0}</td><td className="num">{eur(b?.lordo ?? 0)}</td></tr>;
                 })}
                 {c.perCanale.length === 0 && p.perCanale.length === 0 && <tr><td colSpan={5} className="empty">Nessuna prenotazione in questi due anni.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style={{ marginTop: 16 }}>Per regime fiscale</h3>
+          <div className="tablescroll">
+            <table className="tbl full">
+              <thead><tr><th>Regime</th><th className="num">Prenotazioni</th><th className="num">Incasso lordo</th><th className="num">Tassa di soggiorno</th><th className="num">{p.anno}: prenotazioni</th><th className="num">{p.anno}: lordo</th></tr></thead>
+              <tbody>
+                {[...new Set([...c.perRegime.map((x) => x.regime), ...p.perRegime.map((x) => x.regime)])].sort().map((reg) => {
+                  const a = c.perRegime.find((x) => x.regime === reg), b = p.perRegime.find((x) => x.regime === reg);
+                  return <tr key={reg}><td>{reg}</td><td className="num">{a?.prenotazioni ?? 0}</td><td className="num">{eur(a?.lordo ?? 0)}</td><td className="num">{eur(a?.tassa ?? 0)}</td><td className="num">{b?.prenotazioni ?? 0}</td><td className="num">{eur(b?.lordo ?? 0)}</td></tr>;
+                })}
               </tbody>
             </table>
           </div>

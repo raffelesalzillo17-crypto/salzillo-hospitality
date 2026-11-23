@@ -38,7 +38,7 @@ export async function datiCommercialista(anno: number, proprietarioId: string | 
     canale: prenotazioni.canale, ospiti: prenotazioni.numero_ospiti, stato: prenotazioni.stato,
     lordo: prenotazioni.lordo, commissione: prenotazioni.commissione, cedolare: prenotazioni.cedolare, pulizia: prenotazioni.costo_pulizia,
     fee: prenotazioni.fee_gestione, utile: prenotazioni.utile, netto: prenotazioni.netto_proprietario, penale: prenotazioni.penale_importo,
-    imposta: alloggi.imposta_soggiorno_importo, impostaMax: alloggi.imposta_soggiorno_max_notti, immobileId: immobili.id,
+    regime: prenotazioni.regime_prenotazione, imposta: alloggi.imposta_soggiorno_importo, impostaMax: alloggi.imposta_soggiorno_max_notti, immobileId: immobili.id,
   }).from(prenotazioni)
     .innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
     .innerJoin(immobili, eq(immobili.id, alloggi.immobile_id))
@@ -46,7 +46,7 @@ export async function datiCommercialista(anno: number, proprietarioId: string | 
     .where(and(...condPren)).orderBy(prenotazioni.checkin);
 
   const tassaDi = (p: (typeof pren)[number]) => {
-    const imp = Number(p.imposta); if (!imp || p.stato !== 'Attiva') return 0;
+    const imp = Number(p.imposta); if (!imp || p.stato !== 'Attiva' || p.regime === 'No Tax') return 0;
     let n = notti(p.checkin, p.checkout); if (p.impostaMax) n = Math.min(n, p.impostaMax);
     return r2(n * p.ospiti * imp);
   };

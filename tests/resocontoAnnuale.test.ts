@@ -38,7 +38,7 @@ describe('resoconto annuale', () => {
     expect(confrontoAnni(a, b).lordo).toEqual({ corrente: 300, precedente: 200, differenza: 100, percentuale: 50 });
     expect(confrontoAnni(a, costruisciResoconto(2025, [], 1)).lordo.percentuale).toBeNull();
     const fogli = fogliResoconto(a, b);
-    expect(fogli.map((f) => f.nome)).toEqual(['Mesi', 'Per canale', 'Tassa per alloggio', 'Confronto']);
+    expect(fogli.map((f) => f.nome)).toEqual(['Mesi', 'Per canale', 'Per regime fiscale', 'Tassa per alloggio', 'Confronto']);
     expect(fogli[0].righe).toHaveLength(13);
   });
 });

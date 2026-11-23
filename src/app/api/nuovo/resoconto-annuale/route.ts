@@ -7,12 +7,12 @@ import { registra } from '@/lib/db/registro';
 
 // Resoconto annuale (punto 14, 23/11/2026): occupazione, incassi per canale, tassa di soggiorno per mese e alloggio, confronto con l'anno prima.
 //   GET ?anno=2026                                   → JSON
-//   GET ?anno=2026&formato=xlsx                      → Excel con 4 fogli
-//   GET ?anno=2026&formato=csv&foglio=mesi|canali|tassa|confronto
+//   GET ?anno=2026&formato=xlsx                      → Excel con 5 fogli
+//   GET ?anno=2026&formato=csv&foglio=mesi|canali|regime|tassa|confronto
 // Solo chi vede i dati finanziari; ciascuno vede solo i suoi immobili.
 export const dynamic = 'force-dynamic';
 
-const FOGLI = ['mesi', 'canali', 'tassa', 'confronto'];
+const FOGLI = ['mesi', 'canali', 'regime', 'tassa', 'confronto'];
 
 export async function GET(req: NextRequest) {
   const check = await richiediSessione(req);

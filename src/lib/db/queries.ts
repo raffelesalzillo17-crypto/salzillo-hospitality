@@ -571,6 +571,7 @@ export async function rendicontoProprietarioDb(
       costoPulizia: prenotazioni.costo_pulizia, feeGestione: prenotazioni.fee_gestione,
       utile: prenotazioni.utile, nettoProprietario: prenotazioni.netto_proprietario,
       ospiteNome: ospiti.nome, ospiteCognome: ospiti.cognome,
+      regime: prenotazioni.regime_prenotazione,
       impostaSoggiornoImporto: alloggi.imposta_soggiorno_importo, impostaSoggiornoMaxNotti: alloggi.imposta_soggiorno_max_notti,
     })
     .from(prenotazioni)
@@ -593,6 +594,7 @@ export async function rendicontoProprietarioDb(
   // imposta di soggiorno per prenotazione: notti (cap max) × persone × importo/persona/notte
   const nottiDi = (ci: string, co: string) => Math.max(1, Math.round((Date.parse(co) - Date.parse(ci)) / 864e5));
   const impostaDi = (r: typeof righe[number]) => {
+    if (r.regime === 'No Tax') return 0; // regime No Tax: esente da ogni imposta, tassa di soggiorno compresa (23/11/2026)
     const imp = Number(r.impostaSoggiornoImporto);
     if (!imp) return 0;
     let notti = nottiDi(r.checkin, r.checkout);
