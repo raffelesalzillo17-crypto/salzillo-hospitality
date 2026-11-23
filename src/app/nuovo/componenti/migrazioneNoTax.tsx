@@ -6,7 +6,7 @@ import { api, dataIt, eur } from '../utilita';
 // Punto 3 (23/11/2026): "No Tax" non è un canale ma un regime fiscale. Qui il titolare vede l'elenco, sceglie il canale vero di ogni
 // prenotazione e conferma. Nulla si sposta da solo. Il regime "No Tax" resta sulla prenotazione: Alloggiati, ricevute e cedolare non cambiano.
 type Riga = { id: string; ospite: string; alloggio: string; checkin: string; checkout: string; lordo: number; stato: string; canaleProposto: string };
-const DESTINAZIONI = ['Diretto', 'WhatsApp', 'Telefono', 'Altro', 'Airbnb', 'Booking'];
+const DESTINAZIONI = ['Diretto', 'Airbnb', 'Booking'];
 
 export function MigrazioneNoTax({ presenti, onCambiato }: { presenti: number; onCambiato: () => Promise<void> }) {
   const [righe, setRighe] = useState<Riga[] | null>(null);

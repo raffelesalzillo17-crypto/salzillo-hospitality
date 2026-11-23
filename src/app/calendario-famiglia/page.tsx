@@ -18,7 +18,7 @@ type Alloggio = { id: string; nome: string; emoji: string | null };
 type Pulizia = { id: string; data: string; alloggio: string; fatta: boolean };
 
 const CANALE_COLOR: Record<string, string> = {
-  'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'WhatsApp': '#25D366', 'Telefono': '#2BA5A5', 'Altro': '#8A8A8A', 'No Tax': '#8C7BD8',
+  'Airbnb': '#FF5A5F', 'Booking': '#1D6DF0', 'Diretto': '#1FAA6E', 'No Tax': '#8C7BD8',
 };
 const dataIt = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const oggiISO = () => new Date().toISOString().slice(0, 10);

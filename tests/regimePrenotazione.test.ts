@@ -46,12 +46,12 @@ describe.skipIf(!(process.env.RUN_DB_TESTS === '1' && url))('migrazione No Tax (
       expect(anteprima.find((x) => x.id === prenId)).toMatchObject({ canaleProposto: 'Diretto', alloggio: 'FintoAlloggioNoTax' });
       await expect(applicaNoTax([{ id: prenId, canale: 'Inventato' }])).rejects.toThrow('Canale non valido');
       expect((await db.select().from(prenotazioni).where(eq(prenotazioni.id, prenId)))[0].canale).toBe('No Tax'); // niente si è mosso
-      expect(await applicaNoTax([{ id: prenId, canale: 'WhatsApp' }])).toEqual({ spostate: 1, invariate: 0 });
+      expect(await applicaNoTax([{ id: prenId, canale: 'Booking' }])).toEqual({ spostate: 1, invariate: 0 });
       const dopo = (await db.select().from(prenotazioni).where(eq(prenotazioni.id, prenId)))[0];
-      expect(dopo.canale).toBe('WhatsApp');
+      expect(dopo.canale).toBe('Booking');
       expect(dopo.regime_prenotazione).toBe('No Tax');
       expect(Number(dopo.lordo)).toBe(200); // importi intatti
-      expect(await applicaNoTax([{ id: prenId, canale: 'Telefono' }])).toEqual({ spostate: 0, invariate: 1 }); // non più No Tax: non si tocca
+      expect(await applicaNoTax([{ id: prenId, canale: 'Airbnb' }])).toEqual({ spostate: 0, invariate: 1 }); // non più No Tax: non si tocca
       expect((await anteprimaNoTax()).find((x) => x.id === prenId)).toBeUndefined();
     } finally {
       if (prenId) await db.delete(prenotazioni).where(eq(prenotazioni.id, prenId));

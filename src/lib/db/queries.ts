@@ -692,7 +692,7 @@ export async function cosaMancaDb(oggiISO: string) {
     .leftJoin(pagamenti, eq(pagamenti.prenotazione_id, prenotazioni.id))
     .where(and(
       eq(prenotazioni.stato, 'Attiva'),
-      sql`${prenotazioni.canale} IN ('Diretto', 'WhatsApp', 'Telefono', 'Altro', 'No Tax')`,
+      sql`${prenotazioni.canale} IN ('Diretto', 'No Tax')`,
       gte(prenotazioni.checkin, oggiISO),
       sql`${pagamenti.id} IS NULL`,
     ));

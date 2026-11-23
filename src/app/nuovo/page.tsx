@@ -30,6 +30,13 @@ import { CANALE_COLOR, TAB_LABEL, TAB_URL, api, dataIt, eur, scaricaTabella } fr
    Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md (fasi 4-5). */
 
 
+/** Etichetta ben visibile sulle prenotazioni esenti da imposte (regime fiscale, punto 3): si vede a colpo d'occhio dove non si pagano tasse. */
+function ChipRegime({ p }: { p: Prenotazione }) {
+  if (p.regimePrenotazione === 'No Tax') return <span className="chip" style={{ background: '#8C7BD833', color: '#8C7BD8', marginLeft: 6 }} title="Esente da ogni imposta: niente cedolare, tassa di soggiorno, Alloggiati né ricevuta">🚫 No Tax</span>;
+  if (p.regimePrenotazione === 'Esente da tassa di soggiorno') return <span className="chip" style={{ background: '#C97A1633', color: '#C97A16', marginLeft: 6 }} title={p.regimeMotivo ?? 'Esente da tassa di soggiorno'}>esente tassa sogg.</span>;
+  return null;
+}
+
 export default function Nuovo() {
   const [sess, setSess] = useState<{ nome: string; ruolo: string; vedeFinanziario: boolean; puoModificare: boolean } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -44,7 +51,7 @@ export default function Nuovo() {
   const [sinfoniaImm, setSinfoniaImm] = useState<string | null>(null);
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
-  const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', periodo: 'futuro' });
+  const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', regime: '', periodo: 'futuro' });
   const [menuAltro, setMenuAltro] = useState(false);
   // Punto 15 (23/11/2026): ogni sezione ha un indirizzo (/nuovo/calendario, /nuovo/prenotazioni/<id>) e i filtri stanno nell'indirizzo.
   const [urlPronto, setUrlPronto] = useState(false);
@@ -57,7 +64,7 @@ export default function Nuovo() {
       const q = new URLSearchParams(window.location.search);
       if (t && (TAB_URL as readonly string[]).includes(t)) setTab(t as typeof tab);
       else if (!t) setTab('dashboard');
-      setFPren({ q: q.get('q') ?? '', stato: q.get('stato') ?? '', alloggio: q.get('alloggio') ?? '', canale: q.get('canale') ?? '', periodo: q.get('periodo') ?? 'futuro' });
+      setFPren({ q: q.get('q') ?? '', stato: q.get('stato') ?? '', alloggio: q.get('alloggio') ?? '', canale: q.get('canale') ?? '', regime: q.get('regime') ?? '', periodo: q.get('periodo') ?? 'futuro' });
       setIdDaAprire(t === 'prenotazioni' && id ? id : null);
       if (!(t === 'prenotazioni' && id)) { setPrenSel(null); setNonTrovata(false); }
     };
@@ -84,6 +91,7 @@ export default function Nuovo() {
       if (fPren.stato) filtri.set('stato', fPren.stato);
       if (fPren.alloggio) filtri.set('alloggio', fPren.alloggio);
       if (fPren.canale) filtri.set('canale', fPren.canale);
+      if (fPren.regime) filtri.set('regime', fPren.regime);
       if (fPren.periodo !== 'futuro') filtri.set('periodo', fPren.periodo);
     }
     const percorso = prenSel ? `/nuovo/prenotazioni/${prenSel.id}` : tab === 'dashboard' ? '/nuovo' : `/nuovo/${tab}`;
@@ -250,6 +258,7 @@ export default function Nuovo() {
                   : <b>{dataIt(p.checkin)}</b>}
                 <span>{p.ospite}</span>
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+                <ChipRegime p={p} />
                 {sess.puoModificare && (
                   <span style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
                     {p.waCheckinNumero && p.waCheckinMessaggio && (
@@ -279,6 +288,7 @@ export default function Nuovo() {
                   : <b>{dataIt(p.checkout)}</b>}
                 <span>{p.ospite}</span>
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+                <ChipRegime p={p} />
               </div>
             ))}
           </div>
@@ -288,6 +298,7 @@ export default function Nuovo() {
             {occupatiOggi.map((p) => (
               <div key={p.id} className="row" onClick={() => setPrenSel(p)}>
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+                <ChipRegime p={p} />
                 <span>{p.ospite}</span> <small>fino al {dataIt(p.checkout)}</small>
               </div>
             ))}
@@ -339,7 +350,7 @@ export default function Nuovo() {
               <li><b>Documenti ospiti</b> (Titolare e operatore) — una cartella per ospite con i file su Drive (contratti, ricevute…). I documenti d’identità li vede solo il Titolare</li>
               <li><b>Promemoria</b> — regole che preparano messaggi (WhatsApp o email) per gli ospiti. Una regola può avere una <b>condizione</b>: solo se mancano i documenti, solo se la caparra o il saldo non sono incassati (non vale per Airbnb/Booking). "Per prenotazione" mostra, per ogni arrivo, cosa è <b>Pronto</b>, <b>Inviato</b>, <b>Bloccato</b> (con il motivo, per esempio manca il telefono) o <b>Non necessario</b>. Nessun messaggio parte da solo: lo invii tu e tocchi "Inviato". "Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu</li>
               <li><b>Export e resoconto annuale</b> — in Prenotazioni i tasti "Excel" e "CSV" scaricano l'elenco con i filtri attivi, totale compreso (senza accesso ai dati finanziari non escono gli importi). In Rendiconti, sotto il rendiconto, c'è il <b>Resoconto annuale</b>: per ogni mese prenotazioni, incasso lordo, tassa di soggiorno, notti e occupazione; incassi per canale e per regime fiscale; tassa per alloggio e mese; confronto con l'anno prima. Usa le stesse regole della Dashboard (prenotazioni attive per mese di check-in), quindi i numeri coincidono. Excel a 5 fogli o CSV</li>
-              <li><b>Canali</b> — oltre ad Airbnb, Booking, Diretto e No Tax ci sono <b>WhatsApp</b>, <b>Telefono</b> e <b>Altro</b>: si comportano come Diretto (nessuna commissione, caparra e saldo da incassare, contratto e ricevuta). Compaiono nel modulo prenotazione, nei filtri, nelle regole dei promemoria e nei resoconti. Il <b>Regime fiscale</b> è ora un campo a parte (Ordinario, Esente da tassa di soggiorno con motivo, No Tax). "No Tax" non è un canale: in Prenotazioni, il Titolare trova "Canale No Tax" con l'anteprima per scegliere il canale vero di ogni prenotazione; nulla si sposta senza la sua conferma e il regime No Tax resta: prenotazione diretta esente da ogni imposta, quindi esclusa da Alloggiati, ricevute, cedolare e tassa di soggiorno. Diretto con regime Ordinario = fuori piattaforma con cedolare secca. Il 23/11/2026 le 74 prenotazioni No Tax sono passate a Diretto con regime No Tax</li>
+              <li><b>Canali</b> — Airbnb, Booking e Diretto. "Diretto" è una prenotazione fuori dalle piattaforme; il trattamento fiscale è nel campo <b>Regime fiscale</b> (Ordinario = cedolare secca; No Tax = esente da ogni imposta). Per sapere come è arrivata una diretta (WhatsApp, telefono…) usa le note</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
               <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
@@ -391,6 +402,7 @@ export default function Nuovo() {
           if (fPren.stato && p.stato !== fPren.stato) return false;
           if (fPren.alloggio && p.alloggio !== fPren.alloggio) return false;
           if (fPren.canale && p.canale !== fPren.canale) return false;
+          if (fPren.regime && (p.regimePrenotazione ?? 'Ordinario') !== fPren.regime) return false;
           if (fPren.periodo === 'futuro' && p.checkout < oggi) return false;
           if (fPren.periodo === 'passato' && p.checkout >= oggi) return false;
           return true;
@@ -425,17 +437,23 @@ export default function Nuovo() {
                 <option value="">Ogni canale</option>
                 {[...CANALI_SCELTA, ...(dati.prenotazioni.some((p) => p.canale === 'No Tax') ? ['No Tax'] : [])].map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              <select value={fPren.regime} onChange={(e) => setFPren({ ...fPren, regime: e.target.value })}>
+                <option value="">Ogni regime fiscale</option>
+                <option value="No Tax">🚫 No Tax (esenti da ogni imposta)</option>
+                <option value="Esente da tassa di soggiorno">Esenti da tassa di soggiorno</option>
+                <option value="Ordinario">Ordinario (con cedolare)</option>
+              </select>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
               {(['xlsx', 'csv'] as const).map((fmt) => (
                 <button key={fmt} className="mini" disabled={lista.length === 0} onClick={() => {
                   const conSoldi = sess.vedeFinanziario;
                   const notti = (p: typeof lista[number]) => Math.max(0, Math.round((Date.parse(p.checkout) - Date.parse(p.checkin)) / 864e5));
-                  const intest = ['Check-in', 'Check-out', 'Notti', 'Ospite', 'Alloggio', 'Canale', 'Ospiti', 'Stato', ...(conSoldi ? ['Lordo', 'Utile', 'Incassato', 'Da incassare'] : [])];
+                  const intest = ['Check-in', 'Check-out', 'Notti', 'Ospite', 'Alloggio', 'Canale', 'Regime fiscale', 'Ospiti', 'Stato', ...(conSoldi ? ['Lordo', 'Utile', 'Incassato', 'Da incassare'] : [])];
                   const incassato = (p: typeof lista[number]) => p.pagamenti.reduce((s, x) => s + (x.tipo === 'Rimborso' ? -x.importo : x.importo), 0);
-                  const righe: (string | number | null)[][] = lista.map((p) => [p.checkin, p.checkout, notti(p), p.ospite, p.alloggio, p.canale, p.numeroOspiti, p.stato,
+                  const righe: (string | number | null)[][] = lista.map((p) => [p.checkin, p.checkout, notti(p), p.ospite, p.alloggio, p.canale, p.regimePrenotazione ?? 'Ordinario', p.numeroOspiti, p.stato,
                     ...(conSoldi ? [p.lordo, p.utile, incassato(p), Math.max(0, p.lordo - incassato(p))] : [])]);
-                  if (conSoldi) righe.push(['Totale (' + lista.length + ')', '', '', '', '', '', '', '', somma.lordo, somma.utile, '', '']);
+                  if (conSoldi) righe.push(['Totale (' + lista.length + ')', '', '', '', '', '', '', '', '', somma.lordo, somma.utile, '', '']);
                   scaricaTabella('prenotazioni', fmt, intest, righe).catch((e) => alert(e instanceof Error ? e.message : String(e)));
                 }}>{fmt === 'xlsx' ? '⬇ Excel' : '⬇ CSV'}</button>
               ))}
@@ -448,7 +466,7 @@ export default function Nuovo() {
                   {lista.map((p) => (
                     <tr key={p.id} onClick={() => setPrenSel(p)}>
                       <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}</td><td>{p.alloggio}</td>
-                      <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span></td>
+                      <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span><ChipRegime p={p} /></td>
                       <td className="num">{eur(p.lordo)}</td><td className="num strong">{eur(p.utile)}</td>
                       <td>{p.stato === 'Attiva' ? '✅' : p.stato === 'In attesa di conferma' ? '⏳' : '❌'} <small>{p.stato}</small></td>
                     </tr>

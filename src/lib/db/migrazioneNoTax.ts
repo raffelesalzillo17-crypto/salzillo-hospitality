@@ -9,7 +9,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import { alloggi, ospiti, prenotazioni } from './schema';
 
-export const CANALI_DI_DESTINAZIONE = ['Diretto', 'WhatsApp', 'Telefono', 'Altro', 'Airbnb', 'Booking'] as const;
+export const CANALI_DI_DESTINAZIONE = ['Diretto', 'Airbnb', 'Booking'] as const;
 type CanaleDestinazione = (typeof CANALI_DI_DESTINAZIONE)[number];
 
 export type RigaAnteprimaNoTax = { id: string; ospite: string; alloggio: string; checkin: string; checkout: string; lordo: number; stato: string; canaleProposto: CanaleDestinazione };
