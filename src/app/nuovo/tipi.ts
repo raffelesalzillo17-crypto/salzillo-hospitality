@@ -4,6 +4,7 @@ export type Prenotazione = {
   alloggio: string; immobile: string; proprietario: string; canale: string;
   lordo: number; commissione: number; cedolare: number; costoPulizia: number; feeGestione: number;
   utile: number; nettoProprietario: number; stato: string; numeroOspiti: number; origine: string; penaleImporto: number | null; note: string;
+  daVerificare?: boolean; daVerificareMotivo?: string | null;
   checkinConfermatoIl: string | null; waCheckinNumero: string | null; waCheckinMessaggio: string | null;
   documentiIdentita: number;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];

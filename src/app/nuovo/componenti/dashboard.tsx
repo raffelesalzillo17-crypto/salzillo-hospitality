@@ -104,7 +104,8 @@ type Blocchi = {
   pagamenti: { id: string; ospite: string; alloggio: string; checkin: string; residuo: number }[];
   pulizie: { id: string; data: string; alloggio: string }[];
   scadenze: { id: string; titolo: string; data: string; immobile: string | null }[];
-  sovrapposizioni: { alloggio: string; a: string; b: string }[];
+  sovrapposizioni: { alloggio: string; testo: string }[];
+  daVerificare: { id: string; alloggio: string; checkin: string; checkout: string; motivo: string }[];
   schedine: ArrivoAdempimento[];
 };
 
@@ -157,7 +158,10 @@ export function CosaManca({ dati, ruoloTitolare, onApriPrenotazione, onVai }: { 
             </Blocco>
           )}
           <Blocco titolo="Sovrapposizioni di calendario" chip={b.sovrapposizioni.length} colore="#E5484D" vuoto="Nessuna sovrapposizione.">
-            {b.sovrapposizioni.map((s, i) => <div key={i} className="row" style={{ cursor: 'pointer' }} onClick={() => onVai('calendario')}><b>{s.alloggio}</b> <small>{s.a} ⟷ {s.b}</small></div>)}
+            {b.sovrapposizioni.map((s, i) => <div key={i} className="row" style={{ cursor: 'pointer' }} onClick={() => onVai('calendario')}><b>{s.alloggio}</b> <small>{s.testo}</small></div>)}
+          </Blocco>
+          <Blocco titolo="Prenotazioni da verificare" chip={b.daVerificare.length} colore="#8C7BD8" vuoto="Nessuna prenotazione sparita dai calendari.">
+            {b.daVerificare.map((p) => <div key={p.id} className="row" style={{ cursor: 'pointer' }} onClick={() => onApriPrenotazione(p.id)}><b>{p.alloggio}</b> <small>{dataIt(p.checkin)}→{dataIt(p.checkout)} · {p.motivo}</small></div>)}
           </Blocco>
         </>
       )}

@@ -7,9 +7,9 @@
  * mese. Il totale è la somma degli immobili mostrati; con "tutti i proprietari" coincide con il rendiconto generale.
  * Occupazione e prezzo medio sono calcolati qui con definizioni scritte nelle etichette.
  */
-import { and, eq, gte, lte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lte, inArray, sql } from 'drizzle-orm';
 import { getDb } from './index';
-import { alloggi, blocchiCalendario, immobili, ospiti, pagamenti, prenotazioni, proprietari, pulizie, scadenze } from './schema';
+import { alloggi, blocchiCalendario, conflittiCalendario, immobili, ospiti, pagamenti, prenotazioni, proprietari, pulizie, scadenze } from './schema';
 import { rendicontoProprietarioDb } from './queries';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -84,7 +84,8 @@ export type CosaMancaBlocchi = {
   pagamenti: { id: string; ospite: string; alloggio: string; checkin: string; residuo: number }[];
   pulizie: { id: string; data: string; alloggio: string }[];
   scadenze: { id: string; titolo: string; data: string; immobile: string | null }[];
-  sovrapposizioni: { alloggio: string; a: string; b: string }[];
+  sovrapposizioni: { alloggio: string; testo: string }[];
+  daVerificare: { id: string; alloggio: string; checkin: string; checkout: string; motivo: string }[];
 };
 
 export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[] | 'tutti', vedeFinanziario: boolean): Promise<CosaMancaBlocchi> {
@@ -127,7 +128,18 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
   const sov: CosaMancaBlocchi['sovrapposizioni'] = [];
   for (let i = 0; i < occ.length; i++) for (let j = i + 1; j < occ.length; j++) {
     const a = occ[i], b = occ[j];
-    if (a.alId === b.alId && a.ci < b.co && b.ci < a.co) sov.push({ alloggio: a.al, a: `${a.tipo} ${a.ci}→${a.co}`, b: `${b.tipo} ${b.ci}→${b.co}` });
+    if (a.alId === b.alId && a.ci < b.co && b.ci < a.co) sov.push({ alloggio: a.al, testo: `${a.tipo} ${a.ci}→${a.co} ⟷ ${b.tipo} ${b.ci}→${b.co}` });
   }
-  return { pagamenti: pagamentiRighe, pulizie: pulizieRighe, scadenze: scadRighe, sovrapposizioni: sov };
+  // Sovrapposizioni rilevate dalla sincronizzazione dei calendari (punto 2): evento OTA contro una nostra prenotazione
+  const conf = await db.select({ alloggio: alloggi.nome, motivo: conflittiCalendario.motivo }).from(conflittiCalendario)
+    .innerJoin(alloggi, eq(alloggi.id, conflittiCalendario.alloggio_id))
+    .where(and(isNull(conflittiCalendario.risolto_il), gte(conflittiCalendario.ota_al, oggiISO), filtroImm(alloggi.immobile_id)));
+  for (const c of conf) sov.push({ alloggio: c.alloggio, testo: c.motivo });
+
+  // Prenotazioni sparite dal calendario dell'OTA: segnate "da verificare", mai cancellate da sole
+  const dv = await db.select({ id: prenotazioni.id, alloggio: alloggi.nome, checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, motivo: prenotazioni.da_verificare_motivo })
+    .from(prenotazioni).innerJoin(alloggi, eq(alloggi.id, prenotazioni.alloggio_id))
+    .where(and(eq(prenotazioni.da_verificare, true), inArray(prenotazioni.stato, ['Attiva', 'In attesa di conferma']), gte(prenotazioni.checkout, oggiISO), filtroImm(alloggi.immobile_id)))
+    .orderBy(prenotazioni.checkin);
+  return { pagamenti: pagamentiRighe, pulizie: pulizieRighe, scadenze: scadRighe, sovrapposizioni: sov, daVerificare: dv.map((x) => ({ ...x, motivo: x.motivo ?? 'da verificare' })) };
 }

@@ -66,6 +66,9 @@ export type PrenotazioneVista = {
   penaleImporto: number | null;
   calendarEventId: string;
   checkinConfermatoIl: string | null;
+  /** Sparita dal calendario dell'OTA: da controllare a mano (punto 2, 23/11/2026). */
+  daVerificare: boolean;
+  daVerificareMotivo: string | null;
   note: string;
   pagamenti: { id: string; tipo: string; importo: number; data: string; metodo: string | null }[];
   schedine: {
@@ -108,6 +111,7 @@ function mappaPrenotazione(
     penaleImporto: r.penale_importo == null ? null : n(r.penale_importo),
     calendarEventId: String(r.calendar_event_id ?? ''),
     checkinConfermatoIl: r.checkin_confermato_il ? new Date(r.checkin_confermato_il as string | Date).toISOString() : null,
+    daVerificare: !!r.da_verificare, daVerificareMotivo: (r.da_verificare_motivo as string | null) ?? null,
     note: String(r.note ?? ''),
     pagamenti: pagamentiRiga,
     schedine: schedineRiga,
@@ -137,6 +141,7 @@ export async function leggiPrenotazioniDb(): Promise<PrenotazioneVista[]> {
       penale_importo: prenotazioni.penale_importo,
       calendar_event_id: prenotazioni.calendar_event_id,
       checkin_confermato_il: prenotazioni.checkin_confermato_il,
+      da_verificare: prenotazioni.da_verificare, da_verificare_motivo: prenotazioni.da_verificare_motivo,
       note: prenotazioni.note,
       ospite_id: prenotazioni.ospite_id,
       ospite_nome: ospiti.nome,

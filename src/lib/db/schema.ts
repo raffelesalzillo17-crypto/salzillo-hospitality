@@ -125,6 +125,7 @@ export const alloggi = pgTable('alloggi', {
   imposta_soggiorno_comune: text('imposta_soggiorno_comune'),
   imposta_soggiorno_importo: numeric('imposta_soggiorno_importo', { precision: 6, scale: 2 }).notNull().default('0'),
   imposta_soggiorno_max_notti: integer('imposta_soggiorno_max_notti'),
+  ical_token: text('ical_token'), // segreto del link di export iCal; null = link vecchio (solo id), ancora valido (punto 2, 23/11/2026)
 });
 
 export const ospiti = pgTable('ospiti', {
@@ -176,6 +177,9 @@ export const prenotazioni = pgTable('prenotazioni', {
   note: text('note'),
   creata_da: uuid('creata_da').references(() => utenti.id),
   checkin_confermato_il: timestamp('checkin_confermato_il', { withTimezone: true }), // "ospite arrivato" — confermato a mano dalla dashboard
+  // Punto 2 (23/11/2026): sparita dal calendario dell'OTA → si segna da verificare, mai cancellata da sola.
+  da_verificare: boolean('da_verificare').notNull().default(false),
+  da_verificare_motivo: text('da_verificare_motivo'),
 });
 
 export const pagamenti = pgTable('pagamenti', {
@@ -633,3 +637,35 @@ export const cestino = pgTable('cestino', {
   scade_il: timestamp('scade_il', { withTimezone: true }).notNull(),
   ripristinato_il: timestamp('ripristinato_il', { withTimezone: true }),
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sincronizzazione calendari iCal (punto 2, 23/11/2026) — SQL: drizzle/manuali/0006_ical_sync.sql
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const syncIcalLog = pgTable('sync_ical_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  quando: timestamp('quando', { withTimezone: true }).defaultNow().notNull(),
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  calendario: text('calendario').notNull(),
+  origine: text('origine').notNull().default('manuale'), // 'automatica' | 'manuale'
+  esito: text('esito').notNull(), // 'ok' | 'avvisi' | 'errore'
+  eventi_letti: integer('eventi_letti').notNull().default(0),
+  importate: integer('importate').notNull().default(0),
+  conflitti: integer('conflitti').notNull().default(0),
+  da_verificare: integer('da_verificare').notNull().default(0),
+  errore: text('errore'),
+  durata_ms: integer('durata_ms'),
+});
+
+export const conflittiCalendario = pgTable('conflitti_calendario', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  rilevato_il: timestamp('rilevato_il', { withTimezone: true }).defaultNow().notNull(),
+  risolto_il: timestamp('risolto_il', { withTimezone: true }),
+  alloggio_id: uuid('alloggio_id').notNull().references(() => alloggi.id),
+  calendario: text('calendario').notNull(),
+  ota_dal: date('ota_dal').notNull(),
+  ota_al: date('ota_al').notNull(),
+  prenotazione_id: uuid('prenotazione_id').notNull().references(() => prenotazioni.id),
+  tipo: text('tipo').notNull(), // 'doppia' | 'date diverse'
+  motivo: text('motivo').notNull(),
+}, (t) => ({ unico: unique().on(t.alloggio_id, t.calendario, t.ota_dal, t.ota_al, t.prenotazione_id) }));

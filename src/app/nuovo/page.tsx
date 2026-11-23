@@ -265,7 +265,7 @@ export default function Nuovo() {
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
-              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking</li>
+              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
               <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
               <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send). Dal 23/11/2026 l’invio si blocca se le schedine non sono tante quanti gli ospiti scritti nella prenotazione: correggi il numero di ospiti o aggiungi la schedina mancante (si può forzare solo da &quot;invia comunque&quot;, con un avviso, e resta nel Registro)</li>
@@ -379,6 +379,15 @@ export default function Nuovo() {
         <div className="grid">
           {sess.puoModificare && (
             <div className="card" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button className="add" onClick={async () => {
+                try {
+                  const d = await (await fetch('/api/nuovo/calendari?tutti=1')).json();
+                  if (!d.ok) throw new Error(d.error || 'Errore');
+                  const e = d.esiti as { importate: unknown[]; conflitti: unknown[]; inPiu: unknown[]; errore?: string }[];
+                  alert(`Sincronizzati ${e.length} calendari: ${e.reduce((n, x) => n + x.importate.length, 0)} prenotazioni importate, ${e.reduce((n, x) => n + x.conflitti.length, 0)} sovrapposizioni, ${e.reduce((n, x) => n + x.inPiu.length, 0)} da verificare, ${e.filter((x) => x.errore).length} errori.`);
+                  await carica();
+                } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+              }}>🔄 Sincronizza tutti i calendari</button>
               <button className="add" onClick={() => setModale({ titolo: 'Nuovo proprietario', azione: 'crea-proprietario', campi: [
                 { k: 'nome', label: 'Nome', req: true },
                 { k: 'tipo', label: 'Tipo', tipo: 'select', opzioni: [{ v: 'Persona fisica', t: 'Persona fisica' }, { v: 'Società', t: 'Società' }] },

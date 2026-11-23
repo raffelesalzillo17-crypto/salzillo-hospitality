@@ -9,9 +9,14 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
   const [cals, setCals] = useState<{ id: string; nome: string; url: string; attivo: boolean; ultimo_controllo: string | null; ultimo_esito: string | null }[]>([]);
   const [nome, setNome] = useState('Airbnb');
   const [url, setUrl] = useState('');
-  const [esiti, setEsiti] = useState<null | { alloggio: string; calendario: string; importate?: { start: string; end: string }[]; mancano: { start: string; end: string; summary: string }[]; inPiu: { start: string; end: string; ospite: string }[]; errore?: string }[]>(null);
+  const [esiti, setEsiti] = useState<null | { alloggio: string; calendario: string; importate?: { start: string; end: string }[]; conflitti?: { start: string; end: string; tipo: string; motivo: string }[]; mancano: { start: string; end: string; summary: string }[]; inPiu: { start: string; end: string; ospite: string }[]; errore?: string }[]>(null);
   const [busy, setBusy] = useState(false);
-  const exportUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/ical/${alloggio.id}.ics`;
+  const [token, setToken] = useState<string | null>(null);
+  const [log, setLog] = useState<{ id: string; quando: string; calendario: string; origine: string; esito: string; eventi_letti: number; importate: number; conflitti: number; da_verificare: number; errore: string | null }[]>([]);
+  const [altro, setAltro] = useState('');
+  const [errLink, setErrLink] = useState('');
+  // Link di export: con il token (protetto) oppure, finché non lo si genera, quello vecchio senza segreto (ancora valido)
+  const exportUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/ical/${alloggio.id}.ics${token ? `?t=${token}` : ''}`;
 
   const [blocchi, setBlocchi] = useState<{ id: string; checkin: string; checkout: string; nota: string | null }[]>([]);
   const [bCheckin, setBCheckin] = useState('');
@@ -32,12 +37,21 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
   }
   async function rimuoviBlocco(id: string) { await fetch('/api/nuovo/blocchi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rimuovi: id }) }); await caricaBlocchi(); }
 
-  async function carica() { const d = await (await fetch(`/api/nuovo/calendari?alloggio=${alloggio.id}`)).json(); if (d.ok) setCals(d.calendari.filter((c: { attivo: boolean }) => c.attivo)); }
+  async function carica() { const d = await (await fetch(`/api/nuovo/calendari?alloggio=${alloggio.id}`)).json(); if (d.ok) { setCals(d.calendari.filter((c: { attivo: boolean }) => c.attivo)); setToken(d.token ?? null); setLog(d.log ?? []); } }
+  async function rigeneraLink() {
+    if (!confirm(token
+      ? 'Rigenerare il link? Quello attuale smette di funzionare SUBITO: devi incollare quello nuovo su Airbnb e su Booking, altrimenti le date non si bloccano più e rischi doppie prenotazioni. Procedo?'
+      : 'Passare al link protetto (con un segreto)? Il link vecchio smette di funzionare SUBITO: devi incollare quello nuovo su Airbnb e su Booking, altrimenti le date non si bloccano più e rischi doppie prenotazioni. Procedo?')) return;
+    setErrLink('');
+    const d = await (await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rigenera: alloggio.id }) })).json();
+    if (!d.ok) { setErrLink(d.error || 'Errore'); return; }
+    setToken(d.token); navigator.clipboard?.writeText(`${window.location.origin}/api/ical/${alloggio.id}.ics?t=${d.token}`);
+  }
   useEffect(() => { carica(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function aggiungi() {
     setBusy(true);
-    try { await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId: alloggio.id, nome, url }) }); setUrl(''); await carica(); }
+    try { await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alloggioId: alloggio.id, nome: nome === 'Altro' ? altro.trim() : nome, url }) }); setUrl(''); setAltro(''); await carica(); }
     finally { setBusy(false); }
   }
   async function rimuovi(id: string) { await fetch('/api/nuovo/calendari', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rimuovi: id }) }); await carica(); }
@@ -55,9 +69,11 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
 
         <h3 style={{ marginTop: 10 }}>Blocca queste date su Airbnb / Booking</h3>
         <p className="sub">Copia questo link e incollalo su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari). Le prenotazioni dirette e No Tax registrate qui bloccheranno quelle date anche là.</p>
-        <div className="form"><label>Link da incollare
+        <div className="form"><label>Link da incollare {token ? <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>🔒 protetto</span> : <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>vecchio, senza segreto</span>}
           <input readOnly value={exportUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); navigator.clipboard?.writeText(exportUrl); }} />
         </label></div>
+        <div className="modalactions"><button className="add" onClick={rigeneraLink}>{token ? '↻ Rigenera il link' : '🔒 Passa al link protetto'}</button></div>
+        {errLink && <p className="err">{errLink}</p>}
 
         <h3 style={{ marginTop: 16 }}>Blocca date senza prenotazione</h3>
         <p className="sub">Per uso personale, manutenzione, ecc. — niente ospite, niente importi: entra solo nel link qui sopra, quindi blocca le date anche su Airbnb/Booking come una prenotazione.</p>
@@ -77,7 +93,7 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         </div>
 
         <h3 style={{ marginTop: 16 }}>Controlla i calendari OTA (per sicurezza)</h3>
-        <p className="sub">Incolla qui i link iCal che Airbnb e Booking ti danno: ogni giorno il sistema controlla che le prenotazioni là e qui coincidano.</p>
+        <p className="sub">Incolla qui i link iCal che Airbnb, Booking o altri canali ti danno (puoi metterne più di uno, ognuno con la sua etichetta). Il sistema li legge, importa le prenotazioni che mancano come segnaposto da completare, segnala le sovrapposizioni e segna "da verificare" (mai cancellate da sole) quelle sparite dal calendario.</p>
         {cals.map((c) => (
           <div key={c.id} className="row">
             <b>{c.nome}</b> <small style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{c.url}</small>
@@ -86,21 +102,37 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
           </div>
         ))}
         <div className="form">
-          <label>Piattaforma<select value={nome} onChange={(e) => setNome(e.target.value)}><option>Airbnb</option><option>Booking</option></select></label>
+          <label>Piattaforma<select value={nome} onChange={(e) => setNome(e.target.value)}><option>Airbnb</option><option>Booking</option><option>Altro</option></select></label>
+          {nome === 'Altro' && <label>Etichetta del canale<input value={altro} onChange={(e) => setAltro(e.target.value)} placeholder="es. Vrbo" /></label>}
           <label>Link iCal<input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." /></label>
         </div>
         <div className="modalactions">
-          <button className="add" onClick={aggiungi} disabled={busy || !/^https?:\/\//.test(url)}>Aggiungi</button>
-          <button className="add" onClick={controlla} disabled={busy || cals.length === 0}>{busy ? '…' : 'Controlla adesso'}</button>
+          <button className="add" onClick={aggiungi} disabled={busy || !/^https?:\/\//.test(url) || (nome === 'Altro' && !altro.trim())}>Aggiungi</button>
+          <button className="add" onClick={controlla} disabled={busy || cals.length === 0}>{busy ? '…' : '🔄 Sincronizza ora'}</button>
         </div>
+        <h3 style={{ marginTop: 16 }}>Registro delle sincronizzazioni</h3>
+        {log.length === 0 ? <p className="empty">Nessuna sincronizzazione ancora registrata.</p> : (
+          <div className="tablescroll"><table className="tbl" style={{ minWidth: 480 }}>
+            <thead><tr><th>Quando</th><th>Calendario</th><th>Esito</th><th className="num">Eventi</th><th className="num">Importate</th><th className="num">Sovrapp.</th><th className="num">Da verificare</th></tr></thead>
+            <tbody>{log.map((l) => (
+              <tr key={l.id}>
+                <td><small>{new Date(l.quando).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}<br />{l.origine === 'automatica' ? 'automatica' : 'a mano'}</small></td>
+                <td>{l.calendario}</td>
+                <td><span className="chip" style={{ background: l.esito === 'ok' ? '#1FAA6E22' : l.esito === 'errore' ? '#E5484D22' : '#FFB23822', color: l.esito === 'ok' ? '#1FAA6E' : l.esito === 'errore' ? '#E5484D' : '#C97A16' }}>{l.esito}</span>{l.errore && <><br /><small className="err">{l.errore}</small></>}</td>
+                <td className="num">{l.eventi_letti}</td><td className="num">{l.importate}</td><td className="num">{l.conflitti}</td><td className="num">{l.da_verificare}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
         {esiti && esiti.map((e, i) => (
           <div key={i} style={{ marginTop: 8, fontSize: 13 }}>
             <b>{e.calendario}:</b> {e.errore ? <span className="err">errore — {e.errore}</span>
-              : e.mancano.length === 0 && e.inPiu.length === 0 && !e.importate?.length ? <span style={{ color: '#1FAA6E' }}>tutto coincide ✓</span>
+              : e.mancano.length === 0 && e.inPiu.length === 0 && !e.importate?.length && !e.conflitti?.length ? <span style={{ color: '#1FAA6E' }}>tutto coincide ✓</span>
               : <>
                 {(e.importate ?? []).map((m, j) => <div key={'i' + j} style={{ color: '#1FAA6E' }}>✅ {dataIt(m.start)}→{dataIt(m.end)}: importata da {e.calendario} come segnaposto — completa ospite e importo</div>)}
+                {(e.conflitti ?? []).map((m, j) => <div key={'c' + j} className="err">⚠️ {m.motivo}</div>)}
                 {e.mancano.map((m, j) => <div key={'m' + j} className="err">📥 {dataIt(m.start)}→{dataIt(m.end)}: c&apos;è su {e.calendario}, non qui</div>)}
-                {e.inPiu.map((m, j) => <div key={'p' + j} className="err">📤 {dataIt(m.start)}→{dataIt(m.end)} ({m.ospite}): qui ma non su {e.calendario}</div>)}
+                {e.inPiu.map((m, j) => <div key={'p' + j} className="err">📤 {dataIt(m.start)}→{dataIt(m.end)} ({m.ospite}): sparita da {e.calendario}: segnata "da verificare" (non cancellata)</div>)}
               </>}
           </div>
         ))}
