@@ -379,9 +379,6 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
                 {p.stato === 'Attiva' && <button className="danger" onClick={() => cancella(true)} disabled={busy}>Cancella con penale</button>}
               </div>
             )}
-            {p.origine === 'Foglio' && (
-              <p className="empty" style={{ marginTop: 8 }}>Questa prenotazione arriva dal Google Sheet. Finché i due sistemi girano in parallelo, modificala <b>sul foglio</b>: qui la modifica verrebbe sovrascritta dalla sincronizzazione notturna.</p>
-            )}
           </>
         ) : (
           <div className="form">
@@ -395,7 +392,6 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
             <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
             <label>Stato<select value={f.stato} onChange={(e) => setF({ ...f, stato: e.target.value })}>{['Attiva', 'In attesa di conferma', 'Cancellata', 'Cancellata con penale', 'No-show'].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
-            {p.origine === 'Foglio' && <p className="empty">Attenzione: prenotazione dal foglio — la modifica qui dura solo fino al prossimo sync notturno. Meglio farla sul Google Sheet.</p>}
             <div className="modalactions">
               <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Salva'}</button>
               <button onClick={() => setModifica(false)}>Annulla</button>
@@ -476,7 +472,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <button onClick={onClose}>Annulla</button>
         </div>
         {err && <p className="err">{err}</p>}
-        <p className="empty" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e si scrive sul vecchio foglio come riserva. Resta nel database anche dopo il sync dal foglio.</p>
+        <p className="empty" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e una copia di sicurezza sul foglio. La fonte dei dati è il database.</p>
       </div>
     </div>
   );
