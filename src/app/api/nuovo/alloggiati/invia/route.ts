@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { richiediSessione } from '@/lib/db/auth';
 import { inviaPrenotazioneReale } from '@/lib/alloggiatiInvio';
+import { registra } from '@/lib/db/registro';
 
 // Invio VERO ad Alloggiati Web — solo il Titolare può innescarlo, sempre una PRENOTAZIONE alla
 // volta (tutti i suoi ospiti insieme, come vuole il portale: dall'11/11/2026, prima era una
@@ -27,7 +28,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const esito = await inviaPrenotazioneReale(prenotazioneId);
+    // `forza` arriva solo dal pulsante "invia comunque", dopo l'avviso su schedine diverse dagli ospiti.
+    const forza = body.forza === true;
+    const esito = await inviaPrenotazioneReale(prenotazioneId, { forza });
+    await registra(check.sessione, forza ? 'invia-alloggiati-forzato' : 'invia-alloggiati', 'prenotazione', prenotazioneId,
+      `${esito.ok ? `inviate ${esito.inviate}` : 'non inviato'}${forza ? ' (schedine diverse dagli ospiti, forzato)' : ''}`);
     return NextResponse.json(esito);
   } catch (err) {
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });

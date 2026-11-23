@@ -23,6 +23,7 @@ import {
 import { formatSchedinaRecord, validateSchedina, ordinaGruppoAlloggiati, type DatiSchedina, type TipoAlloggiatoCodice } from './alloggiatiRecordFormat';
 import { inArray } from 'drizzle-orm';
 import { codiceLuogoRilascio } from './alloggiatiLookup';
+import { controlloOspitiSchedine } from './controlloOspiti';
 import { alertInvioAmbiguo } from './cronAlert';
 
 export type SchedinaDaInviare = {
@@ -37,6 +38,8 @@ export type SchedinaDaInviare = {
   ospiteNomeCompleto: string;
   tipoAlloggiato: string | null;
   esitoInvio: string | null;
+  /** Ospiti scritti nella prenotazione: se non coincidono con le schedine, l'invio è bloccato (controlloOspiti.ts). */
+  ospitiAttesi: number;
 };
 
 /** Le schedine "Da inviare" che rientrano nel filtro di sicurezza — quelle che il pulsante
@@ -56,6 +59,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
       checkout: prenotazioni.checkout,
       canale: prenotazioni.canale,
       alloggioNome: alloggi.nome,
+      ospitiAttesi: prenotazioni.numero_ospiti,
     })
     .from(schedine)
     .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
@@ -80,6 +84,7 @@ export async function schedineDaInviareAlloggiati(): Promise<SchedinaDaInviare[]
     ospiteNomeCompleto: `${r.nome} ${r.cognome}`.trim(),
     tipoAlloggiato: r.tipoAlloggiato,
     esitoInvio: r.esitoInvio,
+    ospitiAttesi: r.ospitiAttesi,
   }));
 }
 
@@ -345,7 +350,7 @@ export type EsitoInvioPrenotazione = { ok: boolean; messaggio: string; inviate: 
  * solo se il Test passa per TUTTE le schedine. Sempre innescato da un click esplicito del
  * Titolare su quella prenotazione, mai automatico e mai su più prenotazioni insieme.
  */
-export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<EsitoInvioPrenotazione> {
+export async function inviaPrenotazioneReale(prenotazioneId: string, opzioni: { forza?: boolean } = {}): Promise<EsitoInvioPrenotazione> {
   const db = getDb();
   const no = (messaggio: string): EsitoInvioPrenotazione => ({ ok: false, messaggio, inviate: 0 });
 
@@ -359,6 +364,7 @@ export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<Es
       tipo: schedine.tipo_alloggiato_codice,
       checkin: prenotazioni.checkin, checkout: prenotazioni.checkout, canale: prenotazioni.canale,
       prenotazioneStato: prenotazioni.stato, trasmetteAlloggiati: alloggi.trasmette_alloggiati, alloggioNome: alloggi.nome,
+      ospitiAttesi: prenotazioni.numero_ospiti,
     })
     .from(schedine)
     .innerJoin(prenotazioni, eq(prenotazioni.id, schedine.prenotazione_id))
@@ -378,6 +384,11 @@ export async function inviaPrenotazioneReale(prenotazioneId: string): Promise<Es
   if (nonDaInviare.length > 0) {
     return no(`Su questa prenotazione ci sono schedine già in stato "${nonDaInviare[0].stato}" (${nonDaInviare.map((s) => `${s.nome} ${s.cognome}`).join(', ')}): le altre non possono partire insieme a loro da qui. Controlla sul portale Alloggiati Web e, se serve, inserisci a mano lì quelle che mancano.`);
   }
+  // Controllo del 23/11/2026 (richiesta di Raffaele): le schedine devono essere tante quanti gli ospiti
+  // della prenotazione. Prima non c'era: una prenotazione con 2 ospiti e 1 schedina partiva lo stesso.
+  // Si supera solo con un invio forzato, deciso a mano dal Titolare davanti all'avviso.
+  const discrepanza = controlloOspitiSchedine(p.ospitiAttesi, tutte.length);
+  if (discrepanza && !opzioni.forza) return no(`INVIO BLOCCATO — ${discrepanza}`);
   const gruppo = ordinaGruppoAlloggiati(tutte);
   if (!gruppo.ok) return no(gruppo.errore);
 

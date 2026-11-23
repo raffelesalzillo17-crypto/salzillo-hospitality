@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { InvioAlloggiati, SchedinaAlloggiati, SchedinaDaVerificare } from '../tipi';
 import { api, dataIt } from '../utilita';
+import { controlloOspitiSchedine } from '../../../lib/controlloOspiti';
 
 export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; nome: string }; onClose: () => void }) {
   const [cals, setCals] = useState<{ id: string; nome: string; url: string; attivo: boolean; ultimo_controllo: string | null; ultimo_esito: string | null }[]>([]);
@@ -167,6 +168,10 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
 
   async function invia(gruppo: SchedinaAlloggiati[]) {
     const g = gruppo[0];
+    const discrepanza = controlloOspitiSchedine(g.ospitiAttesi, gruppo.length);
+    if (discrepanza && !confirm(
+      `⚠️ ATTENZIONE — ${discrepanza}\n\nPer non sbagliare, è meglio correggere prima la prenotazione. Vuoi davvero inviare COMUNQUE così com'è?`
+    )) return;
     if (!confirm(
       `Invio VERO e DEFINITIVO alla Polizia di Stato (Alloggiati Web) — ${g.alloggioNome}, arrivo ${dataIt(g.checkin)}:\n` +
       gruppo.map((s) => `• ${s.ospiteNomeCompleto} (${s.tipoAlloggiato || 'tipo mancante'})`).join('\n') +
@@ -175,7 +180,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
     setBusy(g.prenotazioneId);
     try {
       const r = await fetch('/api/nuovo/alloggiati/invia', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prenotazioneId: g.prenotazioneId }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prenotazioneId: g.prenotazioneId, forza: !!discrepanza }),
       });
       const d = await r.json();
       const esito = { ok: !!d.ok, messaggio: d.messaggio || d.error || (d.ok ? 'Inviate.' : 'Errore sconosciuto.') };
@@ -237,6 +242,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
         [...new Set(schedine.map((s) => s.prenotazioneId))].map((pid) => {
           const gruppo = schedine.filter((s) => s.prenotazioneId === pid);
           const g = gruppo[0];
+          const discrepanza = controlloOspitiSchedine(g.ospitiAttesi, gruppo.length);
           return (
             <div key={pid} className="docgroup">
               <h3><span>{g.alloggioNome} · arrivo {dataIt(g.checkin)} · {g.canale}</span><span className="empty">{gruppo.length} ospit{gruppo.length === 1 ? 'e' : 'i'}</span></h3>
@@ -247,9 +253,10 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
                   {s.esitoInvio && <p className="err" style={{ flexBasis: '100%', margin: '4px 0 0' }}>{s.esitoInvio}</p>}
                 </div>
               ))}
+              {discrepanza && <p className="err" style={{ margin: '6px 0 0' }}>⚠️ {discrepanza}</p>}
               <div className="docrow">
                 <button className="mini coral" disabled={busy !== null} style={{ marginLeft: 'auto' }} onClick={() => invia(gruppo)}>
-                  {busy === pid ? 'invio…' : gruppo.length === 1 ? '📨 invia adesso' : `📨 invia insieme i ${gruppo.length} ospiti`}
+                  {busy === pid ? 'invio…' : discrepanza ? '⚠️ invia comunque…' : gruppo.length === 1 ? '📨 invia adesso' : `📨 invia insieme i ${gruppo.length} ospiti`}
                 </button>
                 {esiti[pid] && <p className={esiti[pid].ok ? 'empty' : 'err'} style={{ flexBasis: '100%', margin: '4px 0 0' }}>{esiti[pid].messaggio}</p>}
               </div>

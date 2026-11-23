@@ -64,7 +64,7 @@ export type InvioAlloggiati = {
 export type SchedinaAlloggiati = {
   id: string; cognome: string; nome: string; ospiteNomeCompleto: string;
   alloggioNome: string; prenotazioneId: string; checkin: string; checkout: string; canale: string;
-  tipoAlloggiato?: string | null; esitoInvio?: string | null;
+  tipoAlloggiato?: string | null; esitoInvio?: string | null; ospitiAttesi?: number;
 };
 
 export type SchedinaDaVerificare = {
