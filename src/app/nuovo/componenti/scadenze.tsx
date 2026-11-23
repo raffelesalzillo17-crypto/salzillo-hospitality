@@ -122,14 +122,14 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
       {dup && dup.length > 0 && (
         <div className="docgroup" style={{ marginBottom: 12 }}>
           <h3><span>Possibili doppioni ({dup.length})</span><button className="mini" onClick={() => setDup(null)}>chiudi</button></h3>
-          <p className="sub">Sono la stessa scadenza scritta due volte (di solito una creata qui e una tornata dal foglio). Scegli quale tenere: l&apos;altra va nel cestino per 30 giorni. Niente si unisce da solo.</p>
+          <p className="sub">Sono la stessa scadenza scritta due volte (di solito una creata a mano e una importata dal vecchio foglio). Scegli quale tenere: l&apos;altra va nel cestino per 30 giorni. Niente si unisce da solo.</p>
           {dup.map((g, i) => (
             <div key={i} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
               {g.voci.map((v) => (
                 <label key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <input type="radio" name={`dupsc-${i}`} checked={principale[i] === v.id} onChange={() => setPrincipale({ ...principale, [i]: v.id })} style={{ width: 'auto' }} />
                   <b>{v.titolo}</b>
-                  <small className="sub">{v.ente ?? 'senza ente'} · {dataIt(v.dataScadenza)} · {v.ricorrenza.toLowerCase()} · creata {v.origine === 'Database' ? 'qui' : 'dal foglio'}{v.ultimoCompletamento ? ` · ultima volta ${dataIt(v.ultimoCompletamento)}` : ''}</small>
+                  <small className="sub">{v.ente ?? 'senza ente'} · {dataIt(v.dataScadenza)} · {v.ricorrenza.toLowerCase()} · creata {v.origine === 'Database' ? 'qui' : 'dal vecchio foglio'}{v.ultimoCompletamento ? ` · ultima volta ${dataIt(v.ultimoCompletamento)}` : ''}</small>
                   {principale[i] === v.id ? <span className="pill pill-Accettato">si tiene</span> : <span className="pill pill-Scaduto">va nel cestino</span>}
                 </label>
               ))}

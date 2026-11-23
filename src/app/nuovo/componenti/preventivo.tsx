@@ -153,7 +153,7 @@ export function FormPreventivo({ alloggi, ospiti, onClose, onSalvato }: { allogg
           <p className="empty" style={{ marginTop: 6 }}>
             {telPulito.length >= 9
               ? 'Salvando compare il pulsante per aprire WhatsApp col messaggio già scritto e il link al PDF già dentro: ti resta solo da premere Invia. Lo trovi anche dopo nella scheda Documenti.'
-              : 'Salvando lo trovi nella scheda Documenti, con anteprima e "segna accettato". Aggiungi il telefono per aprire WhatsApp in automatico.'}
+              : 'Salvando lo trovi nella scheda Preventivi, con anteprima e "Converti in prenotazione". Aggiungi il telefono per aprire WhatsApp in automatico.'}
           </p>
         )}
       </div>

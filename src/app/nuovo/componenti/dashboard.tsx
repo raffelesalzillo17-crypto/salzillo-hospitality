@@ -68,7 +68,7 @@ export function RiepilogoDashboard({ dati, oggi, ruoloTitolare }: { dati: Dati; 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '6px 0 10px' }}>
             {fin && <>
               <Tessera etichetta="Incasso lordo" valore={eur(t.lordo)} nota={`${t.prenotazioni} prenotazioni con check-in nel mese`} />
-              <Tessera etichetta="Commissioni OTA" valore={eur(t.commissioni)} nota="trattenute da Airbnb e Booking" colore="#E5484D" />
+              <Tessera etichetta="Commissioni Airbnb/Booking" valore={eur(t.commissioni)} nota="trattenute da Airbnb e Booking" colore="#E5484D" />
               <Tessera etichetta="Netto al proprietario" valore={eur(t.nettoProprietario)} nota="lordo meno commissioni, cedolare, pulizie e fee" colore="#1FAA6E" />
               <Tessera etichetta="Spese" valore={eur(t.spese)} nota="registrate nel mese sugli immobili" />
               <Tessera etichetta="Netto dopo le spese" valore={eur(t.nettoDopoSpese)} nota="netto al proprietario meno le spese" colore="#1FAA6E" />
@@ -79,7 +79,7 @@ export function RiepilogoDashboard({ dati, oggi, ruoloTitolare }: { dati: Dati; 
           </div>
           <div className="tablescroll">
             <table className="tbl full" style={{ minWidth: 560 }}>
-              <thead><tr><th>Immobile</th><th className="num">Prenot.</th>{fin && <><th className="num">Lordo</th><th className="num">Commissioni OTA</th><th className="num">Netto proprietario</th></>}<th className="num">Occupazione</th>{fin && <th className="num">€ a notte</th>}</tr></thead>
+              <thead><tr><th>Immobile</th><th className="num">Prenot.</th>{fin && <><th className="num">Lordo</th><th className="num">Commissioni Airbnb/Booking</th><th className="num">Netto proprietario</th></>}<th className="num">Occupazione</th>{fin && <th className="num">€ a notte</th>}</tr></thead>
               <tbody>
                 {r.immobili.map((i) => (
                   <tr key={i.immobileId}>

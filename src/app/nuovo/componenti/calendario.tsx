@@ -181,7 +181,7 @@ export function LinkUtiliBox({ link, puoModificare, onCambiato }: {
   return (
     <div className="card">
       <div className="cardhead"><h2>Link utili <small>({link.length})</small></h2></div>
-      <p className="sub" style={{ marginTop: -4 }}>Una rubrica di link comodi da avere a portata di mano — anche da condividere. Tienila aggiornata tu: aggiungi qui il foglio Google, gli annunci Airbnb/Booking, o qualunque altro link che usi spesso.</p>
+      <p className="sub" style={{ marginTop: -4 }}>Una rubrica di link comodi da avere a portata di mano — anche da condividere. Tienila aggiornata tu: aggiungi qui gli annunci Airbnb e Booking o qualunque altro link che usi spesso.</p>
       {link.length === 0 && puoModificare && (
         <button className="add" disabled={busy} onClick={aggiungiLinkDiBase} style={{ marginBottom: 10 }}>✨ Aggiungi i link di base (sito, link ospite, WhatsApp)</button>
       )}

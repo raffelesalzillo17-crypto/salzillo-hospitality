@@ -339,7 +339,7 @@ function ExportCommercialista({ dati, anni, annoIniziale }: { dati: Dati; anni: 
   return (
     <div className="docgroup" style={{ marginBottom: 12 }}>
       <h3><span>Export per il commercialista</span></h3>
-      <p className="sub">Incassi, commissioni, spese, tassa di soggiorno riscossa e versata, per anno e per proprietario. Le prenotazioni sono quelle con check-in nell&apos;anno, tutti i canali; non ci sono nomi degli ospiti. Il foglio &quot;Riepilogo&quot; spiega i criteri.</p>
+      <p className="sub">Incassi, commissioni, spese, tassa di soggiorno riscossa e versata, per anno e per proprietario. Le prenotazioni sono quelle con check-in nell&apos;anno, tutti i canali. Non ci sono i nomi degli ospiti. Il foglio "Riepilogo" spiega i criteri.</p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={anno} onChange={(e) => setAnno(e.target.value)}>{anni.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         <select value={prop} onChange={(e) => setProp(e.target.value)}><option value="tutti">Tutti i proprietari</option>{dati.anagrafica.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>

@@ -57,7 +57,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
         <div className="form" style={{ marginBottom: 10 }}>
           <label>Nome<input value={nuovo.nome} onChange={(e) => setNuovo({ ...nuovo, nome: e.target.value })} autoFocus /></label>
           <label>Ruolo<select value={nuovo.ruolo} onChange={(e) => setNuovo({ ...nuovo, ruolo: e.target.value })}>
-            {['Collaboratore', 'Pulizie', 'Proprietario'].map((r) => <option key={r}>{r}</option>)}
+            {['Collaboratore', 'Pulizie', 'Proprietario'].map((r) => <option key={r} value={r}>{r === 'Collaboratore' ? 'Operatore' : r === 'Pulizie' ? 'Addetto pulizie' : r}</option>)}
           </select></label>
           <div className="modalactions">
             <button className="add" onClick={crea} disabled={busy || !nuovo.nome.trim()}>{busy ? '…' : 'Crea e genera il link'}</button>
@@ -68,7 +68,7 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
       {utenti.map((u) => (
         <div key={u.id} className="docrow" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="pill pill-Bozza">{u.ruolo}</span>
+            <span className="pill pill-Bozza">{u.ruolo === 'Collaboratore' ? 'Operatore' : u.ruolo === 'Pulizie' ? 'Addetto pulizie' : u.ruolo}</span>
             <b>{u.nome}</b>
             {!u.attivo && <span className="empty">disattivato</span>}
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>

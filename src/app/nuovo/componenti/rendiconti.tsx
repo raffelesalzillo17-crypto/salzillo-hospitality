@@ -113,7 +113,7 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
             </div>
           )}
           <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: {neg(r.totali.costoPulizia)} · Fee di gestione: {neg(r.totali.feeGestione)}</p>
-          {r.totali.impostaSoggiorno > 0 && <p className="sub">Imposta di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
+          {r.totali.impostaSoggiorno > 0 && <p className="sub">Tassa di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
 
           <div className="previsione">
             <span>Previsione <span style={{ textTransform: 'capitalize' }}>{meseBreve(r.confronti.previsione.anno, r.confronti.previsione.mese)}</span></span>

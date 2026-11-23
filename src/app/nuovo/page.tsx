@@ -11,6 +11,7 @@ import { RigaPulizia } from './componenti/pulizie';
 import { PromemoriaBox } from './componenti/promemoria';
 import { CANALI_SCELTA } from '@/lib/canali';
 import { MigrazioneNoTax } from './componenti/migrazioneNoTax';
+import { Guida } from './componenti/guida';
 import { Rendiconti } from './componenti/rendiconti';
 import { ResocontoAnnuale } from './componenti/resoconto';
 import { FormModale, TemaToggle } from './componenti/ui';
@@ -318,74 +319,7 @@ export default function Nuovo() {
       {tab === 'documenti' && <Documenti sezione="preventivi" preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
       {tab === 'documentiospiti' && <Documenti sezione="documenti" preventivi={dati.preventivi ?? []} documenti={dati.documenti ?? []} richieste={dati.richieste ?? []} ospiti={dati.ospiti} puoModificare={sess.puoModificare} ruoloTitolare={sess.ruolo === 'Titolare'} onCambiato={carica} onNuovoPreventivo={() => setPreventivo(true)} />}
 
-      {tab === 'guida' && (
-        <div className="grid">
-          <div className="card">
-            <h2>Come sono organizzati i dati</h2>
-            <p className="sub" style={{ marginBottom: 14 }}>Tutto parte dal proprietario e scende fino alla singola prenotazione. Ogni cosa è collegata alla successiva — nessun numero da ricordare, si vedono sempre i nomi.</p>
-            <div className="tree">
-              <div className="tn tn0">👤 <b>Proprietario</b> <span>(Salzillo Luigi, Raffaela Iodice…)</span>
-                <div className="tn tn1">🏠 <b>Immobile</b> <span>— un edificio con un indirizzo (Via Clanio 60, Via Campania 36)</span>
-                  <div className="tn tn2">🚪 <b>Alloggio</b> <span>— la stanza/appartamento che affitti (Il Tulipano, Stanza Rosa…). Qui vivono: regime fiscale, costo pulizia, WiFi, se trasmette alle autorità, imposta di soggiorno</span>
-                    <div className="tn tn3">📅 <b>Prenotazione</b> <span>— date, canale, prezzo. Il sistema calcola da solo commissione, cedolare, pulizia, utile, netto proprietario</span>
-                      <div className="tn tn4">👥 <b>Ospite</b> — chi soggiorna (con storico di tutti i suoi soggiorni)</div>
-                      <div className="tn tn4">💶 <b>Pagamenti</b> — caparra, saldo</div>
-                      <div className="tn tn4">📋 <b>Schedina</b> — i dati per la Questura (Alloggiati Web)</div>
-                      <div className="tn tn4">📄 <b>Documenti</b> — conferma, contratto, ricevuta salvati su Drive</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p className="sub" style={{ marginTop: 14 }}>A parte, non legati a una prenotazione: <b>Spese</b> (per immobile o generali), <b>Scadenze</b> (fiscali/amministrative), <b>Rendiconti</b> (uno per proprietario, per mese).</p>
-          </div>
-          <div className="card">
-            <h2>Le sezioni di questa pagina</h2>
-            <ul className="guidalist">
-              <li><b>Dashboard</b> — in alto il riepilogo di tutti gli immobili per mese (frecce per cambiare mese, filtro per proprietario): incasso lordo, commissioni OTA, netto al proprietario, spese, tassa di soggiorno riscossa, occupazione e prezzo medio a notte, ciascuno con la sua spiegazione. Gli importi sono gli stessi dei Rendiconti dello stesso mese. Poi chi arriva e parte e “Cosa manca” diviso in blocchi: pagamenti da incassare (7 giorni), pulizie di oggi e domani, scadenze (30 giorni), schedine mancanti o in ritardo, sovrapposizioni di calendario</li>
-              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Due viste, <b>Mese</b> e <b>Settimana</b> (la settimana parte dal lunedì; da telefono si apre la settimana, che sta tutta sullo schermo), pulsante <b>Oggi</b>. Passando col mouse (o toccando, da telefono) su una prenotazione compare un’anteprima con ospite, notti, canale e stato del pagamento. Per bloccare delle notti trascini su una riga vuota (da telefono: tocchi il primo e l’ultimo giorno) e ti viene sempre chiesta conferma. In alto compare un avviso se ci sono sovrapposizioni con i calendari Airbnb/Booking. Prezzi per data e alloggio solo per il Titolare. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
-              <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
-              <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
-              <li><b>Preventivi</b> — Bozza → Inviato → Accettato. "Converti in prenotazione" crea la prenotazione con gli stessi dati e dice se qualcosa differisce. Un preventivo accettato è <b>bloccato</b>: non si modifica né si elimina; se i dati cambiano crei una <b>nuova versione</b> (copia in Bozza). Se in seguito la prenotazione cambia importo, date o ospiti, sotto il preventivo compare l’elenco delle differenze. Gli altri si eliminano con conferma e restano 30 giorni nel cestino</li>
-              <li><b>Documenti ospiti</b> (Titolare e operatore) — una cartella per ospite con i file su Drive (contratti, ricevute…). I documenti d’identità li vede solo il Titolare</li>
-              <li><b>Promemoria</b> — regole che preparano messaggi (WhatsApp o email) per gli ospiti. Una regola può avere una <b>condizione</b>: solo se mancano i documenti, solo se la caparra o il saldo non sono incassati (non vale per Airbnb/Booking). "Per prenotazione" mostra, per ogni arrivo, cosa è <b>Pronto</b>, <b>Inviato</b>, <b>Bloccato</b> (con il motivo, per esempio manca il telefono) o <b>Non necessario</b>. Nessun messaggio parte da solo: lo invii tu e tocchi "Inviato". "Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu</li>
-              <li><b>Export e resoconto annuale</b> — in Prenotazioni i tasti "Excel" e "CSV" scaricano l'elenco con i filtri attivi, totale compreso (senza accesso ai dati finanziari non escono gli importi). In Rendiconti, sotto il rendiconto, c'è il <b>Resoconto annuale</b>: per ogni mese prenotazioni, incasso lordo, tassa di soggiorno, notti e occupazione; incassi per canale e per regime fiscale; tassa per alloggio e mese; confronto con l'anno prima. Usa le stesse regole della Dashboard (prenotazioni attive per mese di check-in), quindi i numeri coincidono. Excel a 5 fogli o CSV</li>
-              <li><b>Canali</b> — Airbnb, Booking e Diretto. "Diretto" è una prenotazione fuori dalle piattaforme; il trattamento fiscale è nel campo <b>Regime fiscale</b> (Ordinario = cedolare secca; No Tax = esente da ogni imposta). Per sapere come è arrivata una diretta (WhatsApp, telefono…) usa le note</li>
-              <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking. Da "calendari" di ogni alloggio: il link da incollare su Airbnb e Booking (con segreto, rigenerabile), i link iCal da importare (uno o più, con etichetta), "Sincronizza ora" e il registro delle sincronizzazioni. Le prenotazioni importate sono segnaposto "da completare"; se una sparisce dal calendario dell'OTA viene segnata "da verificare" (mai cancellata) e le sovrapposizioni compaiono in Dashboard</li>
-              <li><b>Spese</b> — i costi, con foto o PDF della ricevuta allegati. Il Titolare può importare un estratto conto in CSV (anteprima, categoria abbinata, niente duplicati), impostare le spese ricorrenti (si registrano da sole) ed esportare per il commercialista in Excel o CSV, per anno e per proprietario: incassi, commissioni, spese, tassa di soggiorno. Le spese entrano nei Rendiconti e abbassano l&apos;utile. <b>Scadenze</b> — una per ente/regione, con ricorrenza automatica (si rinnova da sola quando la segni fatta). Stati: aperta, fatta (con data ed eventuale ricevuta) o non più applicabile (con il motivo): le archiviate stanno nell&apos;Archivio e non compaiono in Dashboard. Il Titolare ha &quot;Doppioni&quot; per unire le scadenze scritte due volte, con anteprima</li>
-              <li><b>Pulizie</b> — si segnano “fatte” solo dal giorno del check-out (prima restano “in arrivo”), con conferma in due passaggi (tocco e poi “Confermi?”) e un annullo di 10 secondi; per ognuna puoi assegnare l’addetto, l’orario, le note e spuntare la checklist dell’alloggio (la modifichi dalla scheda Immobili). Se nello stesso alloggio arriva un ospite lo stesso giorno la pulizia è segnata urgente, anche in Dashboard. Quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
-              <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send). Dal 23/11/2026 l’invio si blocca se le schedine non sono tante quanti gli ospiti scritti nella prenotazione: correggi il numero di ospiti o aggiungi la schedina mancante (si può forzare solo da &quot;invia comunque&quot;, con un avviso, e resta nel Registro)</li>
-              <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
-              <li><b>Adempimenti</b> (solo Titolare) — gli arrivi del periodo con lo stato delle schedine per Alloggiati Web (da preparare, pronta, inviata, con errore), il file nel tracciato ufficiale da scaricare e caricare tu sul portale, “segna inviata” a mano e lo stato mensile di Sinfonia. Niente parte da solo. In Dashboard, sotto “Cosa manca”, compaiono le schedine mancanti o in ritardo (termine: 24 ore dall’arrivo)</li>
-              <li><b>Registro</b> (solo Titolare) — il cestino (ospiti e preventivi eliminati si recuperano per 30 giorni), il registro di chi ha fatto cosa e quando, e il controllo che le cartelle Drive con i documenti non siano condivise pubblicamente, e la proposta di cancellare le copie dei documenti d’identità dopo l’invio ad Alloggiati Web (come chiede il Garante privacy). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta salvata: per salvarla usa &quot;Ricevuta del giorno&quot; in Alloggiati Web. La ricevuta resta sempre; confermi tu, una prenotazione alla volta</li>
-              <li><b>Link utili</b> — rubrica di link comodi (sito vetrina, check-in, WhatsApp, e quelli che aggiungi tu) da avere a portata di mano e condividere</li>
-            </ul>
-            <p className="empty" style={{ marginTop: 8 }}><b>Chi può fare cosa.</b> <b>Titolare</b>: tutto. <b>Operatore</b> (Collaboratore): prenotazioni, calendario, ospiti, pagamenti e pulizie; non elimina niente, non tocca prezzi e impostazioni, e vede i numeri dei documenti solo come ••••1234. <b>Addetto pulizie</b>: vede e conferma solo le pulizie. La password WiFi e il numero completo di un documento si vedono solo dal Titolare, con il pulsante &quot;mostra&quot;, e ogni visualizzazione resta nel Registro.</p>
-            <p className="empty" style={{ marginTop: 8 }}>In alto a destra: interruttore <b>tema</b> (automatico / chiaro / scuro).</p>
-          </div>
-          <div className="card">
-            <h2>Dove sono i file</h2>
-            <p className="sub">Su Google Drive, cartella <b>&quot;Archivio — Salzillo Hospitality&quot;</b>:</p>
-            <div className="tree">
-              <div className="tn tn0">📁 Archivio — Salzillo Hospitality
-                <div className="tn tn1">📊 SH · Prenotazioni &amp; Ospiti</div>
-                <div className="tn tn1">📊 SH · Struttura &amp; Spese</div>
-                <div className="tn tn1">📊 SH · Sistema</div>
-                <div className="tn tn1">📁 Documenti Salzillo Hospitality <span>— una cartella per ospite, coi PDF</span></div>
-              </div>
-            </div>
-            <p className="empty" style={{ marginTop: 12 }}>
-              <b>Dove stanno i dati.</b> La fonte ufficiale è il database di questo gestionale: tutto si legge e si scrive solo qui. I fogli Google sono soltanto una copia di sicurezza in uscita (il gestionale scrive sul foglio, mai il contrario): dal 23/11/2026 l&apos;importazione notturna dal foglio è spenta e il tasto &quot;aggiorna dal foglio&quot; non c&apos;è più. Dall&apos;11/09/2026 questo sito (il &quot;nuovo sistema&quot;) è la fonte di verità: ogni prenotazione, spesa, scadenza, ospite, pulizia, preventivo, evento locale, contratto di gestione o prezzo per periodo che crei o modifichi qui si scrive automaticamente anche sui 3 fogli sopra. Il foglio resta quindi sempre una riserva completa e aggiornata — utile se questo sito fosse mai irraggiungibile — ma non va più modificato a mano: qualsiasi modifica fatta lì non torna indietro nel nuovo sistema.
-            </p>
-            <p className="empty" style={{ marginTop: 8 }}>
-              <b>Il vecchio sito è spento (23/11/2026).</b> Aprendo l&apos;indirizzo principale si arriva automaticamente qui, e il vecchio modulo &quot;Nuova prenotazione&quot; non scrive più nulla: tutto si fa da questo gestionale.
-            </p>
-            <p className="empty" style={{ marginTop: 8 }}>
-              Esiste anche un link di sola visualizzazione, senza login, da condividere con chi deve solo vedere il calendario (es. la famiglia): mostra chi arriva/parte e i dettagli di ogni prenotazione, senza poter modificare nulla. Chiedi a Raffaele il link se ti serve.
-            </p>
-          </div>
-        </div>
-      )}
+      {tab === 'guida' && <Guida />}
 
       {tab === 'adempimenti' && sess.ruolo === 'Titolare' && <SezioneAdempimenti oggi={oggi} onCambiato={carica} />}
 
@@ -545,8 +479,8 @@ export default function Nuovo() {
                       { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password' },
                       { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
                       { k: 'trasmetteRegione', label: 'Trasmette al portale regionale (Sinfonia)', tipo: 'checkbox' },
-                      { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune (vuoto = non dovuta)' },
-                      { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — € per persona/notte', tipo: 'number' },
+                      { k: 'impostaSoggiornoComune', label: 'Tassa di soggiorno — comune (vuoto = non dovuta)' },
+                      { k: 'impostaSoggiornoImporto', label: 'Tassa di soggiorno — € per persona a notte', tipo: 'number' },
                     ], iniziali: { immobileId: im.id, costoPulizia: 20 } })}>＋ Alloggio</button>}
                   </div>
                   {im.alloggi.map((a) => (
@@ -558,9 +492,9 @@ export default function Nuovo() {
                       { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password (lascia vuoto per non cambiarla)' },
                       { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
                       { k: 'trasmetteRegione', label: 'Trasmette al portale regionale', tipo: 'checkbox' },
-                      { k: 'impostaSoggiornoComune', label: 'Imposta soggiorno — comune' },
+                      { k: 'impostaSoggiornoComune', label: 'Tassa di soggiorno — comune' },
                       { k: 'checklistPulizie', label: 'Checklist pulizie (una voce per riga; vuoto = biancheria, cortesia, rifornimenti)', tipo: 'textarea' },
-                      { k: 'impostaSoggiornoImporto', label: 'Imposta soggiorno — €/persona/notte', tipo: 'number' },
+                      { k: 'impostaSoggiornoImporto', label: 'Tassa di soggiorno — € per persona a notte', tipo: 'number' },
                     ], iniziali: {
                       nome: a.nome, regimeFiscale: a.regime_fiscale, costoPulizia: a.costo_pulizia, attivo: a.attivo,
                       wifiSsid: a.wifi_ssid, wifiPassword: '', trasmetteAlloggiati: a.trasmette_alloggiati,

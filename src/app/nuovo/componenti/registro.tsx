@@ -85,12 +85,12 @@ export function SezioneRegistro({ dati, onCambiato }: { dati: Dati; onCambiato: 
     <div className="grid">
       <div className="card">
         <h2>Cestino <small>({cestino.length})</small></h2>
-        <p className="sub">Gli ospiti e i preventivi eliminati restano qui 30 giorni e si possono rimettere com&apos;erano. Passato il termine spariscono per sempre.</p>
+        <p className="sub">Ospiti, preventivi, spese e scadenze eliminati restano qui 30 giorni e si possono rimettere com&apos;erano. Passato il termine spariscono per sempre.</p>
         {cestino.length === 0 ? <p className="empty">Il cestino è vuoto.</p> : (
           <table className="tbl"><tbody>
             {cestino.map((c) => (
               <tr key={c.id}>
-                <td><b>{c.etichetta}</b> <small className="sub">({c.tipo === 'ospite' ? 'ospite' : 'preventivo'})</small></td>
+                <td><b>{c.etichetta}</b> <small className="sub">({c.tipo})</small></td>
                 <td><small>eliminato il {quando(c.eliminatoIl)}<br />si recupera fino al {quando(c.scadeIl)}</small></td>
                 <td className="num"><button className="mini" disabled={busy === c.id} onClick={() => ripristina(c.id, c.etichetta)}>↩ Ripristina</button></td>
               </tr>

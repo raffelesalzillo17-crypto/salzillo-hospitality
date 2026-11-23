@@ -68,7 +68,7 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         <h2>Calendari · {alloggio.nome}</h2>
 
         <h3 style={{ marginTop: 10 }}>Blocca queste date su Airbnb / Booking</h3>
-        <p className="sub">Copia questo link e incollalo su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari). Le prenotazioni dirette e No Tax registrate qui bloccheranno quelle date anche là.</p>
+        <p className="sub">Copia questo link e incollalo su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari). Le prenotazioni dirette registrate qui bloccano quelle date anche su Airbnb e Booking.</p>
         <div className="form"><label>Link da incollare {token ? <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>🔒 protetto</span> : <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>vecchio, senza segreto</span>}
           <input readOnly value={exportUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); navigator.clipboard?.writeText(exportUrl); }} />
         </label></div>
