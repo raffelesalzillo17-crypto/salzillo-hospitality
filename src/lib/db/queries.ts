@@ -11,6 +11,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from './index';
 import { mascheraDocumento } from '../mascheratura';
+import { soggiorniPerOspite } from './ospitiGestione';
 import {
   prenotazioni, ospiti, alloggi, immobili, proprietari, spese, categorieSpesa,
   scadenze, pulizie, schedine, pagamenti, preventivi, eventiLocali, prezziPeriodo, utenti, documenti,
@@ -203,9 +204,15 @@ export async function prenotazioniNellaFinestraDb(daISO: string, aISO: string): 
 
 // ── Ospiti ───────────────────────────────────────────────────────────────────
 
+/** Elenco ospiti per la schermata: SENZA i record di prova (punto 4, 23/11/2026), ciascuno con lo storico dei soggiorni
+ *  (date, alloggio, canale, stato) da cui la schermata ricava ultimo soggiorno e numero di soggiorni per i filtri. */
 export async function leggiOspitiDb() {
   const db = getDb();
-  return db.select().from(ospiti).orderBy(ospiti.cognome, ospiti.nome);
+  const [elenco, storico] = await Promise.all([
+    db.select().from(ospiti).where(eq(ospiti.di_prova, false)).orderBy(ospiti.cognome, ospiti.nome),
+    soggiorniPerOspite(),
+  ]);
+  return elenco.map((o) => ({ ...o, soggiorni: storico.get(o.id) ?? [] }));
 }
 
 export async function ospiteConSoggiorniDb(ospiteId: string) {

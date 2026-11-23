@@ -6,6 +6,7 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
+import { cercaProblemiOspiti, unisciOspiti, invertiNomeCognome, segnaOspiteDiProva } from '@/lib/db/ospitiGestione';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
 // (è un gestionale interno, non un'API pubblica — semplice e sufficiente).
@@ -27,9 +28,11 @@ const SOLO_TITOLARE = new Set([
   'crea-contratto-gestione', 'aggiorna-contratto-gestione',
   'backfill-preventivi-drive', 'risolvi-schedina-ambigua', 'crea-regola', 'aggiorna-regola', 'elimina-regola',
   'ripristina-dal-cestino', 'controlla-drive', 'proposte-conservazione', 'applica-conservazione',
+  // Qualità ospiti (punto 4): ricerca duplicati, unione e segno "di prova" solo Titolare; l'inversione nome/cognome è una correzione che può fare anche l'operatore.
+  'cerca-problemi-ospiti', 'unisci-ospiti', 'segna-ospite-prova',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
-const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione']);
+const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti']);
 
 // Dopo queste azioni le prenotazioni cambiano: i promemoria si riallineano (best-effort).
 const CAMBIANO_PRENOTAZIONI = new Set(['crea-prenotazione', 'aggiorna-prenotazione', 'cancella-prenotazione', 'accetta-preventivo']);
@@ -82,6 +85,10 @@ export async function POST(req: NextRequest) {
       case 'controlla-drive': r = await controllaCondivisioneDrive(); break;
       // Conservazione documenti (Garante privacy / DM 7/1/2013): l'elenco è solo lettura; la cancellazione è una prenotazione alla volta.
       case 'proposte-conservazione': r = await proposteConservazione(); break;
+      case 'cerca-problemi-ospiti': r = await cercaProblemiOspiti(); break;
+      case 'unisci-ospiti': r = await unisciOspiti(id!, Array.isArray(dati.daUnire) ? (dati.daUnire as string[]) : []); break;
+      case 'inverti-ospite': r = await invertiNomeCognome(id!); break;
+      case 'segna-ospite-prova': r = await segnaOspiteDiProva(id!, dati.valore === true); break;
       case 'applica-conservazione': r = await applicaConservazione(id!); break;
       case 'backfill-preventivi-drive': r = await M.backfillPreventiviSuDrive(); break;
       case 'crea-preventivo-da-richiesta': r = await M.creaPreventivoDaRichiesta(id!, { ...(dati as Parameters<typeof M.creaPreventivoDaRichiesta>[1]), creatoDa: sess.id }); break;

@@ -12,6 +12,7 @@ import { PromemoriaBox } from './componenti/promemoria';
 import { Rendiconti } from './componenti/rendiconti';
 import { FormModale, TemaToggle } from './componenti/ui';
 import { SezioneRegistro } from './componenti/registro';
+import { SezioneOspiti } from './componenti/ospiti';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
@@ -38,7 +39,6 @@ export default function Nuovo() {
   const [sinfoniaImm, setSinfoniaImm] = useState<string | null>(null);
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
-  const [qOspiti, setQOspiti] = useState('');
   const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', periodo: 'futuro' });
 
   async function inviaModale(vals: Record<string, unknown>) {
@@ -286,7 +286,7 @@ export default function Nuovo() {
               <li><b>Dashboard</b> — il riepilogo del giorno: chi arriva/parte, soldi del mese, cosa manca, occupazione. In alto le scorciatoie rapide</li>
               <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
-              <li><b>Ospiti</b> — l&apos;anagrafica. Cerca e clicca per modificare</li>
+              <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
               <li><b>Immobili</b> — proprietari, immobili, alloggi. Da qui si aggiungono, si modificano ed eliminano (🗑️, solo Titolare, solo se non hanno ancora nulla di vero agganciato). Creando un alloggio si apre subito il collegamento calendari Airbnb/Booking</li>
               <li><b>Spese</b> — i costi. <b>Scadenze</b> — raggruppate per ente/regione, col pulsante &quot;Scadenze tipiche&quot;</li>
@@ -393,54 +393,7 @@ export default function Nuovo() {
         );
       })()}
 
-      {tab === 'ospiti' && (() => {
-        const campiOspite: Campo[] = [
-          { k: 'cognome', label: 'Cognome', req: true }, { k: 'nome', label: 'Nome', req: true },
-          { k: 'telefono', label: 'Telefono' }, { k: 'email', label: 'Email' },
-          { k: 'codiceFiscale', label: 'Codice fiscale' },
-          { k: 'valutazione', label: 'Valutazione', tipo: 'select', opzioni: [{ v: 'Neutro', t: 'Neutro' }, { v: 'Buono', t: 'Buono' }, { v: 'Problematico', t: 'Problematico' }] },
-          { k: 'note', label: 'Note' },
-        ];
-        const q = qOspiti.trim().toLowerCase();
-        const lista = q
-          ? dati.ospiti.filter((o) => `${o.cognome} ${o.nome} ${o.telefono ?? ''} ${o.email ?? ''}`.toLowerCase().includes(q))
-          : dati.ospiti;
-        return (
-          <div className="card">
-            <div className="cardhead">
-              <h2>Ospiti <small>({lista.length}{q ? ` di ${dati.ospiti.length}` : ''})</small></h2>
-              {sess.puoModificare && <button className="add" onClick={() => setModale({ titolo: 'Nuovo ospite', azione: 'crea-ospite', campi: campiOspite, iniziali: { valutazione: 'Neutro' } })}>＋ Ospite</button>}
-            </div>
-            <input className="cerca" placeholder="Cerca per nome, cognome, telefono, email…" value={qOspiti} onChange={(e) => setQOspiti(e.target.value)} />
-            <div className="tablescroll">
-              <table className="tbl full">
-                <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th>{sess.ruolo === 'Titolare' && <th></th>}</tr></thead>
-                <tbody>
-                  {lista.map((o) => (
-                    <tr key={o.id} className={sess.puoModificare ? 'clic' : undefined}
-                      onClick={() => sess.puoModificare && setModale({
-                        titolo: `${o.cognome} ${o.nome}`.trim(), azione: 'aggiorna-ospite', id: o.id, campi: campiOspite,
-                        iniziali: { cognome: o.cognome, nome: o.nome, telefono: o.telefono ?? '', email: o.email ?? '', codiceFiscale: o.codice_fiscale ?? '', valutazione: o.valutazione, note: o.note ?? '' },
-                      })}>
-                      <td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono || '—'}</td><td>{o.email || '—'}</td>
-                      <td><span className={`vchip v-${o.valutazione}`}>{o.valutazione}</span></td>
-                      {sess.ruolo === 'Titolare' && <td>
-                        <button className="mini" onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!confirm(`Eliminare ${o.cognome} ${o.nome}? Funziona solo se non ha prenotazioni/preventivi/documenti agganciati.`)) return;
-                          try { await api('elimina-ospite', { id: o.id }); await carica(); }
-                          catch (err) { alert(err instanceof Error ? err.message : String(err)); }
-                        }}>🗑</button>
-                      </td>}
-                    </tr>
-                  ))}
-                  {lista.length === 0 && <tr><td colSpan={sess.ruolo === 'Titolare' ? 6 : 5} className="empty">Nessun ospite trovato.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
+      {tab === 'ospiti' && <SezioneOspiti dati={dati} sess={sess} setModale={setModale} onCambiato={carica} />}
 
       {tab === 'immobili' && (
         <div className="grid">

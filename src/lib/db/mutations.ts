@@ -14,6 +14,7 @@ import {
   calendariIcal, versamentiSoggiorno, inviiRegione, linkUtili,
 } from './schema';
 import { nuovaChiaveAccesso, LUNGHEZZA_MINIMA_CHIAVE } from './auth';
+import { validaTelefono, validaEmail, validaCodiceFiscale } from '../ospitiQualita';
 import { creaEventoPrenotazione, eliminaEventoPrenotazione } from './calendario';
 import { mettiNelCestino } from './registro';
 import { randomUUID } from 'node:crypto';
@@ -216,19 +217,36 @@ export async function eliminaAlloggio(id: string) {
 
 // ── Ospiti ───────────────────────────────────────────────────────────────────
 
+// Validazione dei dati dell'ospite (punto 4, 23/11/2026): telefono in formato internazionale (+39 di default),
+// email valida, codice fiscale col carattere finale giusto. Un dato sbagliato si rifiuta con un messaggio chiaro.
+function telefonoValido(grezzo: string | null | undefined): string | null {
+  const r = validaTelefono(grezzo);
+  if (!r.ok) throw new Error(r.errore);
+  return r.valore;
+}
+function validaDatiOspite(d: { telefono?: unknown; email?: unknown; codiceFiscale?: unknown }) {
+  const out: { telefono?: string | null; email?: string | null; codiceFiscale?: string | null } = {};
+  if (d.telefono !== undefined) { const r = validaTelefono(String(d.telefono ?? '')); if (!r.ok) throw new Error(r.errore); out.telefono = r.valore; }
+  if (d.email !== undefined) { const r = validaEmail(String(d.email ?? '')); if (!r.ok) throw new Error(r.errore); out.email = r.valore; }
+  if (d.codiceFiscale !== undefined) { const r = validaCodiceFiscale(String(d.codiceFiscale ?? '')); if (!r.ok) throw new Error(r.errore); out.codiceFiscale = r.valore; }
+  return out;
+}
+
 export async function creaOspite(d: { nome: string; cognome: string; telefono?: string; email?: string; codiceFiscale?: string; valutazione?: string; note?: string }) {
+  const v = validaDatiOspite(d); // prima di ogni accesso al database: un dato sbagliato si rifiuta subito
   const db = getDb();
   const [r] = await db.insert(ospiti).values({
-    nome: d.nome.trim(), cognome: d.cognome.trim(), telefono: d.telefono || null, email: d.email || null,
-    codice_fiscale: d.codiceFiscale || null, valutazione: (d.valutazione as 'Neutro') || 'Neutro', note: d.note || null,
+    nome: d.nome.trim(), cognome: d.cognome.trim(), telefono: v.telefono ?? null, email: v.email ?? null,
+    codice_fiscale: v.codiceFiscale ?? null, valutazione: (d.valutazione as 'Neutro') || 'Neutro', note: d.note || null,
   }).returning();
   await scriviOspiteSuFoglio({ id: r.id, nomeCompleto: `${r.nome} ${r.cognome}`.trim(), telefono: r.telefono, codiceFiscale: r.codice_fiscale, note: r.note });
   return r;
 }
 export async function aggiornaOspite(id: string, d: Record<string, unknown>) {
+  const v = validaDatiOspite(d); // prima di ogni accesso al database
   const db = getDb();
   const set: Record<string, unknown> = { aggiornato_il: new Date() };
-  for (const [k, v] of Object.entries({ nome: d.nome, cognome: d.cognome, telefono: d.telefono, email: d.email, codice_fiscale: d.codiceFiscale, valutazione: d.valutazione, note: d.note })) if (v !== undefined) set[k] = v || null;
+  for (const [k, val] of Object.entries({ nome: d.nome, cognome: d.cognome, telefono: v.telefono, email: v.email, codice_fiscale: v.codiceFiscale, valutazione: d.valutazione, note: d.note })) if (val !== undefined) set[k] = val || null;
   const [r] = await db.update(ospiti).set(set).where(eq(ospiti.id, id)).returning();
   await aggiornaOspiteSuFoglio({ id: r.id, nomeCompleto: `${r.nome} ${r.cognome}`.trim(), telefono: r.telefono, codiceFiscale: r.codice_fiscale, note: r.note });
   return r;
@@ -263,6 +281,7 @@ export async function creaPrenotazione(d: {
 }) {
   const db = getDb();
   validaPeriodo(d.checkin, d.checkout);
+  if (d.ospiteTelefono) d = { ...d, ospiteTelefono: telefonoValido(d.ospiteTelefono) ?? undefined };
   const stato = (d.stato as 'Attiva') || 'Attiva';
 
   // 1) Niente doppie prenotazioni: controllo con messaggio chiaro (include i blocchi manuali).
@@ -479,6 +498,7 @@ export async function creaPreventivo(d: {
   note?: string; creatoDa?: string;
 }) {
   const db = getDb();
+  if (d.ospiteTelefono) d = { ...d, ospiteTelefono: telefonoValido(d.ospiteTelefono) ?? undefined };
   let ospiteId = d.ospiteId || undefined;
   if (ospiteId) {
     // Se l'ospite scelto in una pagina rimasta aperta a lungo non esiste più (es. cancellato

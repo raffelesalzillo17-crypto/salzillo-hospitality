@@ -16,7 +16,7 @@ import { randomBytes, scryptSync } from 'crypto';
 import { getDb } from './index';
 import { eErroreVincoloSovrapposizione } from './disponibilita';
 import {
-  proprietari, immobili, alloggi, ospiti, prenotazioni, categorieSpesa, spese, scadenze,
+  proprietari, immobili, alloggi, ospiti, ospitiAlias, prenotazioni, categorieSpesa, spese, scadenze,
   pulizie, schedine, documenti, botState, telegramLog, emailProcessate, utenti,
 } from './schema';
 import { COMM_RATE, ALIQUOTA_CEDOLARE } from '../tariffe';
@@ -198,6 +198,9 @@ export async function importaDaSheets(): Promise<RisultatoImport> {
     const n = `${o.nome} ${o.cognome}`.toLowerCase().trim();
     if (n && !esistentePerNome.has(n)) esistentePerNome.set(n, o.id);
   }
+  // Alias (punto 4, 23/11/2026): il vecchio "nome cognome" di un ospite unito o invertito punta al record giusto,
+  // così questa sincronizzazione non ricrea il doppione che è stato tolto a mano.
+  for (const a of await db.select().from(ospitiAlias)) if (!esistentePerNome.has(a.chiave)) esistentePerNome.set(a.chiave, a.ospite_id);
 
   const ospitiRows = await leggi('prenotazioni', 'OSPITI');
   const ospitePerChiave: Record<string, string> = {};

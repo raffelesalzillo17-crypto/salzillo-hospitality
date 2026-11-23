@@ -29,7 +29,11 @@ export type Alloggio = {
   trasmetteAlloggiati: boolean; impostaSoggiornoComune: string | null;
 };
 
-export type Ospite = { id: string; nome: string; cognome: string; telefono: string | null; email: string | null; codice_fiscale: string | null; valutazione: string; note: string | null };
+export type Ospite = {
+  id: string; nome: string; cognome: string; telefono: string | null; email: string | null; codice_fiscale: string | null; valutazione: string; note: string | null;
+  /** Storico dei soggiorni (più recente per primo): per la scheda e per i filtri (punto 4, 23/11/2026). */
+  soggiorni?: { id: string; checkin: string; checkout: string; alloggio: string; canale: string; stato: string }[];
+};
 
 export type RigaMese = { immobile: string; proprietario: string; prenotazioni: number; lordo: number; utile: number; nettoProprietario: number };
 
@@ -103,6 +107,7 @@ export type Dati = {
   linkUtili?: LinkUtile[];
   promemoria?: Promemoria;
   /** Solo Titolare: registro delle azioni e cestino (punto 5, 23/11/2026). */
+  ospitiDiProva?: { id: string; nome: string; cognome: string; telefono: string | null }[];
   registro?: { id: string; quando: string; utente_nome: string | null; ruolo: string | null; azione: string; dettaglio: string | null }[];
   cestino?: { id: string; tipo: string; etichetta: string; eliminatoIl: string; scadeIl: string }[];
 };

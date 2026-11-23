@@ -12,6 +12,7 @@ import { toWaNumber } from '@/lib/pulizie';
 import { schedineDaInviareAlloggiati, schedineDaVerificare, inviiFattiAlloggiati } from '@/lib/alloggiatiInvio';
 import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
 import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/registro';
+import { leggiOspitiDiProva } from '@/lib/db/ospitiGestione';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -118,6 +119,7 @@ export async function GET(req: NextRequest) {
       linkUtili: soloPulizie ? [] : linkUtili,
       promemoria: soloPulizie ? undefined : promemoria,
       blocchi: soloPulizie ? [] : blocchiFiltr,
+      ospitiDiProva: titolare ? await leggiOspitiDiProva() : [],
       registro: titolare ? await leggiRegistro(150) : [],
       cestino: titolare ? await leggiCestino() : [],
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({

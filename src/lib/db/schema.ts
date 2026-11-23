@@ -138,6 +138,14 @@ export const ospiti = pgTable('ospiti', {
   valutazione: valutazioneOspite('valutazione').notNull().default('Neutro'),
   note: text('note'),
   note_import: text('note_import'), // per la migrazione: il "Nome" originale unico da Google Sheets
+  di_prova: boolean('di_prova').notNull().default(false), // record di prova: nascosto da elenchi e ricerche (punto 4, 23/11/2026)
+});
+
+// Vecchi "nome cognome" di ospiti uniti o invertiti: la sync dal foglio li riconosce e non ricrea il doppione.
+export const ospitiAlias = pgTable('ospiti_alias', {
+  chiave: text('chiave').primaryKey(),
+  ospite_id: uuid('ospite_id').notNull().references(() => ospiti.id, { onDelete: 'cascade' }),
+  creato_il: timestamp('creato_il', { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
