@@ -13,6 +13,7 @@ import { Rendiconti } from './componenti/rendiconti';
 import { FormModale, TemaToggle } from './componenti/ui';
 import { SezioneRegistro } from './componenti/registro';
 import { SezioneOspiti } from './componenti/ospiti';
+import { SezioneAdempimenti } from './componenti/adempimenti';
 import { CSS } from './stili';
 import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, api, dataIt, eur } from './utilita';
@@ -30,7 +31,7 @@ export default function Nuovo() {
   const [authChecked, setAuthChecked] = useState(false);
   const [dati, setDati] = useState<Dati | null>(null);
   const [errore, setErrore] = useState('');
-  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida' | 'registro'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'calendario' | 'prenotazioni' | 'ospiti' | 'documenti' | 'immobili' | 'spese' | 'scadenze' | 'pulizie' | 'promemoria' | 'alloggiati' | 'rendiconti' | 'link' | 'guida' | 'registro' | 'adempimenti'>('dashboard');
   const [prenSel, setPrenSel] = useState<Prenotazione | null>(null);
   const [prenSelAzione, setPrenSelAzione] = useState<'pagamento' | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -144,8 +145,9 @@ export default function Nuovo() {
       </header>
 
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro'] as const)
+        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti'] as const)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+          .filter((t) => t !== 'adempimenti' || sess.ruolo === 'Titolare')
           .filter((t) => t !== 'registro' || sess.ruolo === 'Titolare')
           .filter((t) => sess.ruolo !== 'Pulizie' || t === 'pulizie' || t === 'guida')
           .filter((t) => t !== 'promemoria' || !!dati.promemoria)
@@ -235,9 +237,16 @@ export default function Nuovo() {
             <h2><i className="ic ic-manca">📋</i>Cosa manca</h2>
             {(() => {
               const cm = dati.cosaManca;
-              const vuoto = cm.schedineDaInviare.length + cm.scadenzeVicine.length + cm.pulizieDaFare.length + cm.pagamentiInSospeso.length === 0;
+              const avvisiAdp = dati.adempimentiAvvisi ?? [];
+              const vuoto = cm.schedineDaInviare.length + cm.scadenzeVicine.length + cm.pulizieDaFare.length + cm.pagamentiInSospeso.length + avvisiAdp.length === 0;
               if (vuoto) return <p className="empty">Tutto in ordine — niente in sospeso.</p>;
               return <>
+                {avvisiAdp.map((x) => (
+                  <div key={x.prenotazioneId} className="row" style={{ cursor: 'pointer' }} onClick={() => setTab('adempimenti')}>
+                    <span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>{x.inRitardo ? 'schedine in ritardo' : 'schedine da fare'}</span> {x.alloggio}
+                    <small>arrivo {dataIt(x.checkin)} · {x.stato}{x.inRitardo ? '' : ` · tra ${Math.max(0, Math.round(x.oreAllaScadenza))} ore`}{x.motivi[0] ? ` · ${x.motivi[0]}` : ''}</small>
+                  </div>
+                ))}
                 {cm.schedineDaInviare.map((s) => <div key={s.id} className="row"><span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>schedina</span> {s.cognome} {s.nome} <small>{s.alloggio}{s.scadeIl ? ` · entro ${new Date(s.scadeIl).toLocaleString('it-IT')}` : ''}</small></div>)}
                 {cm.pulizieDaFare.map((p) => <div key={p.id} className="row"><span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>pulizia</span> {p.alloggio} <small>{dataIt(p.data)}</small>
                   {sess.puoModificare && <button className="mini" style={{ marginLeft: 'auto' }} onClick={async () => { if (confirm(`Pulizia ${p.alloggio} del ${dataIt(p.data)}: segnare come fatta?`)) { await api('conferma-pulizia', { id: p.id }); await carica(); } }}>✓ fatto</button>}
@@ -293,6 +302,7 @@ export default function Nuovo() {
               <li><b>Pulizie</b> — quelle di check-out si aggiungono da sole; &quot;Pulizia extra&quot; per richieste in più durante il soggiorno. Visibili anche come pallino 🧹 sul Calendario (clicca per confermare chi ha pulito). Da qui il Titolare gestisce anche &quot;Chi ha accesso al sistema&quot; (inviti, permessi, eliminazione operatori)</li>
               <li><b>Alloggiati Web</b> (solo Titolare) — invio vero e diretto alla Polizia di Stato, un click alla volta. Compaiono solo le schedine Il Tulipano con canale Airbnb/Booking/Diretto; il sistema rivalida i dati (Test) prima di ogni invio reale (Send). Dal 23/11/2026 l’invio si blocca se le schedine non sono tante quanti gli ospiti scritti nella prenotazione: correggi il numero di ospiti o aggiungi la schedina mancante (si può forzare solo da &quot;invia comunque&quot;, con un avviso, e resta nel Registro)</li>
               <li><b>Rendiconti</b> — quanto spetta a ogni proprietario, con confronto e previsione, PDF pronto da mandare. La voce &quot;Tutti i proprietari&quot; (solo Titolare) somma tutto insieme, per il quadro generale</li>
+              <li><b>Adempimenti</b> (solo Titolare) — gli arrivi del periodo con lo stato delle schedine per Alloggiati Web (da preparare, pronta, inviata, con errore), il file nel tracciato ufficiale da scaricare e caricare tu sul portale, “segna inviata” a mano e lo stato mensile di Sinfonia. Niente parte da solo. In Dashboard, sotto “Cosa manca”, compaiono le schedine mancanti o in ritardo (termine: 24 ore dall’arrivo)</li>
               <li><b>Registro</b> (solo Titolare) — il cestino (ospiti e preventivi eliminati si recuperano per 30 giorni), il registro di chi ha fatto cosa e quando, e il controllo che le cartelle Drive con i documenti non siano condivise pubblicamente, e la proposta di cancellare le copie dei documenti d’identità dopo l’invio ad Alloggiati Web (come chiede il Garante privacy). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta salvata: per salvarla usa &quot;Ricevuta del giorno&quot; in Alloggiati Web. La ricevuta resta sempre; confermi tu, una prenotazione alla volta</li>
               <li><b>Link utili</b> — rubrica di link comodi (sito vetrina, check-in, WhatsApp, e quelli che aggiungi tu) da avere a portata di mano e condividere</li>
             </ul>
@@ -322,6 +332,8 @@ export default function Nuovo() {
           </div>
         </div>
       )}
+
+      {tab === 'adempimenti' && sess.ruolo === 'Titolare' && <SezioneAdempimenti oggi={oggi} onCambiato={carica} />}
 
       {tab === 'registro' && sess.ruolo === 'Titolare' && <SezioneRegistro dati={dati} onCambiato={carica} />}
 

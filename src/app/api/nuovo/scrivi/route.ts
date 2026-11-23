@@ -6,6 +6,7 @@ import { aggiornaRegola, creaRegola, eliminaRegola, riconcilia, segnaAttivita } 
 import { registra, ripristinaDalCestino } from '@/lib/db/registro';
 import { controllaCondivisioneDrive } from '@/lib/controlloDrive';
 import { proposteConservazione, applicaConservazione } from '@/lib/conservazione';
+import { segnaInviataAMano, annullaInvioAMano, segnaSinfoniaInviato } from '@/lib/adempimenti';
 import { cercaProblemiOspiti, unisciOspiti, invertiNomeCognome, segnaOspiteDiProva } from '@/lib/db/ospitiGestione';
 
 // Route di scrittura del nuovo sistema. Un solo endpoint che smista in base ad `azione`
@@ -30,6 +31,8 @@ const SOLO_TITOLARE = new Set([
   'ripristina-dal-cestino', 'controlla-drive', 'proposte-conservazione', 'applica-conservazione',
   // Qualità ospiti (punto 4): ricerca duplicati, unione e segno "di prova" solo Titolare; l'inversione nome/cognome è una correzione che può fare anche l'operatore.
   'cerca-problemi-ospiti', 'unisci-ospiti', 'segna-ospite-prova',
+  // Adempimenti (punto 6): segnare a mano "inviata" è del Titolare, che carica il file sul portale
+  'segna-alloggiati-inviata', 'annulla-segna-alloggiati', 'segna-sinfonia',
 ]);
 // Azioni che non cambiano nulla (solo calcoli): non finiscono nel registro.
 const NON_REGISTRARE = new Set(['anteprima-importi', 'proposte-conservazione', 'cerca-problemi-ospiti']);
@@ -86,6 +89,9 @@ export async function POST(req: NextRequest) {
       // Conservazione documenti (Garante privacy / DM 7/1/2013): l'elenco è solo lettura; la cancellazione è una prenotazione alla volta.
       case 'proposte-conservazione': r = await proposteConservazione(); break;
       case 'cerca-problemi-ospiti': r = await cercaProblemiOspiti(); break;
+      case 'segna-alloggiati-inviata': r = await segnaInviataAMano(id!); break;
+      case 'annulla-segna-alloggiati': r = await annullaInvioAMano(id!); break;
+      case 'segna-sinfonia': r = await segnaSinfoniaInviato(String(dati.immobileId), Number(dati.anno), Number(dati.mese), dati.inviato === true); break;
       case 'unisci-ospiti': r = await unisciOspiti(id!, Array.isArray(dati.daUnire) ? (dati.daUnire as string[]) : []); break;
       case 'inverti-ospite': r = await invertiNomeCognome(id!); break;
       case 'segna-ospite-prova': r = await segnaOspiteDiProva(id!, dati.valore === true); break;

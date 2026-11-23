@@ -13,6 +13,7 @@ import { schedineDaInviareAlloggiati, schedineDaVerificare, inviiFattiAlloggiati
 import { attivitaAperte, attivitaChiuse, leggiRegole, riconcilia } from '@/lib/db/regole';
 import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/registro';
 import { leggiOspitiDiProva } from '@/lib/db/ospitiGestione';
+import { avvisiAdempimenti } from '@/lib/adempimenti';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -120,6 +121,8 @@ export async function GET(req: NextRequest) {
       promemoria: soloPulizie ? undefined : promemoria,
       blocchi: soloPulizie ? [] : blocchiFiltr,
       ospitiDiProva: titolare ? await leggiOspitiDiProva() : [],
+      // Schedine ancora da fare, in ritardo o a meno di 24 ore dal termine (punto 6): per la Dashboard. Se il calcolo fallisce non blocca il resto.
+      adempimentiAvvisi: titolare ? await avvisiAdempimenti(oggiISO).catch((e) => { console.error('[nuovo/dati] avvisi adempimenti:', e instanceof Error ? e.message : e); return []; }) : [],
       registro: titolare ? await leggiRegistro(150) : [],
       cestino: titolare ? await leggiCestino() : [],
       riepilogoMese: sess.vedeFinanziario ? riepilogoMese.map((r) => ({

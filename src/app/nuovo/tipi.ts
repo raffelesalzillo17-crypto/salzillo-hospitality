@@ -107,10 +107,18 @@ export type Dati = {
   linkUtili?: LinkUtile[];
   promemoria?: Promemoria;
   /** Solo Titolare: registro delle azioni e cestino (punto 5, 23/11/2026). */
+  adempimentiAvvisi?: ArrivoAdempimento[];
   ospitiDiProva?: { id: string; nome: string; cognome: string; telefono: string | null }[];
   registro?: { id: string; quando: string; utente_nome: string | null; ruolo: string | null; azione: string; dettaglio: string | null }[];
   cestino?: { id: string; tipo: string; etichetta: string; eliminatoIl: string; scadeIl: string }[];
 };
+
+export type ArrivoAdempimento = {
+  prenotazioneId: string; alloggio: string; checkin: string; checkout: string; canale: string; ospite: string; ospitiAttesi: number; schedine: number;
+  stato: 'Da preparare' | 'Pronta' | 'Inviata' | 'Con errore' | 'Da verificare' | 'Non soggetta'; motivi: string[];
+  scadeIl: string; oreAllaScadenza: number; inRitardo: boolean; inviataIl: string | null;
+};
+export type StatoSinfonia = { immobileId: string; immobile: string; mesi: { mese: number; stato: 'Da generare' | 'Generato' | 'Inviato'; generatoIl: string | null; inviatoIl: string | null }[] };
 
 export type LinkUtile = { id: string; titolo: string; url: string; descrizione: string | null; ordine: number };
 
