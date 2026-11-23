@@ -399,8 +399,8 @@ export default function Nuovo() {
                 <tbody>
                   {lista.map((p) => (
                     <tr key={p.id} onClick={() => setPrenSel(p)}>
-                      <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}</td><td>{p.alloggio}</td>
-                      <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span><ChipRegime p={p} /></td>
+                      <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}{p.regimePrenotazione && p.regimePrenotazione !== 'Ordinario' ? <div><ChipRegime p={p} /></div> : null}</td><td>{p.alloggio}</td>
+                      <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span></td>
                       <td className="num">{eur(p.lordo)}</td><td className="num strong">{eur(p.utile)}</td>
                       <td>{p.stato === 'Attiva' ? '✅' : p.stato === 'In attesa di conferma' ? '⏳' : '❌'} <small>{p.stato}</small></td>
                     </tr>
@@ -474,7 +474,7 @@ export default function Nuovo() {
                     {sess.ruolo === 'Titolare' && <button className="add" onClick={() => setModale({ titolo: `Nuovo alloggio in ${im.nome}`, azione: 'crea-alloggio', campi: [
                       { k: 'immobileId', label: 'Immobile', tipo: 'select', opzioni: pr.immobili.map((x) => ({ v: x.id, t: x.nome })) },
                       { k: 'nome', label: 'Nome (es. Il Tulipano)', req: true },
-                      { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
+                      { k: 'regimeFiscale', label: 'Regime fiscale (alloggio)', tipo: 'select', opzioni: [{ v: 'No tax', t: 'Senza cedolare' }, { v: 'Con cedolare', t: 'Con cedolare secca' }] },
                       { k: 'costoPulizia', label: 'Costo pulizia €', tipo: 'number' },
                       { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password' },
                       { k: 'trasmetteAlloggiati', label: 'Trasmette ad Alloggiati Web', tipo: 'checkbox' },
@@ -486,7 +486,7 @@ export default function Nuovo() {
                   {im.alloggi.map((a) => (
                     <div key={a.id} className="row" onClick={() => sess.ruolo === 'Titolare' && setModale({ titolo: `Modifica ${a.nome}`, azione: 'aggiorna-alloggio', id: a.id, campi: [
                       { k: 'nome', label: 'Nome' },
-                      { k: 'regimeFiscale', label: 'Regime fiscale', tipo: 'select', opzioni: [{ v: 'No tax', t: 'No tax' }, { v: 'Con cedolare', t: 'Con cedolare' }] },
+                      { k: 'regimeFiscale', label: 'Regime fiscale (alloggio)', tipo: 'select', opzioni: [{ v: 'No tax', t: 'Senza cedolare' }, { v: 'Con cedolare', t: 'Con cedolare secca' }] },
                       { k: 'costoPulizia', label: 'Costo pulizia €', tipo: 'number' },
                       { k: 'attivo', label: 'Attivo', tipo: 'checkbox' },
                       { k: 'wifiSsid', label: 'WiFi rete' }, { k: 'wifiPassword', label: 'WiFi password (lascia vuoto per non cambiarla)' },
@@ -502,7 +502,7 @@ export default function Nuovo() {
                       impostaSoggiornoImporto: a.imposta_soggiorno_importo, checklistPulizie: a.checklist_pulizie ?? '',
                     } })} style={{ cursor: sess.ruolo === 'Titolare' ? 'pointer' : 'default' }}>
                       <b>{a.emoji} {a.nome}</b>
-                      <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale}</span>
+                      <span className="chip" style={{ background: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E22' : '#8C7BD822', color: a.regime_fiscale === 'Con cedolare' ? '#1FAA6E' : '#8C7BD8' }}>{a.regime_fiscale === 'Con cedolare' ? 'con cedolare secca' : 'senza cedolare'}</span>
                       {a.imposta_soggiorno_comune && <small>tassa soggiorno {a.imposta_soggiorno_comune}</small>}
                       {!a.attivo && <small>non attivo</small>}
                       {sess.ruolo === 'Titolare' && <button className="linklike" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); setCalAlloggio({ id: a.id, nome: a.nome }); }}>📅 calendari</button>}

@@ -207,7 +207,7 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
     if (!confirm(
       `Invio VERO e DEFINITIVO alla Polizia di Stato (Alloggiati Web) — ${g.alloggioNome}, arrivo ${dataIt(g.checkin)}:\n` +
       gruppo.map((s) => `• ${s.ospiteNomeCompleto} (${s.tipoAlloggiato || 'tipo mancante'})`).join('\n') +
-      '\n\nGli ospiti della prenotazione partono insieme, in un solo invio. Non è annullabile una volta accettato dal sistema. Il sistema valida di nuovo i dati prima di inviare (Test) e invia solo se il test passa per tutti. Procedo?'
+      '\n\nGli ospiti della prenotazione partono insieme, in un solo invio. Non è annullabile una volta accettato dal sistema. Il sistema valida di nuovo i dati prima di inviare (controllo con il portale) e invia solo se il controllo passa per tutti. Procedo?'
     )) return;
     setBusy(g.prenotazioneId);
     try {
@@ -228,10 +228,9 @@ export function AlloggiatiWebBox({ schedine, daVerificare, inviate, onCambiato }
     <div className="card">
       <div className="cardhead"><h2>Alloggiati Web <small>({schedine.length} da inviare)</small></h2></div>
       <p className="sub">
-        Invio vero e diretto al portale della Polizia di Stato — una prenotazione alla volta (tutti i suoi ospiti insieme), mai automatico. Compaiono qui solo le
-        schedine di prenotazioni <b>Il Tulipano</b> con canale <b>Airbnb, Booking o Diretto</b> (regola confermata da Raffaele
-        — le prenotazioni No Tax e le altre strutture non vengono mai inviate). Prima di ogni invio il sistema rivalida i dati
-        col servizio reale (Test) e invia solo se il test passa.
+        Qui invii le schedine al portale della Polizia di Stato, una prenotazione per volta (con tutti i suoi ospiti insieme). Non parte mai niente da solo.
+        Compaiono solo le prenotazioni de <b>Il Tulipano</b> con canale Airbnb, Booking o Diretto e regime diverso da <b>No Tax</b>: le prenotazioni No Tax e le altre strutture non si inviano mai.
+        Prima di ogni invio il programma controlla i dati con il portale e invia solo se il controllo va a buon fine.
       </p>
       {ultimoEsito && (
         <div style={{ background: ultimoEsito.ok ? '#1FAA6E22' : 'var(--coral-soft)', borderRadius: 10, padding: 12, marginBottom: 12 }}>

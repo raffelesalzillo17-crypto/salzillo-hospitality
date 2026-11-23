@@ -81,7 +81,7 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
           {r.righe.length === 0 ? <p className="empty" style={{ marginTop: 12 }}>Nessuna prenotazione questo mese.</p> : (
             <div className="tablescroll">
               <table className="tbl full">
-                <thead><tr><th>Check-in</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Commiss.</th><th className="num">Cedolare</th><th className="num">Pulizia</th><th className="num">Fee</th><th className="num">Netto propr.</th></tr></thead>
+                <thead><tr><th>Check-in</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Commiss.</th><th className="num">Cedolare</th><th className="num">Pulizia</th><th className="num">Gestione</th><th className="num">Netto propr.</th></tr></thead>
                 <tbody>
                   {r.righe.map((x) => (
                     <tr key={x.id}>
@@ -112,7 +112,7 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
               </table>
             </div>
           )}
-          <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: {neg(r.totali.costoPulizia)} · Fee di gestione: {neg(r.totali.feeGestione)}</p>
+          <p className="sub" style={{ marginTop: 8 }}>Costi di pulizia: {neg(r.totali.costoPulizia)} · Commissione di gestione: {neg(r.totali.feeGestione)}</p>
           {r.totali.impostaSoggiorno > 0 && <p className="sub">Tassa di soggiorno incassata dagli ospiti (da versare al comune): {eur(r.totali.impostaSoggiorno)}</p>}
 
           <div className="previsione">
@@ -128,7 +128,6 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
           <p style={{ marginTop: 12 }}>
             <a className="sync" href={`${pdfHref}&download=1`} target="_blank" rel="noopener" style={{ textDecoration: 'none', display: 'inline-block' }}>📄 Scarica il PDF</a>
           </p>
-          <p className="empty" style={{ marginTop: 8 }}>Fee di gestione: 0% (immobile di famiglia).</p>
           {(() => {
             const salvati = documenti.filter((d) => d.tipo === 'Rendiconto' && d.proprietarioId === propId);
             if (salvati.length === 0) return null;

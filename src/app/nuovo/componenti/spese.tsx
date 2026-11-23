@@ -338,7 +338,7 @@ function ExportCommercialista({ dati, anni, annoIniziale }: { dati: Dati; anni: 
   const base = `/api/nuovo/export-commercialista?anno=${anno}&proprietario=${prop}`;
   return (
     <div className="docgroup" style={{ marginBottom: 12 }}>
-      <h3><span>Export per il commercialista</span></h3>
+      <h3><span>Esportazione per il commercialista</span></h3>
       <p className="sub">Incassi, commissioni, spese, tassa di soggiorno riscossa e versata, per anno e per proprietario. Le prenotazioni sono quelle con check-in nell&apos;anno, tutti i canali. Non ci sono i nomi degli ospiti. Il foglio "Riepilogo" spiega i criteri.</p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={anno} onChange={(e) => setAnno(e.target.value)}>{anni.map((a) => <option key={a} value={a}>{a}</option>)}</select>

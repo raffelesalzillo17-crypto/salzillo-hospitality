@@ -260,7 +260,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
   async function cancella(conPenale: boolean) {
-    if (!confirm(conPenale ? 'Cancellare CON penale?' : 'Cancellare questa prenotazione?')) return;
+    if (!confirm(conPenale ? 'Cancellare la prenotazione CON penale? Le date tornano libere e la penale conta come incasso.' : 'Cancellare questa prenotazione? Resta nella lista come cancellata e le date tornano libere.')) return;
     setBusy(true);
     try {
       const imp = conPenale ? Number(prompt('Importo penale €:') || '0') : undefined;
@@ -285,7 +285,7 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
               {p.commissione > 0 && <tr><td>Commissione</td><td className="num">{neg(p.commissione)}</td></tr>}
               {p.cedolare > 0 && <tr><td>Cedolare</td><td className="num">{neg(p.cedolare)}</td></tr>}
               <tr><td>Pulizia</td><td className="num">{neg(p.costoPulizia)}</td></tr>
-              {p.feeGestione > 0 && <tr><td>Fee gestione</td><td className="num">{neg(p.feeGestione)}</td></tr>}
+              {p.feeGestione > 0 && <tr><td>Commissione di gestione</td><td className="num">{neg(p.feeGestione)}</td></tr>}
               <tr className="tot"><td>Utile</td><td className="num strong">{eur(p.utile)}</td></tr>
               <tr><td>Netto proprietario</td><td className="num">{eur(p.nettoProprietario)}</td></tr>
             </tbody></table>
