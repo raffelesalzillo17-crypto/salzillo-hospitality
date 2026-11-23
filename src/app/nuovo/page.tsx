@@ -305,6 +305,9 @@ export default function Nuovo() {
               Dall&apos;11/09/2026 questo sito (il &quot;nuovo sistema&quot;) è la fonte di verità: ogni prenotazione, spesa, scadenza, ospite, pulizia, preventivo, evento locale, contratto di gestione o prezzo per periodo che crei o modifichi qui si scrive automaticamente anche sui 3 fogli sopra. Il foglio resta quindi sempre una riserva completa e aggiornata — utile se questo sito fosse mai irraggiungibile — ma non va più modificato a mano: qualsiasi modifica fatta lì non torna indietro nel nuovo sistema.
             </p>
             <p className="empty" style={{ marginTop: 8 }}>
+              <b>Il vecchio sito è spento (23/11/2026).</b> Aprendo l&apos;indirizzo principale si arriva automaticamente qui, e il vecchio modulo &quot;Nuova prenotazione&quot; non scrive più nulla: tutto si fa da questo gestionale.
+            </p>
+            <p className="empty" style={{ marginTop: 8 }}>
               Esiste anche un link di sola visualizzazione, senza login, da condividere con chi deve solo vedere il calendario (es. la famiglia): mostra chi arriva/parte e i dettagli di ogni prenotazione, senza poter modificare nulla. Chiedi a Raffaele il link se ti serve.
             </p>
           </div>
