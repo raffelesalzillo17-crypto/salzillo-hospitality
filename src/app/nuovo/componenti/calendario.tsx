@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Alloggio, Blocco, Dati, EventoLoc, LinkUtile, Operatore, Prenotazione, PrezzoPer, Pulizia } from '../tipi';
 import { BottoneFatto } from './pulizie';
 import { CANALE_COLOR, api, creaBlocco, dataIt, eur, mancanoDocumenti, rimuoviBloccoApi } from '../utilita';
 
-export function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, onCambiato }: {
-  dati: Dati; attive: Prenotazione[]; oggi: string; onSel: (p: Prenotazione) => void; puoModificare: boolean; onCambiato: () => Promise<void>;
+export function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, titolare = false, onCambiato }: {
+  dati: Dati; attive: Prenotazione[]; oggi: string; onSel: (p: Prenotazione) => void; puoModificare: boolean; titolare?: boolean; onCambiato: () => Promise<void>;
 }) {
   const [sub, setSub] = useState<'griglia' | 'prezzi' | 'eventi'>('griglia');
   const eventi = (dati.eventi ?? []) as EventoLoc[];
@@ -23,8 +23,8 @@ export function SezioneCalendario({ dati, attive, oggi, onSel, puoModificare, on
           </button>
         ))}
       </div>
-      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} pulizie={pulizie} operatoriPulizie={operatoriPulizie} puoModificare={puoModificare} onCambiato={onCambiato} />}
-      {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
+      {sub === 'griglia' && <Calendario prenotazioni={attive} alloggi={dati.alloggi} oggi={oggi} onSel={onSel} eventi={eventi} prezzi={prezzi} blocchi={blocchi} pulizie={pulizie} operatoriPulizie={operatoriPulizie} puoModificare={puoModificare} onCambiato={onCambiato} conflitti={dati.conflittiCalendario ?? []} />}
+      {sub === 'prezzi' && <PannelloPrezzi prezzi={prezzi} alloggi={dati.alloggi} eventi={eventi} puoModificare={titolare} onCambiato={onCambiato} />}
       {sub === 'eventi' && <PannelloEventi eventi={eventi} puoModificare={puoModificare} onCambiato={onCambiato} />}
     </>
   );
@@ -210,55 +210,119 @@ export function LinkUtiliBox({ link, puoModificare, onCambiato }: {
   );
 }
 
-// ── Calendario stile Airbnb ─────────────────────────────────────────────────
-export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato }: {
+// ── Calendario stile Airbnb (punto 8, 23/11/2026) ───────────────────────────
+// Vista mese e vista settimana (la settimana parte dal lunedì), pulsante "Oggi", anteprima della prenotazione al passaggio del mouse e al
+// tocco, selezione delle notti da bloccare con conferma (trascinando col mouse, o toccando primo e ultimo giorno sul telefono).
+
+export type Anteprima = { p: Prenotazione; x: number; y: number };
+export type ConflittoCal = { id: string; alloggio: string; prenotazioneId: string; motivo: string; calendario: string };
+
+const addGiorni = (iso: string, n: number) => new Date(Date.parse(iso) + n * 864e5).toISOString().slice(0, 10);
+/** Il lunedì della settimana che contiene la data. */
+const lunedi = (iso: string) => addGiorni(iso, -((new Date(iso + 'T00:00:00Z').getUTCDay() + 6) % 7));
+
+/** Stato del pagamento di una prenotazione, in parole. */
+function statoPagamento(p: Prenotazione): { testo: string; colore: string } {
+  if (p.canale === 'Airbnb' || p.canale === 'Booking') return { testo: `Pagamento tramite ${p.canale}`, colore: '#6E6E73' };
+  const pagato = p.pagamenti.reduce((s, x) => s + (x.tipo === 'Rimborso' ? -x.importo : x.importo), 0);
+  const residuo = Math.round((p.lordo - pagato) * 100) / 100;
+  if (p.pagamenti.length === 0) return { testo: `Nessun pagamento (da incassare ${eur(p.lordo)})`, colore: '#E5484D' };
+  if (residuo <= 0.5) return { testo: 'Saldato', colore: '#1FAA6E' };
+  return { testo: `Pagato ${eur(pagato)}, da incassare ${eur(residuo)}`, colore: '#C97A16' };
+}
+
+export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato, conflitti = [] }: {
   prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
-  blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>;
+  blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; conflitti?: ConflittoCal[];
 }) {
-  const [meseOffset, setMeseOffset] = useState(0);
-  const CELL = 40; // px per giorno
+  const [vista, setVista] = useState<'mese' | 'settimana'>(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'settimana' : 'mese'));
+  const [offset, setOffset] = useState(0);
+  const [larg, setLarg] = useState(0);
+  const [largScorri, setLargScorri] = useState(0);
+  const [anteprima, setAnteprima] = useState<Anteprima | null>(null);
+  const [vaiOggi, setVaiOggi] = useState(0);
+  const contRef = useRef<HTMLDivElement>(null);
+  const scorrRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = contRef.current; const sc = scorrRef.current; if (!el || !sc) return;
+    const ro = new ResizeObserver(() => { setLarg(el.clientWidth); setLargScorri(sc.clientWidth); });
+    ro.observe(el); ro.observe(sc); setLarg(el.clientWidth); setLargScorri(sc.clientWidth);
+    return () => ro.disconnect();
+  }, []);
 
   const { giorni, label } = useMemo(() => {
-    const base = new Date(oggi);
-    base.setDate(1);
-    base.setMonth(base.getMonth() + meseOffset);
+    if (vista === 'settimana') {
+      const inizio = addGiorni(lunedi(oggi), offset * 7);
+      const g = Array.from({ length: 7 }, (_, i) => addGiorni(inizio, i));
+      return { giorni: g, label: `${dataIt(g[0])} – ${dataIt(g[6])}` };
+    }
+    const base = new Date(oggi); base.setDate(1); base.setMonth(base.getMonth() + offset);
     const anno = base.getFullYear(), mese = base.getMonth();
-    const nGiorni = new Date(anno, mese + 1, 0).getDate();
-    const giorni: string[] = [];
-    for (let d = 1; d <= nGiorni; d++) giorni.push(`${anno}-${String(mese + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
-    return { giorni, label: base.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }) };
-  }, [oggi, meseOffset]);
+    const g: string[] = [];
+    for (let d = 1; d <= new Date(anno, mese + 1, 0).getDate(); d++) g.push(`${anno}-${String(mese + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    return { giorni: g, label: base.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }) };
+  }, [oggi, offset, vista]);
 
+  const stretto = larg > 0 && larg < 640;
+  const fissa = stretto ? 84 : 160;
+  // Settimana: i 7 giorni occupano esattamente la larghezza dell'area che scorre (misurata), quindi niente giorni tagliati nemmeno a 390 px.
+  // Mese: celle da 40 px con scorrimento fluido.
+  const CELL = vista === 'mese' ? 40 : Math.max(30, Math.floor((largScorri || 600) / 7));
   const primoGiorno = giorni[0], ultimoGiorno = giorni[giorni.length - 1];
 
-  // La colonna dei nomi stanza vive FUORI dal contenitore che scorre orizzontalmente
-  // (invece di provare a tenerla "sticky" dentro la griglia CSS): con CSS Grid, un
-  // figlio in position:sticky si àncora alla propria cella di colonna, che scorre insieme
-  // al resto — quindi la colonna finiva per sparire scrollando, non per restare ferma.
-  // Separandola davvero, resta visibile per costruzione, senza bisogno di sticky.
+  // "Oggi": torna al periodo corrente e porta il giorno di oggi al centro con uno scorrimento morbido
+  useEffect(() => {
+    const el = scorrRef.current; const i = giorni.indexOf(oggi);
+    if (!el || i < 0) return;
+    el.scrollTo({ left: Math.max(0, i * CELL - el.clientWidth / 2 + CELL / 2), behavior: vaiOggi ? 'smooth' : 'auto' });
+  }, [vaiOggi, vista, offset, CELL]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!anteprima) return;
+    const chiudi = () => setAnteprima(null);
+    window.addEventListener('scroll', chiudi, true); document.addEventListener('click', chiudi);
+    return () => { window.removeEventListener('scroll', chiudi, true); document.removeEventListener('click', chiudi); };
+  }, [anteprima]);
+
+  const conflittoIds = useMemo(() => new Set(conflitti.map((c) => c.prenotazioneId)), [conflitti]);
   const alloggiAttivi = alloggi.filter((a) => a.attivo);
+  const ap = anteprima?.p;
+  const pagamento = ap ? statoPagamento(ap) : null;
+
   return (
-    <div className="card calwrap">
+    <div className="card calwrap" ref={contRef}>
+      {conflitti.length > 0 && (
+        <div className="cal-avviso" role="alert">
+          <b>⚠️ {conflitti.length === 1 ? 'Una sovrapposizione di calendario' : `${conflitti.length} sovrapposizioni di calendario`}</b>
+          {conflitti.slice(0, 4).map((c) => <div key={c.id}><small><b>{c.alloggio}</b> · {c.motivo}</small></div>)}
+          {conflitti.length > 4 && <small>…e altre {conflitti.length - 4} (vedi Dashboard)</small>}
+        </div>
+      )}
       <div className="calhead">
-        <button onClick={() => setMeseOffset((m) => m - 1)}>‹</button>
+        <button onClick={() => setOffset((m) => m - 1)} aria-label={vista === 'mese' ? 'Mese precedente' : 'Settimana precedente'}>‹</button>
         <h2>{label}</h2>
-        <button onClick={() => setMeseOffset((m) => m + 1)}>›</button>
-        {meseOffset !== 0 && <button className="oggi" onClick={() => setMeseOffset(0)}>oggi</button>}
+        <button onClick={() => setOffset((m) => m + 1)} aria-label={vista === 'mese' ? 'Mese successivo' : 'Settimana successiva'}>›</button>
+        <button className="oggi" onClick={() => { setOffset(0); setVaiOggi((n) => n + 1); }}>Oggi</button>
+        <span className="calvista">
+          <button className={vista === 'mese' ? 'on' : ''} onClick={() => { setVista('mese'); setOffset(0); }}>Mese</button>
+          <button className={vista === 'settimana' ? 'on' : ''} onClick={() => { setVista('settimana'); setOffset(0); }}>Settimana</button>
+        </span>
       </div>
       <div className="cal2col">
-        <div className="cal-fixed">
+        <div className="cal-fixed" style={{ width: fissa }}>
           <div className="cal-corner" />
           {prezzi.length > 0 && <div className="cal-room cal-prezzo">💶 €/notte</div>}
           {alloggiAttivi.map((a) => <div key={a.id} className="cal-room">{a.emoji} {a.nome}</div>)}
         </div>
-        <div className="tablescroll">
+        <div className="tablescroll cal-scorri" ref={scorrRef}>
           <div className="cal" style={{ ['--cell' as string]: `${CELL}px`, gridTemplateColumns: `repeat(${giorni.length}, var(--cell))` }}>
             {giorni.map((g) => {
               const d = new Date(g);
               const we = d.getDay() === 0 || d.getDay() === 6;
               const ev = eventi.find((e) => e.dal <= g && e.al >= g);
-              return <div key={g} className={'cal-day' + (we ? ' we' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
-                <small>{d.toLocaleDateString('it-IT', { weekday: 'narrow' })}{ev ? '🎉' : ''}</small><span>{d.getDate()}</span>
+              return <div key={g} className={'cal-day' + (we ? ' we' : '') + (d.getUTCDay() === 1 ? ' mon' : '') + (g === oggi ? ' today' : '') + (ev ? ' hasev' : '')} title={ev ? `🎉 ${ev.titolo}${ev.comune ? ' · ' + ev.comune : ''}` : undefined}>
+                <small>{d.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '')}{ev ? '🎉' : ''}</small><span>{d.getDate()}</span>
               </div>;
             })}
             {prezzi.length > 0 && (
@@ -277,25 +341,39 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
                 pulizie={pulizie.filter((pu) => pu.alloggioId === a.id && pu.data >= primoGiorno && pu.data <= ultimoGiorno)}
                 operatoriPulizie={operatoriPulizie}
                 puoModificare={puoModificare} onCambiato={onCambiato}
-                onSel={onSel} />
+                onSel={onSel} onAnteprima={setAnteprima} conflittoIds={conflittoIds} />
             ))}
           </div>
         </div>
       </div>
+      {ap && anteprima && (
+        <div className="cal-anteprima" style={{ left: Math.min(Math.max(8, anteprima.x), (typeof window !== 'undefined' ? window.innerWidth : 900) - 268), top: anteprima.y }}
+          onClick={(e) => e.stopPropagation()} onMouseLeave={() => setAnteprima(null)}>
+          <b>{ap.ospite}</b>
+          <div>{dataIt(ap.checkin)} → {dataIt(ap.checkout)} · {Math.max(1, Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5))} nott{Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5) === 1 ? 'e' : 'i'} · {ap.numeroOspiti} ospit{ap.numeroOspiti === 1 ? 'e' : 'i'}</div>
+          <div><span className="chip" style={{ background: (CANALE_COLOR[ap.canale] || '#888') + '33', color: CANALE_COLOR[ap.canale] || '#888' }}>{ap.canale}</span> {ap.stato !== 'Attiva' && <small>{ap.stato}</small>}</div>
+          {pagamento && <div style={{ color: pagamento.colore, fontWeight: 700 }}>{pagamento.testo}</div>}
+          {ap.daVerificare && <div style={{ color: '#8C7BD8' }}>⚠️ Da verificare: {ap.daVerificareMotivo ?? 'sparita dal calendario'}</div>}
+          {conflittoIds.has(ap.id) && <div style={{ color: '#E5484D' }}>⚠️ Si sovrappone a un altro calendario</div>}
+          {mancanoDocumenti(ap) && <div style={{ color: '#C97A16' }}>🪪 Mancano i documenti</div>}
+          <button className="mini coral" onClick={() => { setAnteprima(null); onSel(ap); }}>Apri la scheda →</button>
+        </div>
+      )}
       <div className="callegend">
         {Object.entries(CANALE_COLOR).map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
         <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
         <span><i style={{ background: 'var(--coral)', borderRadius: '50%' }} />Pulizia da fare (clicca per confermare)</span>
         <span><i style={{ background: '#1FAA6E', borderRadius: '50%', opacity: .75 }} />Pulizia fatta</span>
-        {puoModificare && <span className="empty">— trascina su una riga vuota per bloccare/sbloccare delle notti</span>}
+        {puoModificare && <span className="empty">— per bloccare delle notti: trascina su una riga vuota, oppure (da telefono) tocca il primo e l&apos;ultimo giorno; ti chiedo sempre conferma</span>}
       </div>
     </div>
   );
 }
 
-export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato, onSel }: {
+export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato, onSel, onAnteprima = () => {}, conflittoIds = new Set<string>() }: {
   giorni: string[]; cell: number; alloggioId: string; alloggioNome: string; prenotazioni: Prenotazione[]; prezzi?: PrezzoPer[];
   blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; onSel: (p: Prenotazione) => void;
+  onAnteprima?: (a: Anteprima | null) => void; conflittoIds?: Set<string>;
 }) {
   const primo = giorni[0];
   const idx = (d: string) => Math.round((Date.parse(d) - Date.parse(primo)) / 864e5);
@@ -305,13 +383,15 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
   const [addettoSel, setAddettoSel] = useState('');
 
   const oggiLocale = new Date().toISOString().slice(0, 10);
+  const coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+  const [ancora, setAncora] = useState<number | null>(null);
 
   const occupato = (i: number) => {
     const g = giorni[i];
     return prenotazioni.some((p) => p.checkin <= g && p.checkout > g) || blocchi.some((b) => b.checkin <= g && b.checkout > g);
   };
 
-  function iniziaSel(i: number) { if (!puoModificare || busy || occupato(i)) return; setDrag({ start: i, end: i }); }
+  function iniziaSel(i: number) { if (coarse || !puoModificare || busy || occupato(i)) return; setDrag({ start: i, end: i }); }
   function estendiSel(i: number) { setDrag((d) => (d ? { ...d, end: i } : d)); }
   async function chiudiSel(d: { start: number; end: number } | null) {
     if (!d) return;
@@ -335,6 +415,18 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
     finally { setBusy(false); }
   }
 
+  // Telefono e tablet: niente trascinamento (confligge con lo scorrimento): si tocca il primo giorno e poi l'ultimo; la conferma arriva sempre.
+  function toccoCella(i: number) {
+    if (!coarse || !puoModificare || busy || occupato(i)) return;
+    if (ancora === null) { setAncora(i); return; }
+    const d = { start: ancora, end: i };
+    setAncora(null); chiudiSel(d);
+  }
+  function mostra(e: React.SyntheticEvent, p: Prenotazione) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    onAnteprima({ p, x: r.left, y: r.bottom + 4 });
+  }
+
   // Un listener globale, non solo sulla riga: se il rilascio del mouse avviene fuori dalla
   // riga (drag impreciso, o il dito scivola sul touch) la selezione va comunque chiusa,
   // altrimenti resta "incollata" senza modo di uscirne.
@@ -349,15 +441,16 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
     <div className="cal-track" style={{ gridColumn: `1 / span ${giorni.length}`, userSelect: drag ? 'none' : undefined }}>
       {giorni.map((g, i) => {
         const pz = prezzi.filter((p) => p.dal <= g && p.al >= g).pop();
-        const sel = drag && i >= Math.min(drag.start, drag.end) && i <= Math.max(drag.start, drag.end);
+        const sel = (drag && i >= Math.min(drag.start, drag.end) && i <= Math.max(drag.start, drag.end)) || ancora === i;
         const cliccabile = puoModificare && !occupato(i);
         return (
-          <div key={g} className={'cal-cell' + (sel ? ' selecting' : '') + (cliccabile ? ' selectable' : '')} style={{ width: cell }}
-            onMouseDown={() => iniziaSel(i)} onMouseEnter={() => estendiSel(i)}>
+          <div key={g} className={'cal-cell' + (sel ? ' selecting' : '') + (cliccabile ? ' selectable' : '') + (new Date(g).getUTCDay() === 1 ? ' mon' : '')} style={{ width: cell }}
+            onMouseDown={() => iniziaSel(i)} onMouseEnter={() => estendiSel(i)} onClick={() => toccoCella(i)}>
             {pz && <span className="cal-przrow">{Math.round(Number(pz.prezzoNotte))}</span>}
           </div>
         );
       })}
+      {ancora !== null && <div className="cal-hint">Tocca il giorno finale (o lo stesso giorno per una notte sola) · <button onClick={() => setAncora(null)}>annulla</button></div>}
       {blocchi.map((b) => {
         const start = Math.max(0, idx(b.checkin));
         const end = Math.min(giorni.length, idx(b.checkout));
@@ -376,10 +469,11 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
         if (end <= start) return null;
         const c = CANALE_COLOR[p.canale] || '#888';
         return (
-          <button key={p.id} className="cal-bar" onClick={() => onSel(p)}
-            style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}
-            title={`${p.ospite} · ${p.canale} · ${dataIt(p.checkin)}→${dataIt(p.checkout)}${mancanoDocumenti(p) ? ' · mancano i documenti' : ''}`}>
-            <span>{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
+          <button key={p.id} className="cal-bar" aria-label={`${p.ospite}, ${p.canale}, dal ${dataIt(p.checkin)} al ${dataIt(p.checkout)}`}
+            onClick={(e) => { if (coarse) { e.stopPropagation(); mostra(e, p); } else onSel(p); }}
+            onMouseEnter={(e) => { if (!coarse) mostra(e, p); }} onMouseLeave={() => { if (!coarse) onAnteprima(null); }}
+            style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c }}>
+            <span>{p.daVerificare || conflittoIds.has(p.id) ? '⚠️ ' : ''}{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
           </button>
         );
       })}

@@ -149,3 +149,12 @@ export async function cosaMancaBlocchi(oggiISO: string, immobiliAmmessi: string[
     .orderBy(prenotazioni.checkin);
   return { pagamenti: pagamentiRighe, pulizie: pulizieRighe, scadenze: scadRighe.map((s) => ({ ...s, scaduta: s.data < oggiISO })), sovrapposizioni: sov, daVerificare: dv.map((x) => ({ ...x, motivo: x.motivo ?? 'da verificare' })) };
 }
+
+/** Sovrapposizioni di calendario ancora aperte (punto 2), per l'avviso nel Calendario. */
+export async function conflittiAperti(oggiISO: string, immobiliAmmessi: string[] | 'tutti') {
+  const db = getDb();
+  return db.select({ id: conflittiCalendario.id, alloggio: alloggi.nome, prenotazioneId: conflittiCalendario.prenotazione_id, motivo: conflittiCalendario.motivo, calendario: conflittiCalendario.calendario })
+    .from(conflittiCalendario).innerJoin(alloggi, eq(alloggi.id, conflittiCalendario.alloggio_id))
+    .where(and(isNull(conflittiCalendario.risolto_il), gte(conflittiCalendario.ota_al, oggiISO),
+      immobiliAmmessi === 'tutti' ? undefined : inArray(alloggi.immobile_id, immobiliAmmessi.length ? immobiliAmmessi : ['00000000-0000-0000-0000-000000000000'])));
+}

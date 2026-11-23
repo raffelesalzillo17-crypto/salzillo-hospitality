@@ -122,6 +122,8 @@ export type Dati = {
   promemoria?: Promemoria;
   /** Solo Titolare: registro delle azioni e cestino (punto 5, 23/11/2026). */
   adempimentiAvvisi?: ArrivoAdempimento[];
+  /** Sovrapposizioni rilevate dalla sincronizzazione dei calendari (punto 2): avviso nel Calendario. */
+  conflittiCalendario?: { id: string; alloggio: string; prenotazioneId: string; motivo: string; calendario: string }[];
   speseRicorrenti?: SpesaRicorrente[];
   ospitiDiProva?: { id: string; nome: string; cognome: string; telefono: string | null }[];
   registro?: { id: string; quando: string; utente_nome: string | null; ruolo: string | null; azione: string; dettaglio: string | null }[];

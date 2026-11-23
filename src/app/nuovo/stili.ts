@@ -90,6 +90,17 @@ button{cursor:pointer;font-family:inherit}
 .calhead h2{margin:0;text-transform:capitalize;}
 .calhead button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:16px;}
 .calhead button.oggi{width:auto;padding:0 12px;font-size:12px;font-weight:700;}
+.calhead{flex-wrap:wrap;}
+.calvista{margin-left:auto;display:flex;gap:4px;}
+.calhead .calvista button{width:auto;padding:0 12px;font-size:12px;font-weight:700;}
+.calhead .calvista button.on{background:var(--coral-soft);color:var(--coral);border-color:var(--coral);}
+.cal-scorri{flex:1 1 0;min-width:0;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
+.cal-day.mon,.cal-cell.mon{border-left:2px solid var(--ink-muted);}
+.cal-avviso{background:#E5484D14;border:1px solid #E5484D66;color:var(--ink);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;}
+.cal-hint{position:absolute;left:6px;top:-1px;z-index:6;background:var(--coral);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:0 0 8px 8px;white-space:nowrap;}
+.cal-hint button{background:#fff3;border:none;color:#fff;border-radius:6px;padding:1px 6px;margin-left:4px;font-size:11px;}
+.cal-anteprima{position:fixed;z-index:50;width:260px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 8px 28px #0004;font-size:12.5px;display:flex;flex-direction:column;gap:4px;}
+@media (max-width:640px){.cal-fixed .cal-room{font-size:10.5px;padding:0 4px;}.calhead h2{font-size:15px;}}
 .cal2col{display:flex;align-items:flex-start;min-width:0;}
 .cal-fixed{flex:none;width:160px;}
 .cal{display:grid;position:relative;font-size:12px;}

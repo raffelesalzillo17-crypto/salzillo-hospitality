@@ -262,7 +262,7 @@ export default function Nuovo() {
             <h2>Le sezioni di questa pagina</h2>
             <ul className="guidalist">
               <li><b>Dashboard</b> — in alto il riepilogo di tutti gli immobili per mese (frecce per cambiare mese, filtro per proprietario): incasso lordo, commissioni OTA, netto al proprietario, spese, tassa di soggiorno riscossa, occupazione e prezzo medio a notte, ciascuno con la sua spiegazione. Gli importi sono gli stessi dei Rendiconti dello stesso mese. Poi chi arriva e parte e “Cosa manca” diviso in blocchi: pagamenti da incassare (7 giorni), pulizie di oggi e domani, scadenze (30 giorni), schedine mancanti o in ritardo, sovrapposizioni di calendario</li>
-              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
+              <li><b>Calendario</b> — vista stile Airbnb: righe = alloggi, barre colorate = prenotazioni. Due viste, <b>Mese</b> e <b>Settimana</b> (la settimana parte dal lunedì; da telefono si apre la settimana, che sta tutta sullo schermo), pulsante <b>Oggi</b>. Passando col mouse (o toccando, da telefono) su una prenotazione compare un’anteprima con ospite, notti, canale e stato del pagamento. Per bloccare delle notti trascini su una riga vuota (da telefono: tocchi il primo e l’ultimo giorno) e ti viene sempre chiesta conferma. In alto compare un avviso se ci sono sovrapposizioni con i calendari Airbnb/Booking. Prezzi per data e alloggio solo per il Titolare. Sotto-schede <b>Prezzi</b> (prezzo/notte consigliato per periodo) ed <b>Eventi</b> (sagre, fiere, ponti — i giorni con eventi si evidenziano)</li>
               <li><b>Prenotazioni</b> — l&apos;elenco completo con ricerca e filtri. Da qui crei una prenotazione o un preventivo. Click su una riga → dettagli, modifica, registra pagamento</li>
               <li><b>Ospiti</b> — l&apos;anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni; “storico” mostra tutti i soggiorni di una persona; ↔ scambia nome e cognome. Telefono, email e codice fiscale vengono controllati (telefono in formato internazionale, +39 se manca). Il Titolare ha “Possibili duplicati”: sceglie il record principale e unisce, le prenotazioni passano tutte sul principale; i record di prova si possono nascondere senza eliminarli</li>
               <li><b>Documenti</b> — i preventivi salvati, una cartella per ospite. Stato Bozza → Inviato → Accettato; &quot;segna accettato&quot; crea la prenotazione</li>
@@ -306,7 +306,7 @@ export default function Nuovo() {
 
       {tab === 'registro' && sess.ruolo === 'Titolare' && <SezioneRegistro dati={dati} onCambiato={carica} />}
 
-      {tab === 'calendario' && <SezioneCalendario dati={dati} attive={attive} oggi={oggi} onSel={setPrenSel} puoModificare={sess.puoModificare} onCambiato={carica} />}
+      {tab === 'calendario' && <SezioneCalendario dati={dati} attive={attive} oggi={oggi} onSel={setPrenSel} puoModificare={sess.puoModificare} titolare={sess.ruolo === 'Titolare'} onCambiato={carica} />}
 
       {tab === 'prenotazioni' && (() => {
         const q = fPren.q.trim().toLowerCase();

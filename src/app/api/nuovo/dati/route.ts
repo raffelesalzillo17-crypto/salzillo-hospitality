@@ -15,6 +15,7 @@ import { leggiRegistro, leggiCestino, svuotaCestinoScaduto } from '@/lib/db/regi
 import { leggiOspitiDiProva } from '@/lib/db/ospitiGestione';
 import { avvisiAdempimenti } from '@/lib/adempimenti';
 import { generaSpeseRicorrenti, leggiSpeseRicorrenti } from '@/lib/db/speseGestione';
+import { conflittiAperti } from '@/lib/db/dashboard';
 
 /** Messaggio/numero già pronti per il pulsante "invia su WhatsApp" della dashboard — stesso
  *  testo esatto del promemoria automatico di check-in (cron/checkin-reminder), per non avere
@@ -126,6 +127,7 @@ export async function GET(req: NextRequest) {
       ospitiDiProva: titolare ? await leggiOspitiDiProva() : [],
       // Schedine ancora da fare, in ritardo o a meno di 24 ore dal termine (punto 6): per la Dashboard. Se il calcolo fallisce non blocca il resto.
       speseRicorrenti: titolare ? await leggiSpeseRicorrenti() : [],
+      conflittiCalendario: soloPulizie || sess.ruolo === 'Proprietario' ? [] : await conflittiAperti(oggiISO, sess.immobiliVisibili).catch(() => []),
       adempimentiAvvisi: titolare ? await avvisiAdempimenti(oggiISO).catch((e) => { console.error('[nuovo/dati] avvisi adempimenti:', e instanceof Error ? e.message : e); return []; }) : [],
       registro: titolare ? await leggiRegistro(150) : [],
       cestino: titolare ? await leggiCestino() : [],
