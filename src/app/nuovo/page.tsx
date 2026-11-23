@@ -24,10 +24,8 @@ import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, TAB_URL, api, dataIt, eur, scaricaTabella } from './utilita';
 
 
-/* Anteprima del NUOVO sistema Salzillo Hospitality (database).
-   Non è ancora la fonte viva — Raffaele continua a usare il Google Sheet, che il database
-   insegue via il cron /api/cron/sync-db. Qui si guarda com'è e si verifica che i dati
-   tornino. Stessa identità visiva di Motore Rafilu (corallo→magenta).
+/* Gestionale Salzillo Hospitality. Il database è la fonte ufficiale dei dati (punto 16, 23/11/2026); i fogli Google sono
+   solo una copia di sicurezza in uscita. Stessa identità visiva di Motore Rafilu (corallo→magenta).
    Vedi data/wiki/sintesi/piano-migrazione-database-modello-proprietario.md (fasi 4-5). */
 
 
@@ -192,7 +190,6 @@ export default function Nuovo() {
           <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={copiaLinkPersonale} title="Il tuo link per entrare da un altro telefono o computer">🔗 il mio link</button> · <button className="linklike" onClick={logout}>esci</button></span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <TemaToggle />
-            {sess.ruolo === 'Titolare' && <button className="sync" onClick={aggiorna} disabled={syncing}>{syncing ? 'aggiorno…' : '↻ aggiorna dal foglio'}</button>}
           </div>
         </div>
       </header>
@@ -366,7 +363,7 @@ export default function Nuovo() {
               </div>
             </div>
             <p className="empty" style={{ marginTop: 12 }}>
-              Dall&apos;11/09/2026 questo sito (il &quot;nuovo sistema&quot;) è la fonte di verità: ogni prenotazione, spesa, scadenza, ospite, pulizia, preventivo, evento locale, contratto di gestione o prezzo per periodo che crei o modifichi qui si scrive automaticamente anche sui 3 fogli sopra. Il foglio resta quindi sempre una riserva completa e aggiornata — utile se questo sito fosse mai irraggiungibile — ma non va più modificato a mano: qualsiasi modifica fatta lì non torna indietro nel nuovo sistema.
+              <b>Dove stanno i dati.</b> La fonte ufficiale è il database di questo gestionale: tutto si legge e si scrive solo qui. I fogli Google sono soltanto una copia di sicurezza in uscita (il gestionale scrive sul foglio, mai il contrario): dal 23/11/2026 l&apos;importazione notturna dal foglio è spenta e il tasto &quot;aggiorna dal foglio&quot; non c&apos;è più. Dall&apos;11/09/2026 questo sito (il &quot;nuovo sistema&quot;) è la fonte di verità: ogni prenotazione, spesa, scadenza, ospite, pulizia, preventivo, evento locale, contratto di gestione o prezzo per periodo che crei o modifichi qui si scrive automaticamente anche sui 3 fogli sopra. Il foglio resta quindi sempre una riserva completa e aggiornata — utile se questo sito fosse mai irraggiungibile — ma non va più modificato a mano: qualsiasi modifica fatta lì non torna indietro nel nuovo sistema.
             </p>
             <p className="empty" style={{ marginTop: 8 }}>
               <b>Il vecchio sito è spento (23/11/2026).</b> Aprendo l&apos;indirizzo principale si arriva automaticamente qui, e il vecchio modulo &quot;Nuova prenotazione&quot; non scrive più nulla: tutto si fa da questo gestionale.

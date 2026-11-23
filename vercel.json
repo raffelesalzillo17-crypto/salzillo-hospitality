@@ -9,10 +9,6 @@
       "schedule": "20 5 * * *"
     },
     {
-      "path": "/api/cron/sync-db",
-      "schedule": "45 5 * * *"
-    },
-    {
       "path": "/api/cron/esporta-anonimo",
       "schedule": "15 4 * * *"
     },

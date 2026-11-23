@@ -16,6 +16,11 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   }
+  // Punto 16 (23/11/2026): il database è la fonte ufficiale; il foglio è solo un export. Il cron è tolto da vercel.json
+  // e questa rotta non importa più nulla (prima rifaceva TRUNCATE + reload dal foglio). Per riattivarla: SYNC_DB_ATTIVO=1.
+  if (process.env.SYNC_DB_ATTIVO !== '1') {
+    return NextResponse.json({ ok: false, error: 'Importazione dal foglio disattivata: il database è la fonte ufficiale' }, { status: 410 });
+  }
   try {
     const r = await importaDaSheets();
     if (r.prenotazioniScartate.length > 0) {
