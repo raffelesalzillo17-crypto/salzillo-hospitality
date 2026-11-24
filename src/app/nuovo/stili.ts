@@ -308,7 +308,8 @@ html[data-stile="glass"] details.guidavoce{border-top-color:var(--line);}
   .card{padding:14px;}
   .topbar h1{font-size:20px;}
   /* tabelle: a schede (fino a 9 colonne) oppure a scorrimento con la prima colonna fissa (di più) */
-  .tablescroll{overflow-x:visible;}
+  .tablescroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .tablescroll:has(.tbl.stack){overflow-x:visible;}
   .tbl.stack.full,.tbl.stack{display:block;width:100%;}
   .tbl.stack thead{display:none;}
   .tbl.stack tbody{display:block;}
