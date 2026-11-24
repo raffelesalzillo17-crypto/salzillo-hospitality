@@ -12,6 +12,7 @@ import { PromemoriaBox } from './componenti/promemoria';
 import { CANALI_SCELTA } from '@/lib/canali';
 import { MigrazioneNoTax } from './componenti/migrazioneNoTax';
 import { Guida } from './componenti/guida';
+import { MenuLaterale } from './componenti/menu';
 import { Rendiconti } from './componenti/rendiconti';
 import { ResocontoAnnuale } from './componenti/resoconto';
 import { FormModale, PushToggle, StileToggle, TemaToggle } from './componenti/ui';
@@ -53,12 +54,18 @@ export default function Nuovo() {
   const [calAlloggio, setCalAlloggio] = useState<{ id: string; nome: string } | null>(null);
   const [modale, setModale] = useState<null | { titolo: string; campi: Campo[]; azione: string; id?: string; iniziali?: Record<string, unknown> }>(null);
   const [fPren, setFPren] = useState({ q: '', stato: '', alloggio: '', canale: '', regime: '', periodo: 'futuro' });
-  const [menuAltro, setMenuAltro] = useState(false);
+  const [drawerAperto, setDrawerAperto] = useState(false);
   // Punto 15 (23/11/2026): ogni sezione ha un indirizzo (/nuovo/calendario, /nuovo/prenotazioni/<id>) e i filtri stanno nell'indirizzo.
   const [urlPronto, setUrlPronto] = useState(false);
   const [idDaAprire, setIdDaAprire] = useState<string | null>(null);
   const [nonTrovata, setNonTrovata] = useState(false);
   const [filtriAperti, setFiltriAperti] = useState(false);
+  useEffect(() => {
+    if (!drawerAperto) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerAperto(false); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [drawerAperto]);
 
   // Tabelle su schermi stretti: ogni cella riceve l'etichetta della sua colonna (così il CSS le mostra come schede);
   // quelle con troppe colonne restano a scorrimento con la prima colonna fissa.
@@ -232,6 +239,7 @@ export default function Nuovo() {
       <style>{CSS}</style>
 
       <header className="topbar">
+        <button className="hamb" onClick={() => setDrawerAperto(true)} aria-label="Apri il menu">☰</button>
         <div>
           <span className="eyebrow">Salzillo Hospitality</span>
           <h1>Gestionale</h1>
@@ -261,25 +269,17 @@ export default function Nuovo() {
             </button>
           ))}
       </nav>
-      {(() => {
-        const visibili = TAB_URL.filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
+      <MenuLaterale
+        aperto={drawerAperto} onChiudi={() => setDrawerAperto(false)} tab={tab} nome={sess.nome}
+        visibili={TAB_URL.filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
           .filter((t) => t !== 'documentiospiti' || sess.ruolo === 'Titolare' || (sess.ruolo === 'Collaboratore' && sess.vedeFinanziario))
           .filter((t) => t !== 'adempimenti' && t !== 'registro' || sess.ruolo === 'Titolare')
           .filter((t) => sess.ruolo !== 'Pulizie' || t === 'pulizie' || t === 'guida')
-          .filter((t) => t !== 'promemoria' || !!dati.promemoria);
-        const principali = visibili.filter((t) => ['dashboard', 'calendario', 'prenotazioni', 'pulizie'].includes(t));
-        const altri = visibili.filter((t) => !principali.includes(t));
-        return (
-          <>
-            {menuAltro && <div className="velo" onClick={() => setMenuAltro(false)} />}
-            {menuAltro && <div className="altromenu">{altri.map((t) => <button key={t} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}</div>}
-            <div className="bottomnav">
-              {principali.map((t) => <button key={t} className={tab === t && !menuAltro ? 'on' : ''} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}
-              {altri.length > 0 && <button className={menuAltro ? 'on' : ''} onClick={() => setMenuAltro(!menuAltro)}>Altro ▾</button>}
-            </div>
-          </>
-        );
-      })()}
+          .filter((t) => t !== 'promemoria' || !!dati.promemoria)}
+        etichetta={(t) => TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}
+        onScegli={(t) => { setTab(t as typeof tab); setDrawerAperto(false); window.scrollTo(0, 0); }}
+        onLink={copiaLinkPersonale} onEsci={() => { setDrawerAperto(false); logout(); }}
+      />
 
       {tab === 'dashboard' && (
         <>
@@ -287,8 +287,6 @@ export default function Nuovo() {
           <div className="azionirapide">
             <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
             <button className="add" onClick={() => setPreventivo(true)}>📄 Nuovo preventivo</button>
-            <button className="add" onClick={() => setTab('calendario')}>📅 Calendario</button>
-            <button className="add" onClick={() => setTab('documenti')}>📁 Preventivi</button>
           </div>
         )}
         <div className="grid">

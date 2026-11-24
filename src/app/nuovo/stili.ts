@@ -358,4 +358,47 @@ html[data-stile="glass"] details.guidavoce{border-top-color:var(--line);}
 }
 html[data-stile="glass"] .modal{border-radius:26px 26px 0 0;}
 @media (min-width:641px){ html[data-stile="glass"] .modal{border-radius:28px;} }
+
+/* ── Menu laterale di vetro (24/11/2026): su telefono al posto della barra in basso ── */
+.hamb{display:none;}
+.drawer{position:fixed;top:0;left:0;bottom:0;z-index:60;width:min(86vw,330px);display:flex;flex-direction:column;
+  padding:max(16px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  background:var(--surface);border-right:1px solid var(--line);box-shadow:24px 0 60px -24px rgba(0,0,0,.55);
+  transform:translateX(-105%);visibility:hidden;transition:transform .3s cubic-bezier(.2,.8,.2,1),visibility .3s;}
+.drawer.aperto{transform:none;visibility:visible;}
+.velo{position:fixed;inset:0;z-index:59;display:block;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .25s;}
+.velo.aperto{opacity:1;pointer-events:auto;}
+.drawerhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 6px 12px;}
+.drawertitolo{font-family:var(--font-jakarta),sans-serif;font-size:22px;font-weight:800;letter-spacing:-.01em;margin-top:2px;}
+.drawerx{width:44px;height:44px;border:1px solid var(--line);background:transparent;border-radius:14px;font-size:18px;color:var(--ink);}
+.drawer nav{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;}
+.drawergruppo{margin:6px 0 12px;}
+.drawergruppo>span{display:block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted);padding:6px 12px;}
+.drawergruppo button{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;border:none;background:transparent;border-radius:16px;color:var(--ink);font-size:15px;font-weight:600;text-align:left;}
+.drawergruppo button i{font-style:normal;font-size:19px;width:26px;text-align:center;}
+.drawergruppo button.on{background:linear-gradient(135deg,rgba(255,90,95,.92),rgba(255,138,118,.82));color:#fff;box-shadow:0 10px 22px -12px rgba(255,90,95,.8);}
+.drawerfoot{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:10px;}
+.drawerlink,.drawertoggle{display:flex;gap:8px;flex-wrap:wrap;}
+html[data-stile="glass"] .drawer{background:var(--glass-fill-strong);-webkit-backdrop-filter:blur(36px) saturate(185%);backdrop-filter:blur(36px) saturate(185%);
+  border-right:1px solid var(--glass-edge);border-radius:0 30px 30px 0;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),24px 0 70px -24px var(--glass-shadow);}
+html[data-stile="glass"] .velo{-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}
+html[data-stile="glass"] .drawerx{background:var(--glass-fill);border-color:var(--glass-edge);}
+@media (max-width:640px){
+  .tabs,.bottomnav,.altromenu{display:none !important;}
+  .hamb{display:inline-flex;flex:none;align-items:center;justify-content:center;width:46px;height:46px;border-radius:15px;border:1px solid var(--line);background:var(--surface);font-size:20px;color:var(--ink);}
+  html[data-stile="glass"] .hamb{background:var(--glass-fill);border-color:var(--glass-edge);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:inset 0 1px 0 rgba(255,255,255,.5);}
+  .topbar{position:sticky;top:0;z-index:30;flex-wrap:nowrap;justify-content:flex-start;align-items:center;gap:12px;
+    margin:-12px -12px 12px;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));
+    background:color-mix(in srgb,var(--bg) 78%,transparent);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);}
+  html[data-stile="glass"] .topbar{background:transparent;}
+  .topbar .topright{display:none;}
+  .topbar .eyebrow{display:none;}
+  .topbar h1{margin:0;font-size:20px;}
+  .tbl.stack{min-width:0 !important;}
+  a.mini,a.add,a.sync{display:inline-flex;align-items:center;justify-content:center;min-height:44px;}
+  .cal-bar span{font-size:11px;}
+  .wrap{padding-bottom:calc(28px + env(safe-area-inset-bottom));}
+  .azionirapide{gap:8px;}
+  .card select,.card input[type="date"],.card input[type="month"]{min-height:44px;font-size:16px;}
+}
 `;
