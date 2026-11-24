@@ -437,4 +437,17 @@ html[data-stile="glass"] .modal{background:var(--glass-modal);}
   .modalactions{order:98;}
   .modal .nota-modulo{order:99;}
 }
+
+/* Anteprima della prenotazione nel calendario: su telefono è un pannello dal basso, leggibile e con un pulsante grande (prima era un riquadro piccolo che usciva dallo schermo) */
+.cal-veil,.cal-chiudi{display:none;}
+@media (max-width:640px){
+  .cal-veil{display:block;position:fixed;inset:0;z-index:69;background:rgba(0,0,0,.35);}
+  .cal-anteprima,html[data-stile="glass"] .cal-anteprima{left:0 !important;right:0;top:auto !important;bottom:0;width:auto;max-height:72dvh;overflow-y:auto;z-index:70;
+    padding:26px 18px calc(20px + env(safe-area-inset-bottom));gap:12px;font-size:15px;line-height:1.35;border-radius:26px 26px 0 0;border-width:1px 0 0;
+    background:var(--glass-modal,var(--surface));-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);box-shadow:0 -18px 50px -20px rgba(0,0,0,.55);}
+  .cal-anteprima::before{content:'';position:absolute;top:9px;left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:var(--line);}
+  .cal-ap-nome{font-size:20px;font-weight:800;padding-right:48px;}
+  .cal-chiudi{display:inline-flex;align-items:center;justify-content:center;position:absolute;top:12px;right:12px;width:44px;height:44px;border:none;border-radius:14px;background:var(--surface-2,rgba(0,0,0,.06));font-size:18px;color:var(--ink);}
+  .cal-ap-apri{min-height:52px;width:100%;font-size:16px;margin-top:4px;}
+}
 `;

@@ -346,17 +346,19 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
           </div>
         </div>
       </div>
+      {ap && anteprima && <div className="cal-veil" onClick={() => setAnteprima(null)} />}
       {ap && anteprima && (
         <div className="cal-anteprima" style={{ left: Math.min(Math.max(8, anteprima.x), (typeof window !== 'undefined' ? window.innerWidth : 900) - 268), top: anteprima.y }}
           onClick={(e) => e.stopPropagation()} onMouseLeave={() => setAnteprima(null)}>
-          <b>{ap.ospite}</b>
+          <button className="cal-chiudi" onClick={() => setAnteprima(null)} aria-label="Chiudi">✕</button>
+          <b className="cal-ap-nome">{ap.ospite}</b>
           <div>{dataIt(ap.checkin)} → {dataIt(ap.checkout)} · {Math.max(1, Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5))} nott{Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5) === 1 ? 'e' : 'i'} · {ap.numeroOspiti} ospit{ap.numeroOspiti === 1 ? 'e' : 'i'}</div>
           <div><span className="chip" style={{ background: (CANALE_COLOR[ap.canale] || '#888') + '33', color: CANALE_COLOR[ap.canale] || '#888' }}>{ap.canale}</span> {ap.regimePrenotazione === 'No Tax' && <span className="chip" style={{ background: '#8C7BD833', color: '#8C7BD8' }}>🚫 No Tax: esente da ogni imposta</span>} {ap.regimePrenotazione === 'Esente da tassa di soggiorno' && <span className="chip" style={{ background: '#C97A1633', color: '#C97A16' }}>esente tassa di soggiorno</span>} {ap.stato !== 'Attiva' && <small>{ap.stato}</small>}</div>
           {pagamento && <div style={{ color: pagamento.colore, fontWeight: 700 }}>{pagamento.testo}</div>}
           {ap.daVerificare && <div style={{ color: '#8C7BD8' }}>⚠️ Da verificare: {ap.daVerificareMotivo ?? 'sparita dal calendario'}</div>}
           {conflittoIds.has(ap.id) && <div style={{ color: '#E5484D' }}>⚠️ Si sovrappone a un altro calendario</div>}
           {mancanoDocumenti(ap) && <div style={{ color: '#C97A16' }}>🪪 Mancano i documenti</div>}
-          <button className="mini coral" onClick={() => { setAnteprima(null); onSel(ap); }}>Apri la scheda →</button>
+          <button className="mini coral cal-ap-apri" onClick={() => { setAnteprima(null); onSel(ap); }}>Apri la scheda →</button>
         </div>
       )}
       <div className="callegend">

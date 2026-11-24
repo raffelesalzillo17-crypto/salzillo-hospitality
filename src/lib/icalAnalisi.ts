@@ -37,6 +37,8 @@ export function eChiusura(b: EventoOta): boolean {
 }
 /** L'eco dei nostri stessi blocchi, riesportati dalla piattaforma. */
 export const eEco = (b: EventoOta) => /salzillo hospitality/i.test(b.summary);
+/** "Not available", "Blocked"… (24/11/2026): date chiuse a mano sulla piattaforma, di solito proprio perché c'è una prenotazione presa altrove. Non sono prenotazioni e non vanno segnalate come sovrapposizioni. */
+export const eBloccoManuale = (b: EventoOta) => /not available|unavailable|non disponibile|blocked|closed/i.test(b.summary);
 
 /** Segna come importabile solo una prenotazione vera: niente eco dei nostri blocchi e, su Airbnb, niente blocchi manuali. */
 export function importabile(b: EventoOta, canale: string): boolean {
@@ -67,7 +69,7 @@ export function analizzaFeed(eventi: EventoOta[], nostre: PrenNostra[], calendar
   const orizzonte = new Date(Date.parse(oggi) + giorniOrizzonte * 864e5).toISOString().slice(0, 10);
   const limiteEvidenza = new Date(Date.parse(oggi) + giorniEvidenza * 864e5).toISOString().slice(0, 10);
   const veri = eventi.filter((b) => b.end >= oggi && !eEco(b));
-  const prenOta = veri.filter((b) => !eChiusura(b) && b.start <= orizzonte);
+  const prenOta = veri.filter((b) => !eChiusura(b) && !eBloccoManuale(b) && b.start <= orizzonte);
   const stesso = (p: PrenNostra) => p.canale.toLowerCase() === calendario.toLowerCase();
 
   const daImportare: EventoOta[] = []; const conflitti: Conflitto[] = [];

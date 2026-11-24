@@ -31,6 +31,12 @@ describe('analizzaFeed', () => {
     expect(a.conflitti[0].motivo).toContain('doppia vendita');
     expect(a.daImportare).toEqual([]);
   });
+  it('un blocco manuale sul sito (Not available) sopra una nostra prenotazione NON è una sovrapposizione né una prenotazione da importare', () => {
+    const ev = parseIcal(ICS([{ s: '2099-03-10', e: '2099-03-14', t: 'Airbnb (Not available)' }]));
+    const a = analizzaFeed(ev, [pn('d1', '2099-03-10', '2099-03-17', 'Diretto')], 'Airbnb', OGGI);
+    expect(a.conflitti).toEqual([]);
+    expect(a.daImportare).toEqual([]);
+  });
   it('stesso canale ma date diverse: avviso "date diverse"', () => {
     const a = analizzaFeed(parseIcal(ICS([{ s: '2099-03-10', e: '2099-03-13' }])), [pn('b1', '2099-03-10', '2099-03-12', 'Booking')], 'Booking', OGGI);
     expect(a.conflitti[0]).toMatchObject({ tipo: 'date diverse', prenotazioneId: 'b1' });
