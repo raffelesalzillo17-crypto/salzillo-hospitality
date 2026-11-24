@@ -56,9 +56,9 @@ const SEZIONI: Voce[] = [
     '"Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu una per una.',
   ] },
   { titolo: '🔔 Notifiche', chi: 'Titolare e operatore', righe: [
-    'Tocca "🔕 notifiche" in alto per riceverle su questo telefono o computer. Su iPhone prima aggiungi l'app alla schermata Home (Condividi → Aggiungi a Home) e riaprila da lì.',
+    'Tocca "🔕 notifiche" in alto per riceverle su questo telefono o computer. Su iPhone prima aggiungi questa app alla schermata Home (Condividi → Aggiungi a Home) e riaprila da lì.',
     'Ogni mattina ricevi un riepilogo (arrivi, partenze, pulizie, messaggi da mandare, scadenze vicine) e un avviso quando dai calendari arriva una prenotazione nuova, una sovrapposizione o una prenotazione sparita.',
-    'Nelle notifiche non ci sono mai nomi o dati degli ospiti, solo numeri e il tipo di cosa da fare: i dettagli si vedono aprendo l'app.',
+    'Nelle notifiche non ci sono mai nomi o dati degli ospiti, solo numeri e il tipo di cosa da fare: i dettagli si vedono aprendo il gestionale.',
     'Per spegnerle tocca di nuovo il pulsante ("🔔 notifiche"). Vale solo per il dispositivo che stai usando.',
   ] },
   { titolo: '🧹 Pulizie', righe: [
