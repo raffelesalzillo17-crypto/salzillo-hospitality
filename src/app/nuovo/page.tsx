@@ -14,7 +14,7 @@ import { MigrazioneNoTax } from './componenti/migrazioneNoTax';
 import { Guida } from './componenti/guida';
 import { Rendiconti } from './componenti/rendiconti';
 import { ResocontoAnnuale } from './componenti/resoconto';
-import { FormModale, TemaToggle } from './componenti/ui';
+import { FormModale, StileToggle, TemaToggle } from './componenti/ui';
 import { SezioneRegistro } from './componenti/registro';
 import { SezioneOspiti } from './componenti/ospiti';
 import { SezioneAdempimenti } from './componenti/adempimenti';
@@ -199,6 +199,7 @@ export default function Nuovo() {
         <div className="topright">
           <span className="hint">👤 {sess.nome} · <button className="linklike" onClick={copiaLinkPersonale} title="Il tuo link per entrare da un altro telefono o computer">🔗 il mio link</button> · <button className="linklike" onClick={logout}>esci</button></span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <StileToggle />
             <TemaToggle />
           </div>
         </div>

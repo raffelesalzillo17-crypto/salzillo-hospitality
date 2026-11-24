@@ -1,6 +1,10 @@
 import type { DatiSch, Prenotazione, Tema } from './tipi';
 
-export const eur = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+/** Importo in euro con il punto delle migliaia (1.471,00 €): il formato it-IT del browser lo omette per i numeri a quattro cifre. */
+export const eur = (n: number) => {
+  const [i, d] = Math.abs(n).toFixed(2).split('.');
+  return `${n < -0.004 ? '-' : ''}${i.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${d}\u00a0€`;
+};
 
 export const neg = (n: number) => (n > 0.005 ? '−' : '') + eur(n);
 

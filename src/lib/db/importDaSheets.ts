@@ -85,8 +85,8 @@ const STATO_MAP: Record<string, string> = {
 };
 
 export const ALLOGGI_SEED = [
-  { nome: 'Il Tulipano', immobile: 'Via Clanio 60', foglio: 'Tulipano', regime: 'Con cedolare' as const, self: true, emoji: '🌷', wifi: ['Lella', 'Lella1978@'], trasm: true, sogg: 'Marcianise' },
-  { nome: 'Stanza Rosa', immobile: 'Via Clanio 60', foglio: 'Rosa', regime: 'No tax' as const, self: false, emoji: '🌸', wifi: ['Lella', 'Lella1978@'], trasm: false, sogg: null },
+  { nome: 'Il Tulipano', immobile: 'Via Clanio 60', foglio: 'Tulipano', regime: 'Con cedolare' as const, self: true, emoji: '🌷', wifi: null, trasm: true, sogg: 'Marcianise' },
+  { nome: 'Stanza Rosa', immobile: 'Via Clanio 60', foglio: 'Rosa', regime: 'No tax' as const, self: false, emoji: '🌸', wifi: null, trasm: false, sogg: null },
   { nome: 'Piano Terra', immobile: 'Via Campania 36', foglio: 'Piano Terra', regime: 'No tax' as const, self: false, emoji: '🏠', wifi: null, trasm: false, sogg: null },
   { nome: 'Primo Piano', immobile: 'Via Campania 36', foglio: 'Primo Piano', regime: 'No tax' as const, self: false, emoji: '🏠', wifi: null, trasm: false, sogg: null },
   { nome: 'Secondo Piano', immobile: 'Via Campania 36', foglio: 'Secondo Piano', regime: 'No tax' as const, self: false, emoji: '🏠', wifi: null, trasm: false, sogg: null },

@@ -90,3 +90,25 @@ export function TemaToggle() {
     </button>
   );
 }
+
+/** Stile grafico: "classico" (quello di sempre) oppure "vetro" (vetro liquido, anteprima). Si ricorda su questo dispositivo; ?stile=glass lo prova da un link. */
+export function StileToggle() {
+  const [glass, setGlass] = useState(false);
+  useEffect(() => {
+    let v = false;
+    try {
+      const q = new URLSearchParams(window.location.search).get('stile');
+      if (q === 'glass' || q === 'classico') localStorage.setItem('sh_stile', q);
+      v = localStorage.getItem('sh_stile') === 'glass';
+    } catch { /* */ }
+    setGlass(v);
+    if (v) document.documentElement.setAttribute('data-stile', 'glass'); else document.documentElement.removeAttribute('data-stile');
+  }, []);
+  function cambia() {
+    const n = !glass;
+    setGlass(n);
+    if (n) document.documentElement.setAttribute('data-stile', 'glass'); else document.documentElement.removeAttribute('data-stile');
+    try { localStorage.setItem('sh_stile', n ? 'glass' : 'classico'); } catch { /* */ }
+  }
+  return <button className="stiletoggle" onClick={cambia} title="Cambia lo stile grafico: classico o vetro liquido">{glass ? '💧 vetro' : '▫️ classico'}</button>;
+}
