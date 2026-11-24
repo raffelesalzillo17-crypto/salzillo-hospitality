@@ -247,7 +247,7 @@ export default function Nuovo() {
 
       {nonTrovata && <p className="err">La prenotazione del link non esiste o non è tra quelle che puoi vedere.</p>}
       <nav className="tabs">
-        {(['dashboard', 'calendario', 'prenotazioni', 'ospiti', 'documenti', 'immobili', 'spese', 'scadenze', 'pulizie', 'promemoria', 'alloggiati', 'rendiconti', 'link', 'guida', 'registro', 'adempimenti', 'documentiospiti'] as const)
+        {(TAB_URL)
           .filter((t) => t !== 'alloggiati' || sess.ruolo === 'Titolare')
           .filter((t) => t !== 'documentiospiti' || sess.ruolo === 'Titolare' || (sess.ruolo === 'Collaboratore' && sess.vedeFinanziario))
           .filter((t) => t !== 'adempimenti' || sess.ruolo === 'Titolare')

@@ -32,18 +32,18 @@ const SEZIONI: Voce[] = [
     'Una prenotazione "Diretto" con regime "No Tax" è esente da ogni imposta: niente cedolare, tassa di soggiorno, Alloggiati Web né ricevuta. Restano solo le spese di pulizia e gli eventuali extra.',
     'Le prenotazioni No Tax hanno l\'etichetta 🚫 No Tax nell\'elenco e nel calendario, e le trovi con il filtro "Regime fiscale".',
   ] },
-  { titolo: '👥 Ospiti', righe: [
-    'L\'anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni. "Storico" mostra tutti i soggiorni di una persona.',
-    'Telefono, email e codice fiscale vengono controllati. Il telefono va in formato internazionale (se manca, si aggiunge +39).',
-    'Il pulsante ↔ scambia nome e cognome quando sono invertiti.',
-    'Solo il Titolare ha "Possibili duplicati": scegli la scheda principale e le prenotazioni passano tutte lì. Le schede di prova si nascondono senza eliminarle.',
-  ] },
   { titolo: '📄 Preventivi', righe: [
     'Un preventivo passa da Bozza a Inviato e poi a Accettato.',
     '"Converti in prenotazione" crea la prenotazione con gli stessi dati e ti dice se qualcosa è diverso.',
     'Un preventivo accettato è bloccato: non si modifica né si elimina. Se i dati cambiano, crei una nuova versione (una copia in Bozza).',
     'Se dopo la conversione la prenotazione cambia importo, date o ospiti, sotto il preventivo compare l\'elenco delle differenze.',
     'Gli altri preventivi si eliminano con conferma e restano 30 giorni nel cestino.',
+  ] },
+  { titolo: '👥 Ospiti', righe: [
+    'L\'anagrafica. Cerca per nome, telefono o email; filtra per valutazione, ultimo soggiorno e numero di soggiorni. "Storico" mostra tutti i soggiorni di una persona.',
+    'Telefono, email e codice fiscale vengono controllati. Il telefono va in formato internazionale (se manca, si aggiunge +39).',
+    'Il pulsante ↔ scambia nome e cognome quando sono invertiti.',
+    'Solo il Titolare ha "Possibili duplicati": scegli la scheda principale e le prenotazioni passano tutte lì. Le schede di prova si nascondono senza eliminarle.',
   ] },
   { titolo: '🗂️ Documenti ospiti', chi: 'Titolare e operatore', righe: [
     'Una cartella per ospite con i file salvati su Google Drive: contratti, ricevute e altro.',
@@ -54,20 +54,6 @@ const SEZIONI: Voce[] = [
     'Una regola dice quando preparare un messaggio (per esempio il giorno prima dell\'arrivo). Può avere una condizione: solo se mancano i documenti, solo se la caparra non è incassata, solo se resta un saldo. Le condizioni sui pagamenti non valgono per Airbnb e Booking.',
     '"Per prenotazione" mostra, per ogni arrivo, lo stato di ogni messaggio: Pronto, Inviato, In programma, Bloccato (con il motivo, per esempio manca il telefono) o Non necessario.',
     '"Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu una per una.',
-  ] },
-  { titolo: '🏠 Immobili', righe: [
-    'Proprietari, immobili e alloggi. Da qui li aggiungi e li modifichi; solo il Titolare può eliminarli, e solo se non hanno ancora prenotazioni o altri dati collegati.',
-    'In ogni alloggio, "calendari" ti dà il link da incollare su Airbnb e Booking (è segreto e lo puoi rigenerare), i link da importare, il pulsante "Sincronizza ora" e il registro delle sincronizzazioni.',
-    'Le prenotazioni importate dai calendari sono segnaposto "da completare". Se una sparisce dal calendario del sito, viene segnata "da verificare": non si cancella mai da sola.',
-  ] },
-  { titolo: '🧾 Spese', righe: [
-    'I costi, con foto o PDF della ricevuta. Entrano nei Rendiconti e abbassano l\'utile.',
-    'Il Titolare può importare un estratto conto in CSV (con anteprima e senza duplicati), impostare le spese ricorrenti, che si registrano da sole, ed esportare tutto per il commercialista in Excel o CSV, per anno e per proprietario.',
-  ] },
-  { titolo: '⏰ Scadenze', righe: [
-    'Le scadenze fiscali e amministrative, una per ente. Quando ne segni una come fatta, si rinnova da sola se è ricorrente.',
-    'Gli stati sono: aperta, fatta (con data ed eventuale ricevuta) e non più applicabile (con il motivo). Le archiviate stanno nell\'Archivio e non compaiono in Dashboard.',
-    'Il Titolare ha "Doppioni" per unire le scadenze scritte due volte, con anteprima.',
   ] },
   { titolo: '🧹 Pulizie', righe: [
     'Una pulizia si può segnare "fatta" solo dal giorno del check-out. Per sicurezza serve una conferma in due passaggi e per 10 secondi puoi annullare.',
@@ -90,14 +76,28 @@ const SEZIONI: Voce[] = [
     'Sotto trovi il resoconto annuale: per ogni mese prenotazioni, incasso lordo, tassa di soggiorno, notti e occupazione; incassi per canale e per regime fiscale; tassa per alloggio; confronto con l\'anno prima. Si scarica in Excel (5 fogli) o CSV.',
     'Prende i dati con le stesse regole della Dashboard (prenotazioni attive, per mese di check-in), quindi i numeri coincidono.',
   ] },
+  { titolo: '🧾 Spese', righe: [
+    'I costi, con foto o PDF della ricevuta. Entrano nei Rendiconti e abbassano l\'utile.',
+    'Il Titolare può importare un estratto conto in CSV (con anteprima e senza duplicati), impostare le spese ricorrenti, che si registrano da sole, ed esportare tutto per il commercialista in Excel o CSV, per anno e per proprietario.',
+  ] },
+  { titolo: '⏰ Scadenze', righe: [
+    'Le scadenze fiscali e amministrative, una per ente. Quando ne segni una come fatta, si rinnova da sola se è ricorrente.',
+    'Gli stati sono: aperta, fatta (con data ed eventuale ricevuta) e non più applicabile (con il motivo). Le archiviate stanno nell\'Archivio e non compaiono in Dashboard.',
+    'Il Titolare ha "Doppioni" per unire le scadenze scritte due volte, con anteprima.',
+  ] },
+  { titolo: '🏠 Immobili', righe: [
+    'Proprietari, immobili e alloggi. Da qui li aggiungi e li modifichi; solo il Titolare può eliminarli, e solo se non hanno ancora prenotazioni o altri dati collegati.',
+    'In ogni alloggio, "calendari" ti dà il link da incollare su Airbnb e Booking (è segreto e lo puoi rigenerare), i link da importare, il pulsante "Sincronizza ora" e il registro delle sincronizzazioni.',
+    'Le prenotazioni importate dai calendari sono segnaposto "da completare". Se una sparisce dal calendario del sito, viene segnata "da verificare": non si cancella mai da sola.',
+  ] },
+  { titolo: '🔗 Link utili', righe: [
+    'Una rubrica di link comodi (sito vetrina, check-in, WhatsApp e quelli che aggiungi tu) da avere a portata di mano e condividere.',
+  ] },
   { titolo: '🔒 Registro', chi: 'solo Titolare', righe: [
     'Il cestino: ospiti, preventivi, spese e scadenze eliminati si recuperano per 30 giorni.',
     'Il registro di chi ha fatto cosa e quando.',
     'Il controllo che le cartelle dei documenti su Drive non siano condivise pubblicamente.',
     'La proposta di cancellare le copie dei documenti d\'identità dopo l\'invio ad Alloggiati Web (come chiede il Garante della privacy). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta salvata: per salvarla usa "Ricevuta del giorno" in Alloggiati Web. Confermi tu, una prenotazione alla volta.',
-  ] },
-  { titolo: '🔗 Link utili', righe: [
-    'Una rubrica di link comodi (sito vetrina, check-in, WhatsApp e quelli che aggiungi tu) da avere a portata di mano e condividere.',
   ] },
 ];
 
