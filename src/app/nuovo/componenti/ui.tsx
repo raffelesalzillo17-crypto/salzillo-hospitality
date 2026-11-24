@@ -112,3 +112,64 @@ export function StileToggle() {
   }
   return <button className="stiletoggle" onClick={cambia} title="Cambia lo stile grafico: classico o vetro liquido">{glass ? '💧 vetro' : '▫️ classico'}</button>;
 }
+
+function chiaveInBytes(b64: string): Uint8Array {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+/** Notifiche push (24/11/2026): "🔔" attive su questo dispositivo, "🔕" spente. Su iPhone funzionano solo con l'app aggiunta alla schermata Home. */
+export function PushToggle() {
+  const [stato, setStato] = useState<'caricamento' | 'nascosto' | 'spente' | 'attive' | 'occupato'>('caricamento');
+  const [chiave, setChiave] = useState('');
+  useEffect(() => {
+    fetch('/api/nuovo/push').then((r) => (r.ok ? r.json() : null)).then(async (d) => {
+      if (!d?.ok || !d.chiave) { setStato('nascosto'); return; }
+      setChiave(d.chiave);
+      // "attive" solo se QUESTO dispositivo è davvero iscritto (l'utente può averne altri)
+      let qui = false;
+      try { const reg = await navigator.serviceWorker?.getRegistration('/sw.js'); qui = !!(await reg?.pushManager.getSubscription()); } catch { /* */ }
+      setStato(d.attivo && qui ? 'attive' : 'spente');
+    }).catch(() => setStato('nascosto'));
+  }, []);
+  if (stato === 'caricamento' || stato === 'nascosto') return null;
+
+  async function attiva() {
+    const supportato = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    if (!supportato) {
+      alert('Questo dispositivo non permette le notifiche da qui. Su iPhone aggiungi prima questa app alla schermata Home (Condividi → Aggiungi a Home) e riaprila da lì.');
+      return;
+    }
+    setStato('occupato');
+    try {
+      const permesso = await Notification.requestPermission();
+      if (permesso !== 'granted') { alert('Le notifiche sono bloccate per questo sito. Puoi permetterle dalle impostazioni del browser o del telefono.'); setStato('spente'); return; }
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chiaveInBytes(chiave) as BufferSource });
+      const r = await fetch('/api/nuovo/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sottoscrizione: sub.toJSON(), dispositivo: navigator.userAgent.slice(0, 80) }),
+      });
+      if (!r.ok) throw new Error('Iscrizione non riuscita');
+      await fetch('/api/nuovo/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prova: true }) });
+      setStato('attive');
+    } catch (e) { alert(e instanceof Error ? e.message : 'Non sono riuscito ad attivare le notifiche.'); setStato('spente'); }
+  }
+  async function spegni() {
+    setStato('occupato');
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) { await fetch('/api/nuovo/push', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+    } catch { /* */ }
+    setStato('spente');
+  }
+  return (
+    <button className="stiletoggle" disabled={stato === 'occupato'} onClick={stato === 'attive' ? spegni : attiva}
+      title={stato === 'attive' ? 'Notifiche attive su questo dispositivo: tocca per spegnerle' : 'Attiva le notifiche su questo dispositivo'}>
+      {stato === 'attive' ? '🔔 notifiche' : '🔕 notifiche'}
+    </button>
+  );
+}

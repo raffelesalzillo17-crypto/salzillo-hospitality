@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cronAuth';
 import { controllaTuttiICalendari } from '@/lib/db/ical';
+import { avvisaUnaVolta } from '@/lib/push';
 
 // Sincronizzazione dei calendari Airbnb e Booking (punto 2, 23/11/2026): legge i feed iCal di tutti gli alloggi, importa le prenotazioni
 // che mancano come segnaposto da completare, segnala le sovrapposizioni e segna "da verificare" le prenotazioni sparite dal feed.
@@ -16,6 +17,12 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ ok: false, error: 'Non autorizzato' }, { status: 401 });
   try {
     const esiti = await controllaTuttiICalendari({ origine: 'automatica' });
+    // Avvisi push, una sola volta per cosa (senza nomi): prenotazione nuova dai calendari, sovrapposizione, prenotazione sparita dal sito.
+    for (const e of esiti) {
+      for (const i of e.importate) await avvisaUnaVolta(`importata:${e.alloggio}:${i.start}:${i.end}`, { titolo: 'Nuova prenotazione', testo: `${i.canale} · ${e.alloggio}, dal ${i.start.slice(8, 10)}/${i.start.slice(5, 7)}: da completare`, url: '/nuovo/prenotazioni', tag: 'importata' }).catch(() => {});
+      for (const k of e.conflitti) await avvisaUnaVolta(`sovrapposizione:${e.alloggio}:${k.start}:${k.end}`, { titolo: '⚠️ Sovrapposizione di date', testo: `${e.alloggio}: ${e.calendario} si accavalla con una prenotazione (dal ${k.start.slice(8, 10)}/${k.start.slice(5, 7)})`, url: '/nuovo/calendario', tag: 'sovrapposizione' }).catch(() => {});
+      for (const m of e.inPiu) await avvisaUnaVolta(`daverificare:${e.alloggio}:${m.start}:${m.end}:${m.canale}`, { titolo: 'Prenotazione da verificare', testo: `${e.alloggio}: una prenotazione non risulta più sul calendario del sito`, url: '/nuovo/prenotazioni', tag: 'daverificare' }).catch(() => {});
+    }
     return NextResponse.json({
       ok: true, calendari: esiti.length,
       errori: esiti.filter((e) => e.errore).length,

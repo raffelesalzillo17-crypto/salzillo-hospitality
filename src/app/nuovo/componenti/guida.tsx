@@ -55,6 +55,12 @@ const SEZIONI: Voce[] = [
     '"Per prenotazione" mostra, per ogni arrivo, lo stato di ogni messaggio: Pronto, Inviato, In programma, Bloccato (con il motivo, per esempio manca il telefono) o Non necessario.',
     '"Aggiungi i modelli pronti" crea 5 regole già scritte, spente: le accendi tu una per una.',
   ] },
+  { titolo: '🔔 Notifiche', chi: 'Titolare e operatore', righe: [
+    'Tocca "🔕 notifiche" in alto per riceverle su questo telefono o computer. Su iPhone prima aggiungi l'app alla schermata Home (Condividi → Aggiungi a Home) e riaprila da lì.',
+    'Ogni mattina ricevi un riepilogo (arrivi, partenze, pulizie, messaggi da mandare, scadenze vicine) e un avviso quando dai calendari arriva una prenotazione nuova, una sovrapposizione o una prenotazione sparita.',
+    'Nelle notifiche non ci sono mai nomi o dati degli ospiti, solo numeri e il tipo di cosa da fare: i dettagli si vedono aprendo l'app.',
+    'Per spegnerle tocca di nuovo il pulsante ("🔔 notifiche"). Vale solo per il dispositivo che stai usando.',
+  ] },
   { titolo: '🧹 Pulizie', righe: [
     'Una pulizia si può segnare "fatta" solo dal giorno del check-out. Per sicurezza serve una conferma in due passaggi e per 10 secondi puoi annullare.',
     'Per ogni pulizia puoi indicare l\'addetto, l\'orario, le note e spuntare la checklist dell\'alloggio (si modifica dalla scheda Immobili).',

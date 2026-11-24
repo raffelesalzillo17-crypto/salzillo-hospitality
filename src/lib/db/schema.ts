@@ -695,3 +695,24 @@ export const conflittiCalendario = pgTable('conflitti_calendario', {
   tipo: text('tipo').notNull(), // 'doppia' | 'date diverse'
   motivo: text('motivo').notNull(),
 }, (t) => ({ unico: unique().on(t.alloggio_id, t.calendario, t.ota_dal, t.ota_al, t.prenotazione_id) }));
+
+// ── Notifiche push (24/11/2026, migrazione 0013) ─────────────────────────────
+export const pushSottoscrizioni = pgTable('push_sottoscrizioni', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  utente_id: uuid('utente_id').notNull().references(() => utenti.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  dispositivo: text('dispositivo'),
+  creato_il: timestamp('creato_il', { withTimezone: true }).notNull().defaultNow(),
+  ultimo_invio: timestamp('ultimo_invio', { withTimezone: true }),
+});
+export const pushAvvisi = pgTable('push_avvisi', {
+  chiave: text('chiave').primaryKey(),
+  creato_il: timestamp('creato_il', { withTimezone: true }).notNull().defaultNow(),
+});
+export const pushImpostazioni = pgTable('push_impostazioni', {
+  chiave: text('chiave').primaryKey(),
+  valore: text('valore').notNull(),
+  creato_il: timestamp('creato_il', { withTimezone: true }).notNull().defaultNow(),
+});
