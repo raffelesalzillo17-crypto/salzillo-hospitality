@@ -58,6 +58,41 @@ export default function Nuovo() {
   const [urlPronto, setUrlPronto] = useState(false);
   const [idDaAprire, setIdDaAprire] = useState<string | null>(null);
   const [nonTrovata, setNonTrovata] = useState(false);
+  const [filtriAperti, setFiltriAperti] = useState(false);
+
+  // Tabelle su schermi stretti: ogni cella riceve l'etichetta della sua colonna (così il CSS le mostra come schede);
+  // quelle con troppe colonne restano a scorrimento con la prima colonna fissa.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const prepara = () => {
+      document.querySelectorAll<HTMLTableElement>('table.tbl').forEach((t) => {
+        const ths = Array.from(t.querySelectorAll('thead th')).map((th) => (th.textContent ?? '').trim());
+        if (!ths.length) return;
+        t.classList.toggle('stack', ths.length <= 9);
+        t.classList.toggle('wide', ths.length > 9);
+        t.querySelectorAll('tbody tr').forEach((tr) => {
+          const celle = Array.from(tr.children) as HTMLElement[];
+          if (celle.length === ths.length) celle.forEach((td, i) => td.setAttribute('data-label', ths[i]));
+        });
+      });
+    };
+    prepara();
+    const mo = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(prepara, 50); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => { mo.disconnect(); clearTimeout(timer); };
+  }, []);
+
+  // Tastiera virtuale: il campo che si sta compilando viene portato al centro, sopra la tastiera.
+  useEffect(() => {
+    const alFocus = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+      if (window.innerWidth > 640) return;
+      setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 320);
+    };
+    document.addEventListener('focusin', alFocus);
+    return () => document.removeEventListener('focusin', alFocus);
+  }, []);
 
   // Stile vetro liquido di default, subito (anche mentre i dati si caricano e nella pagina di accesso); "classico" solo se scelto con il pulsante in alto.
   useEffect(() => {
@@ -235,6 +270,7 @@ export default function Nuovo() {
         const altri = visibili.filter((t) => !principali.includes(t));
         return (
           <>
+            {menuAltro && <div className="velo" onClick={() => setMenuAltro(false)} />}
             {menuAltro && <div className="altromenu">{altri.map((t) => <button key={t} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}</div>}
             <div className="bottomnav">
               {principali.map((t) => <button key={t} className={tab === t && !menuAltro ? 'on' : ''} onClick={() => { setTab(t); setMenuAltro(false); }}>{TAB_LABEL[t] ?? t[0].toUpperCase() + t.slice(1)}</button>)}
@@ -358,7 +394,7 @@ export default function Nuovo() {
                 <button className="add" onClick={() => setNuovaPren(true)}>＋ Nuova prenotazione</button>
               </div>}
             </div>
-            <div className="filtri">
+            <div className={'filtri' + (filtriAperti ? '' : ' chiuso')}>
               <input className="cerca" placeholder="Cerca ospite, alloggio, note…" value={fPren.q} onChange={(e) => setFPren({ ...fPren, q: e.target.value })} />
               <select value={fPren.periodo} onChange={(e) => setFPren({ ...fPren, periodo: e.target.value })}>
                 <option value="futuro">In corso e future</option>
@@ -385,6 +421,7 @@ export default function Nuovo() {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
+              <button className="mini btnfiltri" onClick={() => setFiltriAperti(!filtriAperti)}>{filtriAperti ? '✕ Chiudi filtri' : '🔎 Filtri'}</button>
               {(['xlsx', 'csv'] as const).map((fmt) => (
                 <button key={fmt} className="mini" disabled={lista.length === 0} onClick={() => {
                   const conSoldi = sess.vedeFinanziario;

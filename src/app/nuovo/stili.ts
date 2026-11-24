@@ -295,4 +295,67 @@ html[data-stile="glass"] details.guidavoce{border-top-color:var(--line);}
   html[data-stile="glass"] .altromenu{bottom:84px;}
 }
 .stiletoggle{font-size:12px;font-weight:700;padding:6px 12px;border-radius:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
+
+/* ── Mobile (24/11/2026): da 360 px in su. Tabelle a schede, moduli grandi, pannelli dal basso, safe area. ── */
+.wrap{padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right));padding-top:max(20px,env(safe-area-inset-top));}
+.tbl td,.tbl th{overflow-wrap:anywhere;}
+.tbl td.num,.tbl th.num,.tbl .strong{white-space:nowrap;overflow-wrap:normal;}
+.btnfiltri{display:none;}
+.velo{display:none;}
+@media (max-width:640px){
+  html{-webkit-text-size-adjust:100%;}
+  .wrap{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow-x:hidden;}
+  .card{padding:14px;}
+  .topbar h1{font-size:20px;}
+  /* tabelle: a schede (fino a 9 colonne) oppure a scorrimento con la prima colonna fissa (di più) */
+  .tablescroll{overflow-x:visible;}
+  .tbl.stack.full,.tbl.stack{display:block;width:100%;}
+  .tbl.stack thead{display:none;}
+  .tbl.stack tbody{display:block;}
+  .tbl.stack tr{display:block;border:1px solid var(--line);border-radius:14px;padding:6px 12px;margin-bottom:10px;background:var(--surface-2,rgba(0,0,0,.03));}
+  .tbl.stack td{display:flex;justify-content:space-between;align-items:baseline;gap:14px;width:auto;border-top:1px dashed var(--line);padding:7px 0;text-align:right;font-size:14px;}
+  .tbl.stack td:first-child{border-top:none;font-weight:700;}
+  .tbl.stack td::before{content:attr(data-label);flex:none;max-width:46%;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-muted);}
+  .tbl.stack td[data-label=""]::before,.tbl.stack td:not([data-label])::before{content:none;}
+  .tbl.stack td[colspan]{display:block;text-align:left;}
+  .tbl.stack tr.tot{background:var(--coral-soft);}
+  .tbl.stack tr.tot td{border-top:none;}
+  .tbl.wide{min-width:640px;}
+  .tbl.wide th:first-child,.tbl.wide td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);}
+  .tbl.wide td:first-child{box-shadow:2px 0 0 var(--line);}
+  .tablescroll:has(.tbl.wide){overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  /* moduli: una colonna, campi alti almeno 48 px, 16 px per evitare lo zoom automatico di iOS */
+  .form{gap:14px;}
+  .form label{font-size:13px;}
+  .form input,.form select,.form textarea,.filtri select,.filtri input{min-height:48px;font-size:16px;padding:12px 14px;border-radius:12px;width:100%;}
+  .form textarea{min-height:120px;}
+  .form input[type="checkbox"],.filtri input[type="checkbox"]{min-height:26px;width:26px;height:26px;}
+  button,.mini,.add,.sync,.danger{min-height:44px;}
+  .mini{padding:10px 14px;}
+  .azioni{gap:8px;}
+  /* finestre: pannello dal basso, azioni sempre visibili sopra la tastiera */
+  .overlay{align-items:flex-end;padding:0;overscroll-behavior:contain;}
+  .modal{max-width:none;width:100%;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:22px 22px 0 0;padding-bottom:0;margin:0;}
+  .modal .x{top:10px;right:12px;width:44px;height:44px;font-size:20px;}
+  .modalactions{position:sticky;bottom:0;z-index:2;background:var(--surface);margin:12px -14px 0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
+  .modalactions button{flex:1;min-height:48px;}
+  /* filtri: la ricerca resta, gli altri si aprono col pulsante */
+  .btnfiltri{display:inline-flex;align-items:center;gap:6px;}
+  .filtri{flex-direction:column;align-items:stretch;}
+  .filtri.chiuso>*:not(.cerca){display:none;}
+  /* "Altro": pannello dal basso con velo */
+  .velo{display:block;position:fixed;inset:0;z-index:39;background:rgba(0,0,0,.32);}
+  .altromenu{left:8px;right:8px;bottom:calc(76px + env(safe-area-inset-bottom));max-height:62dvh;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;}
+  .altromenu button{min-height:48px;text-align:left;border-radius:14px;}
+  .bottomnav{padding:6px 4px calc(6px + env(safe-area-inset-bottom));}
+  .bottomnav button{min-height:52px;font-size:12px;}
+  /* testi e importi senza tagli */
+  .kpi b{font-size:18px;overflow-wrap:anywhere;}
+  .chip,.pill{white-space:normal;}
+  .cardhead{flex-wrap:wrap;gap:8px;}
+  .cardhead .add,.cardhead .mini{flex:none;}
+  h2{overflow-wrap:anywhere;}
+}
+html[data-stile="glass"] .modal{border-radius:26px 26px 0 0;}
+@media (min-width:641px){ html[data-stile="glass"] .modal{border-radius:28px;} }
 `;
