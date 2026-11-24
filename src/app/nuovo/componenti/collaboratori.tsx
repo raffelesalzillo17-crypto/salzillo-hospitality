@@ -44,7 +44,8 @@ export function CollaboratoriBox({ utenti, anagrafica, permessi, onCambiato }: {
         <h2>Chi ha accesso al sistema <small>({utenti.length})</small></h2>
         <button className="add" onClick={() => setNuovo({ nome: '', ruolo: 'Collaboratore' })}>＋ Persona</button>
       </div>
-      <p className="sub">Tu crei la scheda (nome e ruolo) e il sistema genera un link solo per quella persona: aprendolo entra, senza username né password. Chi ha il link entra come lei.</p>
+      <p className="sub">Crei la scheda (nome e ruolo) e il programma genera un link solo per quella persona: aprendolo entra, senza username né password. Chi ha il link entra come lei.
+      </p>
       {invito && (
         <div className="form" style={{ padding: 12, background: 'var(--coral-soft)', borderRadius: 10, marginBottom: 10 }}>
           <b>Link personale di {invito.nome}{invito.copiato ? ' — copiato ✓' : ''}</b>

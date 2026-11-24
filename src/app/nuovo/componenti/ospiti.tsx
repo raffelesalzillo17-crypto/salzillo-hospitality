@@ -199,7 +199,8 @@ function StrumentoOspiti({ dati, onCambiato }: { dati: Dati; onCambiato: () => P
   return (
     <div className="docgroup" style={{ marginBottom: 12 }}>
       <h3><span>Controlli sull&apos;elenco ospiti</span><button className="mini" disabled={busy === 'cerca'} onClick={carica}>{busy === 'cerca' ? 'cerco…' : p ? '↻ ricontrolla' : 'Cerca'}</button></h3>
-      <p className="sub">Niente si unisce o si cancella da solo: scegli tu il record principale e confermi. L&apos;unione sposta tutte le prenotazioni sul principale e ricontrolla che non se ne perda nessuna.</p>
+      <p className="sub">Niente si unisce o si cancella da solo. Scegli tu la scheda principale e confermi: le prenotazioni delle altre passano tutte su quella e il programma controlla che non se ne perda nessuna.
+    </p>
       {err && <p className="err">{err}</p>}
       {msg && <p className="empty" style={{ color: '#1FAA6E' }}>{msg}</p>}
       {p && (

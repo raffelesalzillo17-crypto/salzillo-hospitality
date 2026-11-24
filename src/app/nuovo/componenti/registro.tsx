@@ -101,7 +101,8 @@ export function SezioneRegistro({ dati, onCambiato }: { dati: Dati; onCambiato: 
 
       <div className="card">
         <h2>Copie dei documenti da cancellare</h2>
-        <p className="sub">Il Garante privacy dice che la copia del documento d&apos;identità serve solo per l&apos;invio ad Alloggiati Web: dopo la ricevuta va cancellata (la ricevuta si tiene 5 anni, e qui resta). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta già salvata. Non si cancella niente da solo: confermi tu, una prenotazione alla volta.</p>
+        <p className="sub">Il Garante della privacy chiede di tenere la copia del documento d&apos;identità solo finché serve per l&apos;invio ad Alloggiati Web: dopo la ricevuta va cancellata (la ricevuta si tiene 5 anni e resta qui). Compaiono solo le prenotazioni con tutte le schedine inviate e la ricevuta già salvata. Non si cancella niente da solo: confermi tu, una prenotazione alla volta.
+      </p>
         <button className="add" disabled={busy === 'proposte'} onClick={cercaProposte}>{busy === 'proposte' ? 'Cerco…' : 'Cerca le copie da cancellare'}</button>
         {errProposte && <p className="empty" style={{ color: '#d33' }}>{errProposte}</p>}
         {esitoCons && <p className="empty" style={{ color: '#1FAA6E' }}>{esitoCons}</p>}
@@ -120,7 +121,8 @@ export function SezioneRegistro({ dati, onCambiato }: { dati: Dati; onCambiato: 
 
       <div className="card">
         <h2>Controllo cartelle Drive</h2>
-        <p className="sub">Verifica, in sola lettura, se le cartelle con i documenti degli ospiti sono condivise con &quot;chiunque abbia il link&quot;. Non cambia nessuna impostazione e non mostra nomi.</p>
+        <p className="sub">Controlla se le cartelle con i documenti degli ospiti sono condivise con &ldquo;chiunque abbia il link&rdquo;. Non cambia nessuna impostazione e non mostra i nomi.
+      </p>
         <button className="add" disabled={busy === 'drive'} onClick={controllaDrive}>{busy === 'drive' ? 'Controllo in corso…' : 'Controlla ora'}</button>
         {errDrive && <p className="empty" style={{ color: '#d33' }}>{errDrive}</p>}
         {drive && (

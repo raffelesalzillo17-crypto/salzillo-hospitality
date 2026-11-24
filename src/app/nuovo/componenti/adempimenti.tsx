@@ -49,7 +49,8 @@ export function SezioneAdempimenti({ oggi, onCambiato }: { oggi: string; onCambi
     <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
       <div className="card">
         <h2>Adempimenti — Alloggiati Web</h2>
-        <p className="sub">Niente parte da qui. Per ogni arrivo vedi se la schedina è pronta: scarichi il file, lo carichi tu sul portale e poi segni &quot;inviata&quot;. Il termine è 24 ore dall&apos;arrivo; l&apos;ora di arrivo non è registrata, quindi si conta in modo prudente: entro la fine del giorno di check-in.</p>
+        <p className="sub">Da qui non parte niente. Per ogni arrivo vedi se la schedina è pronta: scarichi il file, lo carichi tu sul portale e poi segni &ldquo;inviata&rdquo;. Il termine è 24 ore dall&apos;arrivo; l&apos;ora di arrivo non è registrata, quindi il programma conta fino alla fine del giorno di check-in.
+      </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '8px 0' }}>
           <button className="mini" onClick={() => preset(0, 0)}>oggi</button>
           <button className="mini" onClick={() => preset(-3, 7)}>da 3 giorni fa a 7 avanti</button>
@@ -113,7 +114,8 @@ export function SezioneAdempimenti({ oggi, onCambiato }: { oggi: string; onCambi
 
       <div className="card">
         <h2>Sinfonia — movimento turistico {anno}</h2>
-        <p className="sub">Un file al mese per immobile. Lo scarichi, lo carichi sul portale regionale e segni il mese come inviato. I dati di provenienza mancanti sono stimati: il file è una bozza da confrontare col portale.</p>
+        <p className="sub">Un file al mese per immobile. Lo scarichi, lo carichi sul portale regionale e segni il mese come inviato. Dove manca la provenienza degli ospiti il dato è stimato: il file è una bozza da confrontare con il portale.
+      </p>
         {sinfonia.length === 0 ? <p className="empty">Nessun immobile trasmette al portale regionale.</p> : sinfonia.map((s) => (
           <div key={s.immobileId} className="docgroup">
             <h3><span>{s.immobile}</span></h3>

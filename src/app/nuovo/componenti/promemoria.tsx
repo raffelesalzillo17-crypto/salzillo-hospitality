@@ -209,8 +209,8 @@ export function PromemoriaBox({ promemoria, alloggi, puoModificare, ruoloTitolar
       <div className="card">
         <div className="cardhead"><h2>Da fare <small>({aperte.length})</small></h2></div>
         <p className="sub" style={{ marginTop: -4 }}>
-          Promemoria e messaggi preparati dalle regole qui sotto. Nessun messaggio parte da solo: tocca &ldquo;Apri WhatsApp&rdquo;, controlla e invia tu.
-          Se una prenotazione cambia date, i promemoria si spostano da soli; se la cancelli, spariscono.
+          Messaggi e promemoria preparati dalle regole qui sotto. Non parte mai niente da solo: tocca &ldquo;Apri WhatsApp&rdquo;, controlla il testo e invia tu.
+          Se una prenotazione cambia date si spostano da soli; se la cancelli spariscono.
         </p>
         {aperte.map((a) => <CardAttivita key={a.id} a={a} puoModificare={puoModificare} onCambiato={onCambiato} />)}
         {aperte.length === 0 && <p className="empty">Niente da fare per ora.</p>}

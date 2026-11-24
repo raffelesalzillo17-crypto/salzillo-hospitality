@@ -68,7 +68,8 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         <h2>Calendari · {alloggio.nome}</h2>
 
         <h3 style={{ marginTop: 10 }}>Blocca queste date su Airbnb / Booking</h3>
-        <p className="sub">Copia questo link e incollalo su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari). Le prenotazioni dirette registrate qui bloccano quelle date anche su Airbnb e Booking.</p>
+        <p className="sub">Incolla questo link su Airbnb (Calendario → Importa calendario) e su Booking (Sincronizza calendari): così le prenotazioni dirette registrate qui bloccano le stesse date anche lì.
+      </p>
         <div className="form"><label>Link da incollare {token ? <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>🔒 protetto</span> : <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>vecchio, senza segreto</span>}
           <input readOnly value={exportUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); navigator.clipboard?.writeText(exportUrl); }} />
         </label></div>
@@ -76,7 +77,8 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         {errLink && <p className="err">{errLink}</p>}
 
         <h3 style={{ marginTop: 16 }}>Blocca date senza prenotazione</h3>
-        <p className="sub">Per uso personale, manutenzione, ecc. — niente ospite, niente importi: entra solo nel link qui sopra, quindi blocca le date anche su Airbnb/Booking come una prenotazione.</p>
+        <p className="sub">Per uso personale, manutenzione e simili: senza ospite e senza importi. Blocca le date anche su Airbnb e Booking, come una prenotazione.
+      </p>
         {blocchi.map((b) => (
           <div key={b.id} className="row">
             <b>{dataIt(b.checkin)} → {dataIt(b.checkout)}</b> <small style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{b.nota}</small>
@@ -93,7 +95,8 @@ export function CalendariBox({ alloggio, onClose }: { alloggio: { id: string; no
         </div>
 
         <h3 style={{ marginTop: 16 }}>Controlla i calendari OTA (per sicurezza)</h3>
-        <p className="sub">Incolla qui i link iCal che Airbnb, Booking o altri canali ti danno (puoi metterne più di uno, ognuno con la sua etichetta). Il sistema li legge, importa le prenotazioni che mancano come segnaposto da completare, segnala le sovrapposizioni e segna "da verificare" (mai cancellate da sole) quelle sparite dal calendario.</p>
+        <p className="sub">Incolla qui i link che Airbnb, Booking o altri siti ti danno (puoi metterne più di uno, ognuno con un nome). Il programma li legge e aggiunge le prenotazioni che mancano come &ldquo;da completare&rdquo;, segnala le sovrapposizioni e, se una prenotazione sparisce dal sito, la segna &ldquo;da verificare&rdquo; senza cancellarla.
+      </p>
         {cals.map((c) => (
           <div key={c.id} className="row">
             <b>{c.nome}</b> <small style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{c.url}</small>
