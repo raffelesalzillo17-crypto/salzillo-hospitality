@@ -51,7 +51,8 @@ export function FormModale({ titolo, campi, iniziali = {}, onInvia, onClose }: {
           ))}
         </div>
         <div className="modalactions">
-          <button className="add" disabled={busy || mancano} onClick={async () => {
+          <button className="add" disabled={busy} onClick={async () => {
+            if (mancano) { setErr('Compila: ' + campi.filter((c) => c.req && !v[c.k]).map((c) => c.label.split(' (')[0]).join(', ') + '.'); return; }
             setBusy(true); setErr('');
             try {
               const out: Record<string, unknown> = {};

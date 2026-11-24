@@ -474,7 +474,7 @@ export function CalRow({ giorni, cell, alloggioId, alloggioNome, prenotazioni, p
             onClick={(e) => { if (coarse) { e.stopPropagation(); mostra(e, p); } else onSel(p); }}
             onMouseEnter={(e) => { if (!coarse) mostra(e, p); }} onMouseLeave={() => { if (!coarse) onAnteprima(null); }}
             style={{ left: start * cell + 4, width: (end - start) * cell - 8, background: c, ...(p.regimePrenotazione === 'No Tax' ? { outline: '2px dashed #fff', outlineOffset: -3 } : {}) }}>
-            <span>{p.regimePrenotazione === 'No Tax' ? '🚫 ' : ''}{p.daVerificare || conflittoIds.has(p.id) ? '⚠️ ' : ''}{mancanoDocumenti(p) ? '🪪 ' : ''}{p.ospite}</span>
+            <span>{(end - start) * cell - 8 >= 130 ? <>{p.regimePrenotazione === 'No Tax' ? '🚫 ' : ''}{p.daVerificare || conflittoIds.has(p.id) ? '⚠️ ' : ''}{mancanoDocumenti(p) ? '🪪 ' : ''}</> : null}{p.ospite}</span>
           </button>
         );
       })}

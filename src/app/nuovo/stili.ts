@@ -401,4 +401,40 @@ html[data-stile="glass"] .drawerx{background:var(--glass-fill);border-color:var(
   .azionirapide{gap:8px;}
   .card select,.card input[type="date"],.card input[type="month"]{min-height:44px;font-size:16px;}
 }
+
+/* ── Rifiniture telefono (24/11/2026) ── */
+@media (max-width:640px){
+  .subtabs{flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .subtabs::-webkit-scrollbar{display:none;}
+  .subtabs button{flex:none;min-height:40px;padding:6px 12px;}
+  .calhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+  .calhead h2{order:-1;flex:1 1 100%;margin:0 0 2px;font-size:15px;text-align:center;justify-content:center;}
+  .calhead>button{min-height:40px;min-width:40px;}
+  .calvista{margin-left:auto;display:flex;gap:6px;}
+  .calvista button{min-height:40px;}
+  /* schede delle prenotazioni: prima l'ospite, poi date, alloggio, importo e stato; canale e utile restano nei dettagli */
+  .tbl.stack.pren tr{display:flex;flex-direction:column;}
+  .tbl.stack.pren td:nth-child(3){order:-1;font-size:16px;font-weight:800;border-top:none;padding-top:4px;justify-content:flex-start;text-align:left;flex-wrap:wrap;}
+  .tbl.stack.pren td:nth-child(3)::before{content:none;}
+  .tbl.stack.pren td:nth-child(1){border-top:1px dashed var(--line);font-weight:400;}
+  .tbl.stack.pren td:nth-child(5),.tbl.stack.pren td:nth-child(7){display:none;}
+  .nota-modulo{display:none;}
+  .tbl.stack td:empty{display:none;}
+  .wrap input:not([type="checkbox"]):not([type="radio"]),.wrap select,.wrap textarea{min-height:44px;font-size:16px;}
+}
+
+/* modali di vetro più opachi: il testo della pagina sotto non deve trasparire dietro ai campi */
+html[data-stile="glass"]{--glass-modal:rgba(255,255,255,.9);}
+html[data-stile="glass"][data-theme="dark"]{--glass-modal:rgba(30,26,25,.9);}
+@media (prefers-color-scheme: dark){ html[data-stile="glass"]:not([data-theme="light"]){--glass-modal:rgba(30,26,25,.9);} }
+html[data-stile="glass"] .modal{background:var(--glass-modal);}
+
+/* Moduli su telefono: il messaggio d'errore sta sempre visibile sopra i pulsanti (prima finiva sotto la barra fissa e non si vedeva) */
+@media (max-width:640px){
+  .modal{display:flex;flex-direction:column;}
+  .modal .err{order:97;position:sticky;bottom:calc(76px + env(safe-area-inset-bottom));z-index:3;margin:8px -14px 0;padding:12px 14px;border-radius:0;
+    background:color-mix(in srgb,#E5484D 18%,var(--glass-modal,var(--surface)));border-top:1px solid rgba(229,72,77,.5);font-weight:700;}
+  .modalactions{order:98;}
+  .modal .nota-modulo{order:99;}
+}
 `;

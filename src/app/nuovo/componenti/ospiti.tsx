@@ -37,6 +37,7 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
   const [fVal, setFVal] = useState('');
   const [fUltimo, setFUltimo] = useState('');
   const [fNumero, setFNumero] = useState('');
+  const [filtriAperti, setFiltriAperti] = useState(false);
   const [aperto, setAperto] = useState<string | null>(null);
   const [strumento, setStrumento] = useState(false);
   const titolare = sess.ruolo === 'Titolare';
@@ -83,7 +84,8 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
       {titolare && strumento && <StrumentoOspiti dati={dati} onCambiato={onCambiato} />}
 
       <input className="cerca" placeholder="Cerca per nome, cognome, telefono, email…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0' }}>
+      <button className="mini btnfiltri" style={{ margin: '8px 0 0' }} onClick={() => setFiltriAperti(!filtriAperti)}>{filtriAperti ? '✕ Chiudi filtri' : `🔎 Filtri${filtrato ? ' (attivi)' : ''}`}</button>
+      <div className={'filtri' + (filtriAperti ? '' : ' chiuso')} style={{ margin: '8px 0' }}>
         <select value={fVal} onChange={(e) => setFVal(e.target.value)} aria-label="Valutazione">
           <option value="">Valutazione: tutte</option><option value="Buono">Buono</option><option value="Neutro">Neutro</option><option value="Problematico">Problematico</option>
         </select>

@@ -414,6 +414,16 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const nuovoOspite = f.ospiteId === '';
+  // Su telefono il modulo si compila in due passaggi (ospite e date, poi prezzo e dettagli); su computer resta una pagina sola.
+  const [passo, setPasso] = useState(1);
+  const [compatto, setCompatto] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia('(max-width: 640px)');
+    const aggiorna = () => setCompatto(q.matches);
+    aggiorna();
+    q.addEventListener('change', aggiorna);
+    return () => q.removeEventListener('change', aggiorna);
+  }, []);
 
   useEffect(() => {
     if (!f.alloggioId || !f.lordo) { setAnteprima(null); return; }
@@ -421,7 +431,23 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
       .then((r) => setAnteprima(r as { utile: number; nettoProprietario: number })).catch(() => setAnteprima(null));
   }, [f.alloggioId, f.canale, f.lordo]);
 
+  // Mai pulsanti spenti senza spiegazione: se manca qualcosa lo dice (prima "Crea" restava grigio e non si capiva perché).
+  function mancanti(): string[] {
+    return [!f.checkin && 'check-in', !f.checkout && 'check-out', nuovoOspite && !f.ospiteNome && 'nome', nuovoOspite && !f.ospiteCognome && 'cognome', !f.lordo && 'importo lordo'].filter(Boolean) as string[];
+  }
+  function avanti() {
+    const m = mancanti().filter((x) => x !== 'importo lordo');
+    if (m.length) { setErr('Mancano: ' + m.join(', ') + '.'); return; }
+    setErr(''); setPasso(2);
+  }
+
   async function salva() {
+    const m = mancanti();
+    if (m.length) {
+      setErr('Mancano: ' + m.join(', ') + '.');
+      if (compatto) setPasso(m.every((x) => x === 'importo lordo') ? 2 : 1);
+      return;
+    }
     setBusy(true); setErr('');
     try {
       await api('crea-prenotazione', {
@@ -443,6 +469,8 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
         <button className="x" onClick={onClose}>✕</button>
         <h2>Nuova prenotazione</h2>
         <div className="form">
+          {compatto && <p className="sub" style={{ margin: 0 }}><b>Passo {passo} di 2</b> · {passo === 1 ? 'ospite e date' : 'prezzo e dettagli'}</p>}
+          {(!compatto || passo === 1) && <>
           <label>Alloggio<select value={f.alloggioId} onChange={(e) => setF({ ...f, alloggioId: e.target.value })}>{alloggi.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}</select></label>
           <label>Ospite
             <select value={f.ospiteId} onChange={(e) => setF({ ...f, ospiteId: e.target.value })}>
@@ -458,20 +486,25 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
           <label>Persone<input type="number" min="1" value={f.numeroOspiti} onChange={(e) => setF({ ...f, numeroOspiti: e.target.value })} /></label>
+          </>}
+          {(!compatto || passo === 2) && <>
           <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{(CANALI_SCELTA).map((c) => <option key={c}>{c}</option>)}</select></label>
             <label>Regime fiscale<select value={f.regime} onChange={(e) => setF({ ...f, regime: e.target.value })}>{REGIMI_PRENOTAZIONE.map((r) => <option key={r}>{r}</option>)}</select></label>
             {f.regime === 'Esente da tassa di soggiorno' && <label>Motivo dell'esenzione<input value={f.regimeMotivo} onChange={(e) => setF({ ...f, regimeMotivo: e.target.value })} /></label>}
           <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
           <label>Codice conferma (Airbnb/Booking)<input value={f.codiceConfermaCanale} onChange={(e) => setF({ ...f, codiceConfermaCanale: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+          </>}
         </div>
         {anteprima && <p className="sub">Utile stimato: <b>{eur(anteprima.utile)}</b> · netto proprietario: {eur(anteprima.nettoProprietario)}</p>}
         <div className="modalactions">
-          <button className="add" onClick={salva} disabled={busy || !f.checkin || !f.checkout || !f.lordo || (nuovoOspite && (!f.ospiteNome || !f.ospiteCognome))}>{busy ? 'salvo…' : 'Crea'}</button>
-          <button onClick={onClose}>Annulla</button>
+          {compatto && passo === 1
+            ? <button className="add" onClick={avanti}>Avanti →</button>
+            : <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Crea'}</button>}
+          {compatto && passo === 2 ? <button onClick={() => setPasso(1)}>← Indietro</button> : <button onClick={onClose}>Annulla</button>}
         </div>
         {err && <p className="err">{err}</p>}
-        <p className="empty" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e una copia di sicurezza sul foglio. La fonte dei dati è il database.</p>
+        <p className="empty nota-modulo" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e una copia di sicurezza sul foglio. La fonte dei dati è il database.</p>
       </div>
     </div>
   );

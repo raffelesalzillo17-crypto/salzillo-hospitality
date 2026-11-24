@@ -436,7 +436,7 @@ export default function Nuovo() {
               <small className="empty">Scarica le {lista.length} prenotazioni mostrate, con i filtri attivi.</small>
             </div>
             <div className="tablescroll">
-              <table className="tbl full">
+              <table className="tbl full pren">
                 <thead><tr><th>Check-in</th><th>Check-out</th><th>Ospite</th><th>Alloggio</th><th>Canale</th><th className="num">Lordo</th><th className="num">Utile</th><th>Stato</th></tr></thead>
                 <tbody>
                   {lista.map((p) => (
@@ -444,7 +444,7 @@ export default function Nuovo() {
                       <td>{dataIt(p.checkin)}</td><td>{dataIt(p.checkout)}</td><td>{p.ospite}{p.regimePrenotazione && p.regimePrenotazione !== 'Ordinario' ? <div><ChipRegime p={p} /></div> : null}</td><td>{p.alloggio}</td>
                       <td><span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.canale}</span></td>
                       <td className="num">{eur(p.lordo)}</td><td className="num strong">{eur(p.utile)}</td>
-                      <td>{p.stato === 'Attiva' ? '✅' : p.stato === 'In attesa di conferma' ? '⏳' : '❌'} <small>{p.stato}</small></td>
+                      <td><span>{p.stato === 'Attiva' ? '✅' : p.stato === 'In attesa di conferma' ? '⏳' : '❌'} <small>{p.stato}</small></span></td>
                     </tr>
                   ))}
                   {lista.length === 0 && <tr><td colSpan={8} className="empty">Nessuna prenotazione con questi filtri.</td></tr>}
