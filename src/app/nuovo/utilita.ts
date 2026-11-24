@@ -82,6 +82,23 @@ export async function ridimensiona(file: File, lato = 1800): Promise<File> {
   } catch { return file; }
 }
 
+const MAX_FILE_MB = 4; // limite del corpo di una funzione Vercel (~4,5 MB)
+
+/** Prepara un file da caricare: ridimensiona le foto e rifiuta con un messaggio chiaro quello che resta troppo grande. */
+export async function preparaFile(file: File): Promise<File> {
+  const f = await ridimensiona(file);
+  if (f.size > MAX_FILE_MB * 1024 * 1024) {
+    throw new Error(`"${f.name}" pesa ${(f.size / 1048576).toFixed(1).replace('.', ',')} MB: il massimo è ${MAX_FILE_MB} MB. Se è una foto, scattala con meno qualità; se è un PDF, comprimilo prima.`);
+  }
+  return f;
+}
+
+/** Legge la risposta di un caricamento: un file troppo grande per il server arriva come testo, non come JSON. */
+export async function rispostaCaricamento(r: Response): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
+  if (r.status === 413) throw new Error(`Il file è troppo grande (massimo ${MAX_FILE_MB} MB).`);
+  try { return await r.json(); } catch { throw new Error('Il server ha risposto in modo inatteso: riprova tra un attimo.'); }
+}
+
 export const SCH_VUOTA: DatiSch = {
   cognome: '', nome: '', sesso: '', dataNascita: '', luogoNascita: '', statoNascita: '', cittadinanza: '', tipoDocumento: '',
   numeroDocumento: '', luogoRilascioDocumento: '', tipoAlloggiatoCodice: '16', comuneNascitaCodice: '',

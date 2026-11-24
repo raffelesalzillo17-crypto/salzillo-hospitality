@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { CANALI_SCELTA, canaleConIncasso } from '@/lib/canali';
 import { REGIMI_PRENOTAZIONE } from '@/lib/regimePrenotazione';
 import type { Alloggio, DatiSch, Ospite, Prenotazione, TabelleAll } from '../tipi';
-import { SCH_VUOTA, api, dataIt, eur, neg, normAll, ridimensiona } from '../utilita';
+import { SCH_VUOTA, api, dataIt, eur, neg, normAll, preparaFile, ridimensiona, rispostaCaricamento } from '../utilita';
 
 const TIPI_OSPITE = [['16', 'Ospite singolo'], ['17', 'Capofamiglia'], ['18', 'Capogruppo'], ['19', 'Familiare'], ['20', 'Membro gruppo']] as const;
 const codiceTipo = (rapporto: string) => TIPI_OSPITE.find(([, nome]) => rapporto.startsWith(nome))?.[0] ?? '';
@@ -55,9 +55,8 @@ export function DocumentiPrenotazione({ prenotazioneId, puoModificare, schedine,
     try {
       const fd = new FormData();
       fd.append('prenotazione', prenotazioneId);
-      for (const f of Array.from(lista)) fd.append('file', await ridimensiona(f));
-      const r = await fetch('/api/nuovo/documenti-prenotazione', { method: 'POST', body: fd });
-      const d = await r.json();
+      for (const f of Array.from(lista)) fd.append('file', await preparaFile(f));
+      const d = await rispostaCaricamento(await fetch('/api/nuovo/documenti-prenotazione', { method: 'POST', body: fd }));
       if (!d.ok) throw new Error(d.error || 'Errore');
       await carica();
       setOk(`✅ ${d.caricati} file caricat${d.caricati === 1 ? 'o' : 'i'} su questa prenotazione.`);

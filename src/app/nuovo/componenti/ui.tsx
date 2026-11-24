@@ -91,15 +91,15 @@ export function TemaToggle() {
   );
 }
 
-/** Stile grafico: "classico" (quello di sempre) oppure "vetro" (vetro liquido, anteprima). Si ricorda su questo dispositivo; ?stile=glass lo prova da un link. */
+/** Stile grafico: "vetro" (vetro liquido, quello di default) oppure "classico" (quello di prima). Si ricorda su questo dispositivo; ?stile=glass lo prova da un link. */
 export function StileToggle() {
-  const [glass, setGlass] = useState(false);
+  const [glass, setGlass] = useState(true);
   useEffect(() => {
     let v = false;
     try {
       const q = new URLSearchParams(window.location.search).get('stile');
       if (q === 'glass' || q === 'classico') localStorage.setItem('sh_stile', q);
-      v = localStorage.getItem('sh_stile') === 'glass';
+      v = localStorage.getItem('sh_stile') !== 'classico'; // vetro liquido di default; "classico" solo se scelto
     } catch { /* */ }
     setGlass(v);
     if (v) document.documentElement.setAttribute('data-stile', 'glass'); else document.documentElement.removeAttribute('data-stile');

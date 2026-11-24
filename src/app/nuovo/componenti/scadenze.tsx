@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Dati, Scadenza } from '../tipi';
-import { api, dataIt } from '../utilita';
+import { api, dataIt, preparaFile, rispostaCaricamento } from '../utilita';
 import type { Modale } from './ospiti';
 
 // ── Scadenze (punto 13 delle richieste, 23/11/2026) ───────────────────────────────────────────
@@ -53,8 +53,8 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
     try {
       const r = await api('completa-scadenza', { id: s.id, dati: { fattaIl } }) as { prossima: string | null };
       if (file) {
-        const f = new FormData(); f.append('scadenza', s.id); f.append('file', file);
-        const d = await (await fetch('/api/nuovo/scadenze/ricevuta', { method: 'POST', body: f })).json();
+        const f = new FormData(); f.append('scadenza', s.id); f.append('file', await preparaFile(file));
+        const d = await rispostaCaricamento(await fetch('/api/nuovo/scadenze/ricevuta', { method: 'POST', body: f }));
         if (!d.ok) setErr(`Segnata come fatta, ma la ricevuta no: ${d.error || 'errore'}`);
       }
       setEsito(r.prossima ? `Fatto. Prossima scadenza: ${dataIt(r.prossima)}.` : 'Fatto: la scadenza è archiviata.');
@@ -67,8 +67,8 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
     if (!f) return;
     setBusy('r' + s.id); setErr('');
     try {
-      const fd = new FormData(); fd.append('scadenza', s.id); fd.append('file', f);
-      const d = await (await fetch('/api/nuovo/scadenze/ricevuta', { method: 'POST', body: fd })).json();
+      const fd = new FormData(); fd.append('scadenza', s.id); fd.append('file', await preparaFile(f));
+      const d = await rispostaCaricamento(await fetch('/api/nuovo/scadenze/ricevuta', { method: 'POST', body: fd }));
       if (!d.ok) throw new Error(d.error || 'Ricevuta non salvata');
       await onCambiato();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }

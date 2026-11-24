@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Dati, Spesa } from '../tipi';
-import { api, dataIt, eur } from '../utilita';
+import { api, dataIt, eur, preparaFile, rispostaCaricamento } from '../utilita';
 import { interpretaEstratto, leggiCsv, proponiMappa, type Mappa, type RigaEstratto } from '../../../lib/estrattoConto';
 
 // ── Scheda Spese (punto 12 delle richieste, 23/11/2026) ──────────────────────────────────────
@@ -119,8 +119,8 @@ export function SezioneSpese({ dati, sess, oggi, onCambiato }: { dati: Dati; ses
 }
 
 async function inviaRicevuta(spesaId: string, file: File) {
-  const f = new FormData(); f.append('spesa', spesaId); f.append('file', file);
-  const r = await (await fetch('/api/nuovo/spese/ricevuta', { method: 'POST', body: f })).json();
+  const f = new FormData(); f.append('spesa', spesaId); f.append('file', await preparaFile(file));
+  const r = await rispostaCaricamento(await fetch('/api/nuovo/spese/ricevuta', { method: 'POST', body: f }));
   if (!r.ok) throw new Error(r.error || 'Ricevuta non salvata');
 }
 

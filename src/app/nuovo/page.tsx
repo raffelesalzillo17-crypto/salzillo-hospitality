@@ -59,6 +59,11 @@ export default function Nuovo() {
   const [idDaAprire, setIdDaAprire] = useState<string | null>(null);
   const [nonTrovata, setNonTrovata] = useState(false);
 
+  // Stile vetro liquido di default, subito (anche mentre i dati si caricano e nella pagina di accesso); "classico" solo se scelto con il pulsante in alto.
+  useEffect(() => {
+    try { if (localStorage.getItem('sh_stile') !== 'classico') document.documentElement.setAttribute('data-stile', 'glass'); } catch { /* */ }
+  }, []);
+
   useEffect(() => {
     const leggiUrl = () => {
       const [t, id] = window.location.pathname.split('/').filter(Boolean).slice(1);
