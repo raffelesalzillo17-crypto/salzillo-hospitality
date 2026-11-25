@@ -50,7 +50,7 @@ export default async function PaginaPreventivo({ params }: { params: Promise<{ i
         <span className="font-[var(--font-jakarta)] font-extrabold text-lg tracking-tight">
           Salzillo Hospitality
         </span>
-        <a href="https://wa.me/393522203806" className="text-sm font-medium text-[#FF5A5F] hover:underline">
+        <a href="https://wa.me/393661033691" className="text-sm font-medium text-[#FF5A5F] hover:underline">
           Scrivici su WhatsApp →
         </a>
       </header>

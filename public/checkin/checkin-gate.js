@@ -39,7 +39,7 @@
 
   // Numero WhatsApp "Salzillo Hospitality" (non quello di Lella, che è la referente solo per
   // le questioni pratiche in loco — vedi rosa.html ecc.) — per problemi col check-in online.
-  var WHATSAPP_HOSPITALITY = 'https://wa.me/393522203806';
+  var WHATSAPP_HOSPITALITY = 'https://wa.me/393661033691';
 
   var T = {
     it: {

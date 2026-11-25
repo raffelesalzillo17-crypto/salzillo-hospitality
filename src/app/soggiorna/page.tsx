@@ -21,7 +21,7 @@ export default async function SoggiornaPage() {
           Salzillo Hospitality
         </span>
         <a
-          href="https://wa.me/393522203806"
+          href="https://wa.me/393661033691"
           className="text-sm font-medium text-[#FF5A5F] hover:underline"
         >
           Scrivici su WhatsApp →

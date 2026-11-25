@@ -167,7 +167,7 @@ export function LinkUtiliBox({ link, puoModificare, onCambiato }: {
       { titolo: 'Link ospite — Piano Terra', url: `${origin}/checkin/piano-terra-info.html`, descrizione: '' },
       { titolo: 'Link ospite — Primo Piano', url: `${origin}/checkin/primo-piano-info.html`, descrizione: '' },
       { titolo: 'Link ospite — Secondo Piano', url: `${origin}/checkin/secondo-piano-info.html`, descrizione: '' },
-      { titolo: 'WhatsApp Business Salzillo Hospitality', url: 'https://wa.me/393522203806', descrizione: 'Il numero ufficiale' },
+      { titolo: 'WhatsApp Business Salzillo Hospitality', url: 'https://wa.me/393661033691', descrizione: 'Il numero ufficiale' },
     ];
     setBusy(true);
     try {

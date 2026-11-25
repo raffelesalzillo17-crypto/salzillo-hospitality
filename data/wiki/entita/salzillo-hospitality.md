@@ -23,7 +23,7 @@ Attività di famiglia di gestione affitti brevi a Marcianise (CE), di cui [[bb-i
 ## Contatti ufficiali
 
 - **Email**: salzillohospitality@gmail.com
-- **Telefono/WhatsApp Business**: +39 352 220 3806 — numero nuovo (SIM dedicata, offerta 9,99€/mese), attivato il 07/09/2026 su un iPhone 12 mini poi spostato come dispositivo principale su un iPhone 17 Pro (vedi [[assistente-digitale-raffaele]] per il contesto tecnico). Profilo WhatsApp Business configurato con nome "Salzillo Hospitality", foto profilo coerente col brand, orari dichiarati: lun-ven 13:00-21:00, sab-dom 9:00-21:00 (confermati dall'utente il 07/09/2026).
+- **Telefono/WhatsApp**: dal 25/11/2026 il numero di contatto usato in tutto il sistema è **+39 366 103 3691** (personale di Raffaele; il numero business non funzionava come numero aziendale). Storico: il numero business era +39 352 220 3806, ora non più collegato a nessun link né pagina. Dettagli del numero business: numero nuovo (SIM dedicata, offerta 9,99€/mese), attivato il 07/09/2026 su un iPhone 12 mini poi spostato come dispositivo principale su un iPhone 17 Pro (vedi [[assistente-digitale-raffaele]] per il contesto tecnico). Profilo WhatsApp Business configurato con nome "Salzillo Hospitality", foto profilo coerente col brand, orari dichiarati: lun-ven 13:00-21:00, sab-dom 9:00-21:00 (confermati dall'utente il 07/09/2026).
 
 ### Messaggi automatici e risposte rapide (WhatsApp Business, 07/09/2026)
 

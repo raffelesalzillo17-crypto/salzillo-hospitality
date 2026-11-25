@@ -40,7 +40,7 @@ export default function FormRichiesta({ alloggioId, nomeStruttura, maxOspiti }: 
           Ti risponderemo a breve con disponibilità e prezzo. Se preferisci, scrivici anche su
           WhatsApp per una risposta più rapida.
         </p>
-        <a href="https://wa.me/393522203806" className="inline-block mt-4 text-sm font-semibold text-[#FF5A5F] hover:underline">
+        <a href="https://wa.me/393661033691" className="inline-block mt-4 text-sm font-semibold text-[#FF5A5F] hover:underline">
           Apri WhatsApp →
         </a>
       </div>
