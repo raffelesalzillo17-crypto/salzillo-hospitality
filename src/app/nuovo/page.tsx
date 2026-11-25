@@ -21,9 +21,9 @@ import { SezioneOspiti } from './componenti/ospiti';
 import { SezioneAdempimenti } from './componenti/adempimenti';
 import { SezioneSpese } from './componenti/spese';
 import { SezioneScadenze } from './componenti/scadenze';
-import { RiepilogoDashboard, CosaManca } from './componenti/dashboard';
+import { RiepilogoDashboard, CosaManca, SezioneOggi } from './componenti/dashboard';
 import { CSS } from './stili';
-import type { Campo, Dati, Prenotazione, Scadenza } from './tipi';
+import type { Campo, Dati, Prenotazione, Pulizia, Scadenza } from './tipi';
 import { CANALE_COLOR, TAB_LABEL, TAB_URL, api, dataIt, eur, scaricaTabella } from './utilita';
 
 
@@ -37,6 +37,53 @@ function ChipRegime({ p }: { p: Prenotazione }) {
   if (p.regimePrenotazione === 'No Tax') return <span className="chip" style={{ background: '#8C7BD833', color: '#8C7BD8', marginLeft: 6 }} title="Esente da ogni imposta: niente cedolare, tassa di soggiorno, Alloggiati né ricevuta">🚫 No Tax</span>;
   if (p.regimePrenotazione === 'Esente da tassa di soggiorno') return <span className="chip" style={{ background: '#C97A1633', color: '#C97A16', marginLeft: 6 }} title={p.regimeMotivo ?? 'Esente da tassa di soggiorno'}>esente tassa sogg.</span>;
   return null;
+}
+
+function azioniArrivo(p: Prenotazione, ctx: { puoModificare: boolean; onPagamento: () => void; onConferma: () => void }) {
+  if (!ctx.puoModificare) return null;
+  return (
+    <>
+      {p.waCheckinNumero && p.waCheckinMessaggio && (
+        <a className="mini" aria-label="Messaggio di check-in" title="Invia le info di check-in su WhatsApp"
+          href={`https://wa.me/${p.waCheckinNumero}?text=${encodeURIComponent(p.waCheckinMessaggio)}`}
+          target="_blank" rel="noopener">💬 Messaggio</a>
+      )}
+      <button type="button" className="mini" aria-label={p.checkinConfermatoIl ? 'Segna come non arrivato' : 'Segna come arrivato'}
+        title={p.checkinConfermatoIl ? 'Arrivato — tocca per annullare' : 'Segna come arrivato'}
+        style={p.checkinConfermatoIl ? { background: '#1FAA6E22', color: '#1FAA6E', borderColor: '#1FAA6E55' } : undefined}
+        onClick={ctx.onConferma}>
+        {p.checkinConfermatoIl ? '✓ Arrivato' : 'Arrivato?'}
+      </button>
+      {p.origine !== 'Foglio' && (
+        <button type="button" className="mini" aria-label="Registra incasso" title="Registra il pagamento" onClick={ctx.onPagamento}>💰 Incasso</button>
+      )}
+    </>
+  );
+}
+
+function arrivoPulizia(pu: Pulizia, pren: Prenotazione[]) {
+  if (!pu.prossimoCheckin) return null;
+  const p = pren.find((x) => x.alloggio === pu.alloggio && x.checkin === pu.prossimoCheckin);
+  return { ospite: p?.ospite ?? '', quando: pu.prossimoCheckin };
+}
+
+function ScheletroApp({ messaggio }: { messaggio?: string }) {
+  return (
+    <div className="wrap" aria-busy="true">
+      <style>{CSS}</style>
+      <header className="topbar">
+        <span className="hamb" aria-hidden="true">☰</span>
+        <div><h1>Gestionale</h1></div>
+      </header>
+      <section className="card sezione-oggi" aria-label="Oggi">
+        <h2>Oggi</h2>
+        <div className="skel" />
+        <div className="skel" />
+        <div className="skel" />
+        <p className="empty">{messaggio || 'Carico arrivi, partenze e pulizie di oggi…'}</p>
+      </section>
+    </div>
+  );
 }
 
 export default function Nuovo() {
@@ -198,7 +245,7 @@ export default function Nuovo() {
     catch { /* */ } finally { setSyncing(false); }
   }
 
-  if (!authChecked) return <div className="wrap"><style>{CSS}</style><div className="card"><p>…</p></div></div>;
+  if (!authChecked) return <ScheletroApp />;
 
   if (!sess) {
     return (
@@ -221,9 +268,7 @@ export default function Nuovo() {
     );
   }
 
-  if (!dati) {
-    return <div className="wrap"><style>{CSS}</style><div className="card"><p>{errore || 'Carico i dati…'}</p></div></div>;
-  }
+  if (!dati) return <ScheletroApp messaggio={errore} />;
 
   const attive = dati.prenotazioni.filter((p) => p.stato === 'Attiva');
   const oggi = dati.oggi;
@@ -289,8 +334,17 @@ export default function Nuovo() {
             <button className="add" onClick={() => setPreventivo(true)}>📄 Nuovo preventivo</button>
           </div>
         )}
+        <SezioneOggi
+          oggi={oggi}
+          arrivi={arrivi.filter((p) => p.checkin === oggi)}
+          partenze={partenze.filter((p) => p.checkout === oggi)}
+          pulizie={(dati.pulizie ?? []).filter((pu) => pu.data === oggi)}
+          puoModificare={sess.puoModificare}
+          onApri={setPrenSel}
+          onVaiPulizie={() => { setTab('pulizie'); window.scrollTo(0, 0); }}
+          azioniArrivo={(p) => azioniArrivo(p, { puoModificare: sess.puoModificare, onPagamento: () => { setPrenSel(p); setPrenSelAzione('pagamento'); }, onConferma: async () => { await api('conferma-checkin-prenotazione', { id: p.id }); await carica(); } })}
+        />
         <div className="grid">
-          {sess.ruolo !== 'Pulizie' && <RiepilogoDashboard dati={dati} oggi={oggi} ruoloTitolare={sess.ruolo === 'Titolare'} />}
           <div className="card">
             <h2><i className="ic ic-arrivi">🛬</i>Arrivi <small>prossimi 7 giorni</small></h2>
             {arrivi.length === 0 ? <p className="empty">Nessun arrivo.</p> : arrivi.map((p) => (
@@ -302,20 +356,8 @@ export default function Nuovo() {
                 <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
                 <ChipRegime p={p} />
                 {sess.puoModificare && (
-                  <span style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                    {p.waCheckinNumero && p.waCheckinMessaggio && (
-                      <a className="mini" title="Invia le info di check-in su WhatsApp"
-                        href={`https://wa.me/${p.waCheckinNumero}?text=${encodeURIComponent(p.waCheckinMessaggio)}`}
-                        target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>💬</a>
-                    )}
-                    <button className="mini" title={p.checkinConfermatoIl ? `Arrivato — clicca per annullare` : 'Segna come arrivato'}
-                      style={p.checkinConfermatoIl ? { background: '#1FAA6E22', color: '#1FAA6E', borderColor: '#1FAA6E55' } : undefined}
-                      onClick={async (e) => { e.stopPropagation(); await api('conferma-checkin-prenotazione', { id: p.id }); await carica(); }}>
-                      {p.checkinConfermatoIl ? '✓ arrivato' : '○ arrivato?'}
-                    </button>
-                    {p.origine !== 'Foglio' && (
-                      <button className="mini" title="Registra il pagamento" onClick={(e) => { e.stopPropagation(); setPrenSel(p); setPrenSelAzione('pagamento'); }}>💰</button>
-                    )}
+                  <span className="azioni-riga" onClick={(e) => e.stopPropagation()}>
+                    {azioniArrivo(p, { puoModificare: true, onPagamento: () => { setPrenSel(p); setPrenSelAzione('pagamento'); }, onConferma: async () => { await api('conferma-checkin-prenotazione', { id: p.id }); await carica(); } })}
                   </span>
                 )}
               </div>
@@ -347,6 +389,7 @@ export default function Nuovo() {
           </div>
           {sess.ruolo !== 'Pulizie' && <CosaManca dati={dati} ruoloTitolare={sess.ruolo === 'Titolare'} onApriPrenotazione={(id) => { const p = dati.prenotazioni.find((x) => x.id === id); if (p) setPrenSel(p); }} onVai={(t) => setTab(t as typeof tab)} />}
         </div>
+        {sess.ruolo !== 'Pulizie' && <RiepilogoDashboard dati={dati} oggi={oggi} ruoloTitolare={sess.ruolo === 'Titolare'} />}
         </>
       )}
 
@@ -394,7 +437,10 @@ export default function Nuovo() {
               </div>}
             </div>
             <div className={'filtri' + (filtriAperti ? '' : ' chiuso')}>
-              <input className="cerca" placeholder="Cerca ospite, alloggio, note…" value={fPren.q} onChange={(e) => setFPren({ ...fPren, q: e.target.value })} />
+              <div className="cerca-wrap">
+                <input className="cerca" placeholder="Cerca ospite, alloggio, note…" value={fPren.q} onChange={(e) => setFPren({ ...fPren, q: e.target.value })} aria-label="Cerca prenotazione" />
+                {fPren.q && <button type="button" className="cerca-x" aria-label="Cancella ricerca" onClick={() => setFPren({ ...fPren, q: '' })}>✕</button>}
+              </div>
               <select value={fPren.periodo} onChange={(e) => setFPren({ ...fPren, periodo: e.target.value })}>
                 <option value="futuro">In corso e future</option>
                 <option value="passato">Passate</option>
@@ -605,13 +651,17 @@ export default function Nuovo() {
                 ],
               })}>＋ Pulizia extra</button>}
             </div>
-            <p className="sub">Quelle di check-out si aggiungono da sole quando registri una prenotazione. Usa &quot;Pulizia extra&quot; solo per richieste in più durante il soggiorno (a pagamento) o pulizie fuori da un soggiorno.</p>
+            <p className="sub solo-desktop">Quelle di check-out si aggiungono da sole quando registri una prenotazione. Usa &quot;Pulizia extra&quot; solo per richieste in più durante il soggiorno (a pagamento) o pulizie fuori da un soggiorno.</p>
+            <details className="aiuto solo-mobile">
+              <summary>ⓘ Come funzionano le pulizie</summary>
+              <p className="sub">Quelle di check-out si aggiungono da sole quando registri una prenotazione. Usa &quot;Pulizia extra&quot; solo per richieste in più durante il soggiorno (a pagamento) o pulizie fuori da un soggiorno.</p>
+            </details>
             {daFare.length === 0 ? <p className="empty">Nessuna pulizia da fare oggi.</p> : daFare.map((pu) => (
-              <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} />
+              <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} arrivo={arrivoPulizia(pu, attive)} />
             ))}
             {inArrivo.length > 0 && <>
               <h3 style={{ marginTop: 16 }}><span>In arrivo <small>(si fanno dal giorno del check-out)</small></span></h3>
-              {inArrivo.map((pu) => <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} />)}
+              {inArrivo.map((pu) => <RigaPulizia key={pu.id} pu={pu} operatori={operatori} oggi={oggi} puoGestire={puoGestire} ruolo={sess.ruolo} onCambiato={carica} arrivo={arrivoPulizia(pu, attive)} />)}
             </>}
             <h3 style={{ marginTop: 16 }}><span>Fatte di recente</span></h3>
             {fatte.length === 0 ? <p className="empty">Nessuna pulizia ancora confermata.</p> : fatte.map((pu) => (

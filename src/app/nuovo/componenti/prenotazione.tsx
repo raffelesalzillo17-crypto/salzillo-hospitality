@@ -6,6 +6,11 @@ import { REGIMI_PRENOTAZIONE } from '@/lib/regimePrenotazione';
 import type { Alloggio, DatiSch, Ospite, Prenotazione, TabelleAll } from '../tipi';
 import { SCH_VUOTA, api, dataIt, eur, neg, normAll, preparaFile, ridimensiona, rispostaCaricamento } from '../utilita';
 
+/** "120,50" e "120.50" sono lo stesso importo: la tastiera italiana mette la virgola. */
+function leggiImporto(testo: string): number {
+  return Number(testo.trim().replace(/\s/g, '').replace(',', '.'));
+}
+
 const TIPI_OSPITE = [['16', 'Ospite singolo'], ['17', 'Capofamiglia'], ['18', 'Capogruppo'], ['19', 'Familiare'], ['20', 'Membro gruppo']] as const;
 const codiceTipo = (rapporto: string) => TIPI_OSPITE.find(([, nome]) => rapporto.startsWith(nome))?.[0] ?? '';
 
@@ -237,6 +242,8 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
   const [f, setF] = useState({ checkin: p.checkin, checkout: p.checkout, canale: p.canale, lordo: String(p.lordo), numeroOspiti: String(p.numeroOspiti || 1), stato: p.stato, note: p.note, alloggioId: alloggi.find((a) => a.nome === p.alloggio)?.id ?? '', regime: p.regimePrenotazione ?? 'Ordinario', regimeMotivo: p.regimeMotivo ?? '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [menuAzioni, setMenuAzioni] = useState(false);
+  const [confermaCanc, setConfermaCanc] = useState<null | { conPenale: boolean; penale: string }>(null);
   const residuo = Math.max(0, Math.round((p.lordo - p.pagamenti.reduce((s, pg) => s + pg.importo, 0)) * 100) / 100);
   const [pag, setPag] = useState<null | { tipo: string; importo: string; metodo: string }>(
     apriPagamentoSubito && p.origine !== 'Foglio' ? { tipo: 'Saldo', importo: residuo ? String(residuo) : '', metodo: 'Contanti' } : null,
@@ -258,11 +265,13 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
       onSalvato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
-  async function cancella(conPenale: boolean) {
-    if (!confirm(conPenale ? 'Cancellare la prenotazione CON penale? Le date tornano libere e la penale conta come incasso.' : 'Cancellare questa prenotazione? Resta nella lista come cancellata e le date tornano libere.')) return;
-    setBusy(true);
+  async function cancella() {
+    if (!confermaCanc) return;
+    const conPenale = confermaCanc.conPenale;
+    const imp = conPenale ? leggiImporto(confermaCanc.penale) : undefined;
+    if (conPenale && !Number.isFinite(imp)) { setErr('Indica l\'importo della penale.'); return; }
+    setBusy(true); setErr('');
     try {
-      const imp = conPenale ? Number(prompt('Importo penale €:') || '0') : undefined;
       await api('cancella-prenotazione', { id: p.id, dati: { conPenale, importoPenale: imp } });
       onSalvato();
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
@@ -371,11 +380,36 @@ export function DettaglioPrenotazione({ p, alloggi, puoModificare, puoVedereDocu
               </p>
             ))}
 
-            {puoModificare && (
-              <div className="modalactions">
-                <button className="add" onClick={() => setModifica(true)}>✏️ Modifica</button>
-                {p.stato === 'Attiva' && <button className="danger" onClick={() => cancella(false)} disabled={busy}>Cancella</button>}
-                {p.stato === 'Attiva' && <button className="danger" onClick={() => cancella(true)} disabled={busy}>Cancella con penale</button>}
+            {puoModificare && !confermaCanc && (
+              <div className="modalactions piede-pren">
+                <button className="add" onClick={() => { setMenuAzioni(false); setModifica(true); }}>Modifica</button>
+                {p.stato === 'Attiva' && (
+                  <button type="button" className="mini" aria-haspopup="menu" aria-expanded={menuAzioni} aria-label="Altre azioni" onClick={() => setMenuAzioni((v) => !v)}>⋯</button>
+                )}
+                {menuAzioni && p.stato === 'Attiva' && (
+                  <div className="menu-altro menu-ancora" role="menu" aria-label="Cancellazione">
+                    <button type="button" className="voce-pericolo" role="menuitem" onClick={() => { setMenuAzioni(false); setConfermaCanc({ conPenale: false, penale: '' }); }}>Cancella</button>
+                    <button type="button" className="voce-pericolo" role="menuitem" onClick={() => { setMenuAzioni(false); setConfermaCanc({ conPenale: true, penale: '' }); }}>Cancella con penale</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {confermaCanc && (
+              <div className="conferma-canc" role="dialog" aria-labelledby="titolo-cancella">
+                <b id="titolo-cancella">{confermaCanc.conPenale ? 'Cancellare con penale?' : 'Cancellare la prenotazione?'}</b>
+                <p>{p.ospite}</p>
+                <p>{dataIt(p.checkin)} → {dataIt(p.checkout)} · {p.alloggio}</p>
+                <p>Importo {eur(p.lordo)}</p>
+                <p className="sub">{confermaCanc.conPenale ? 'Le date tornano libere e la penale conta come incasso.' : 'Resta nella lista come cancellata e le date tornano libere.'}</p>
+                {confermaCanc.conPenale && (
+                  <label>Importo penale €
+                    <input inputMode="decimal" autoComplete="off" value={confermaCanc.penale} onChange={(e) => setConfermaCanc({ ...confermaCanc, penale: e.target.value })} />
+                  </label>
+                )}
+                <div className="modalactions">
+                  <button type="button" className="danger" onClick={cancella} disabled={busy}>{busy ? 'annullo…' : 'Conferma cancellazione'}</button>
+                  <button type="button" onClick={() => setConfermaCanc(null)} disabled={busy}>Annulla</button>
+                </div>
               </div>
             )}
           </>
@@ -426,8 +460,9 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
   }, []);
 
   useEffect(() => {
-    if (!f.alloggioId || !f.lordo) { setAnteprima(null); return; }
-    api('anteprima-importi', { dati: { alloggioId: f.alloggioId, canale: f.canale, lordo: Number(f.lordo) } })
+    const lordo = leggiImporto(f.lordo);
+    if (!f.alloggioId || !f.lordo.trim() || !Number.isFinite(lordo)) { setAnteprima(null); return; }
+    api('anteprima-importi', { dati: { alloggioId: f.alloggioId, canale: f.canale, lordo } })
       .then((r) => setAnteprima(r as { utile: number; nettoProprietario: number })).catch(() => setAnteprima(null));
   }, [f.alloggioId, f.canale, f.lordo]);
 
@@ -441,6 +476,14 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
     setErr(''); setPasso(2);
   }
 
+  function compilato() {
+    return !!(f.ospiteId || f.ospiteNome.trim() || f.ospiteCognome.trim() || f.ospiteTelefono.trim() || f.checkin || f.checkout || f.lordo.trim() || f.note.trim() || f.codiceConfermaCanale.trim() || f.numeroOspiti !== '1' || f.canale !== 'Diretto' || f.regime !== 'Ordinario' || f.regimeMotivo.trim() || f.alloggioId !== (alloggi[0]?.id ?? ''));
+  }
+  function chiudi() {
+    if (compilato() && !confirm('Uscire senza salvare?')) return;
+    onClose();
+  }
+
   async function salva() {
     const m = mancanti();
     if (m.length) {
@@ -448,6 +491,8 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
       if (compatto) setPasso(m.every((x) => x === 'importo lordo') ? 2 : 1);
       return;
     }
+    const lordo = leggiImporto(f.lordo);
+    if (!Number.isFinite(lordo)) { setErr('L\'importo lordo non è un numero. Puoi usare la virgola.'); return; }
     setBusy(true); setErr('');
     try {
       await api('crea-prenotazione', {
@@ -455,7 +500,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           alloggioId: f.alloggioId,
           ...(nuovoOspite ? { ospiteNome: f.ospiteNome, ospiteCognome: f.ospiteCognome, ospiteTelefono: f.ospiteTelefono } : { ospiteId: f.ospiteId }),
           checkin: f.checkin, checkout: f.checkout, numeroOspiti: Number(f.numeroOspiti),
-          canale: f.canale, lordo: Number(f.lordo), codiceConfermaCanale: f.codiceConfermaCanale, note: f.note,
+          canale: f.canale, lordo, codiceConfermaCanale: f.codiceConfermaCanale, note: f.note,
           regimePrenotazione: f.regime, regimeMotivo: f.regimeMotivo,
         },
       });
@@ -464,9 +509,9 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="card modal" onClick={(e) => e.stopPropagation()}>
-        <button className="x" onClick={onClose}>✕</button>
+    <div className="overlay" onClick={chiudi}>
+      <div className="card modal foglio-stabile" onClick={(e) => e.stopPropagation()}>
+        <button className="x" onClick={chiudi} aria-label="Chiudi">✕</button>
         <h2>Nuova prenotazione</h2>
         <div className="form">
           {compatto && <p className="sub" style={{ margin: 0 }}><b>Passo {passo} di 2</b> · {passo === 1 ? 'ospite e date' : 'prezzo e dettagli'}</p>}
@@ -479,9 +524,9 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
             </select>
           </label>
           {nuovoOspite && <>
-            <label>Nome<input value={f.ospiteNome} onChange={(e) => setF({ ...f, ospiteNome: e.target.value })} /></label>
-            <label>Cognome<input value={f.ospiteCognome} onChange={(e) => setF({ ...f, ospiteCognome: e.target.value })} /></label>
-            <label>Telefono<input value={f.ospiteTelefono} onChange={(e) => setF({ ...f, ospiteTelefono: e.target.value })} /></label>
+            <label>Nome<input value={f.ospiteNome} autoComplete="given-name" autoCapitalize="words" onChange={(e) => setF({ ...f, ospiteNome: e.target.value })} /></label>
+            <label>Cognome<input value={f.ospiteCognome} autoComplete="family-name" autoCapitalize="words" onChange={(e) => setF({ ...f, ospiteCognome: e.target.value })} /></label>
+            <label>Telefono<input type="tel" inputMode="tel" autoComplete="tel" value={f.ospiteTelefono} onChange={(e) => setF({ ...f, ospiteTelefono: e.target.value })} /></label>
           </>}
           <label>Check-in<input type="date" value={f.checkin} onChange={(e) => setF({ ...f, checkin: e.target.value })} /></label>
           <label>Check-out<input type="date" value={f.checkout} onChange={(e) => setF({ ...f, checkout: e.target.value })} /></label>
@@ -491,7 +536,7 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
           <label>Canale<select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{(CANALI_SCELTA).map((c) => <option key={c}>{c}</option>)}</select></label>
             <label>Regime fiscale<select value={f.regime} onChange={(e) => setF({ ...f, regime: e.target.value })}>{REGIMI_PRENOTAZIONE.map((r) => <option key={r}>{r}</option>)}</select></label>
             {f.regime === 'Esente da tassa di soggiorno' && <label>Motivo dell'esenzione<input value={f.regimeMotivo} onChange={(e) => setF({ ...f, regimeMotivo: e.target.value })} /></label>}
-          <label>Lordo €<input type="number" step="0.01" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} /></label>
+          <label>Lordo €<input type="text" inputMode="decimal" autoComplete="off" value={f.lordo} onChange={(e) => setF({ ...f, lordo: e.target.value })} placeholder="0,00" /></label>
           <label>Codice conferma (Airbnb/Booking)<input value={f.codiceConfermaCanale} onChange={(e) => setF({ ...f, codiceConfermaCanale: e.target.value })} /></label>
           <label>Note<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
           </>}
@@ -500,8 +545,8 @@ export function FormPrenotazione({ alloggi, ospiti, onClose, onSalvato }: {
         <div className="modalactions">
           {compatto && passo === 1
             ? <button className="add" onClick={avanti}>Avanti →</button>
-            : <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Crea'}</button>}
-          {compatto && passo === 2 ? <button onClick={() => setPasso(1)}>← Indietro</button> : <button onClick={onClose}>Annulla</button>}
+            : <button className="add" onClick={salva} disabled={busy}>{busy ? 'salvo…' : 'Salva prenotazione'}</button>}
+          {compatto && passo === 2 ? <button onClick={() => setPasso(1)}>← Indietro</button> : <button onClick={chiudi}>Annulla</button>}
         </div>
         {err && <p className="err">{err}</p>}
         <p className="empty nota-modulo" style={{ marginTop: 8 }}>Crea anche l&apos;evento su Google Calendar (se l&apos;alloggio ne ha uno collegato) e una copia di sicurezza sul foglio. La fonte dei dati è il database.</p>

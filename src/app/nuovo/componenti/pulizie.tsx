@@ -68,8 +68,9 @@ export function BottoneFatto({ disabilitato, motivo, conferma, annulla, finito, 
   );
 }
 
-export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato }: {
+export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato, arrivo = null }: {
   pu: Pulizia; operatori: Operatore[]; oggi: string; puoGestire: boolean; ruolo: string; onCambiato: () => Promise<void>;
+  arrivo?: { ospite: string; quando: string } | null;
 }) {
   const gestisce = ruolo === 'Titolare' || ruolo === 'Collaboratore';
   const checklist = pu.checklist ?? [];
@@ -77,6 +78,7 @@ export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato
   const [ora, setOra] = useState(pu.oraPrevista ?? '');
   const [nota, setNota] = useState(pu.note ?? '');
   const [errore, setErrore] = useState('');
+  const [esito, setEsito] = useState('');
   const urgente = pu.prossimoCheckin === pu.data;
   const presto = !urgente && pu.prossimoCheckin && Math.round((Date.parse(pu.prossimoCheckin) - Date.parse(pu.data)) / 864e5) <= 2;
   const ancoraNo = pu.data > oggi;
@@ -84,8 +86,11 @@ export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato
 
   async function salva(dati: Record<string, unknown>) {
     setErrore('');
-    try { await api('aggiorna-pulizia', { id: pu.id, dati }); }
-    catch (e) { setErrore(e instanceof Error ? e.message : String(e)); }
+    try {
+      await api('aggiorna-pulizia', { id: pu.id, dati });
+      setEsito('Salvato');
+      window.setTimeout(() => setEsito(''), 2500);
+    } catch (e) { setErrore(e instanceof Error ? e.message : String(e)); setEsito(''); }
   }
   function spunta(voce: string) {
     const n = spunte.includes(voce) ? spunte.filter((x) => x !== voce) : [...spunte, voce];
@@ -97,7 +102,8 @@ export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato
       <span className={`pill ${pu.data < oggi ? 'pill-Scaduto' : 'pill-Bozza'}`}>{dataIt(pu.data)}</span>
       <b>{pu.alloggio}</b>
       {urgente && <span className="chip" style={{ background: '#E5484D22', color: '#E5484D', fontWeight: 800 }}>⚡ URGENTE: arrivo lo stesso giorno</span>}
-      {presto && pu.prossimoCheckin && <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>prossimo arrivo {dataIt(pu.prossimoCheckin)}</span>}
+      {arrivo && <span className="chip" style={{ background: '#1D6DF022', color: '#1D6DF0' }}>Arrivo {dataIt(arrivo.quando)}{arrivo.ospite ? ` · ${arrivo.ospite}` : ''}</span>}
+      {!arrivo && presto && pu.prossimoCheckin && <span className="chip" style={{ background: '#FFB23822', color: '#C97A16' }}>prossimo arrivo {dataIt(pu.prossimoCheckin)}</span>}
       {pu.pagata && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>pagata{pu.importo ? ` · ${eur(Number(pu.importo))}` : ''}</span>}
 
       {puoGestire && (
@@ -108,9 +114,11 @@ export function RigaPulizia({ pu, operatori, oggi, puoGestire, ruolo, onCambiato
               {operatori.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
             </select>
           )}
-          {gestisce && <input type="time" value={ora} onChange={(e) => setOra(e.target.value)} onBlur={() => salva({ oraPrevista: ora })} aria-label="Orario" style={{ width: 110 }} />}
+          {gestisce && <input type="time" value={ora} onChange={(e) => setOra(e.target.value)} onBlur={() => ora !== (pu.oraPrevista ?? '') && salva({ oraPrevista: ora })} aria-label="Orario" style={{ width: 110 }} />}
           {!gestisce && pu.oraPrevista && <small className="sub">ore {pu.oraPrevista}</small>}
           <input value={nota} onChange={(e) => setNota(e.target.value)} onBlur={() => nota !== (pu.note ?? '') && salva({ note: nota })} placeholder="note" style={{ flex: '1 1 160px' }} aria-label="Note" />
+          <button type="button" className="mini coral" onClick={() => salva({ oraPrevista: ora, note: nota })}>Conferma</button>
+          {esito && <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }} role="status">{esito}</span>}
         </div>
       )}
 

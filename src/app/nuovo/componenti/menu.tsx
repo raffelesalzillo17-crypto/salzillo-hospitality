@@ -30,6 +30,7 @@ export function MenuLaterale({ aperto, onChiudi, visibili, tab, etichetta, onSce
           <div><span className="eyebrow">Salzillo Hospitality</span><div className="drawertitolo">Gestionale</div></div>
           <button className="drawerx" onClick={onChiudi} aria-label="Chiudi il menu">✕</button>
         </div>
+        <div className="drawerscroll">
         <nav>
           {GRUPPI.map((g) => {
             const voci = g.voci.filter((v) => visibili.includes(v));
@@ -53,6 +54,7 @@ export function MenuLaterale({ aperto, onChiudi, visibili, tab, etichetta, onSce
             <button className="mini" onClick={onEsci}>Esci</button>
           </div>
           <div className="drawertoggle"><PushToggle /><StileToggle /><TemaToggle /></div>
+        </div>
         </div>
       </aside>
     </>

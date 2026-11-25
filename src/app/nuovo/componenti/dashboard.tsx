@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import type { ArrivoAdempimento, Dati } from '../tipi';
-import { dataIt, eur } from '../utilita';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ArrivoAdempimento, Dati, Prenotazione, Pulizia } from '../tipi';
+import { CANALE_COLOR, dataIt, eur } from '../utilita';
 
 // ── Dashboard (punto 7 delle richieste, 23/11/2026) ───────────────────────────────────────
 // Riepilogo di tutti gli immobili con indicatori etichettati, e "Cosa manca" diviso in blocchi.
@@ -45,10 +45,16 @@ export function RiepilogoDashboard({ dati, oggi, ruoloTitolare }: { dati: Dati; 
   function sposta(d: number) { const t = new Date(anno, mese - 1 + d, 1); setAnno(t.getFullYear()); setMese(t.getMonth() + 1); }
   const t = r?.totali;
 
+  const dett = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 640px)').matches && dett.current) dett.current.open = false;
+  }, []);
+
   return (
     <div className="card" style={{ gridColumn: '1 / -1' }}>
+      <details ref={dett} open className="kpi-details">
+      <summary className="kpi-summary"><h2><i className="ic ic-mese">📊</i>Riepilogo di tutti gli immobili</h2></summary>
       <div className="cardhead">
-        <h2><i className="ic ic-mese">📊</i>Riepilogo di tutti gli immobili</h2>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="mini" onClick={() => sposta(-1)} aria-label="Mese precedente">‹</button>
           <b style={{ textTransform: 'capitalize', minWidth: 110, textAlign: 'center' }}>{MESI[mese - 1]} {anno}</b>
@@ -96,7 +102,55 @@ export function RiepilogoDashboard({ dati, oggi, ruoloTitolare }: { dati: Dati; 
           <small className="sub">Gli importi sono gli stessi dei Rendiconti dello stesso mese (prenotazioni attive con check-in nel mese, tutti i canali).</small>
         </>
       )}
+      </details>
     </div>
+  );
+}
+
+function ChipRegime({ p }: { p: Prenotazione }) {
+  if (p.regimePrenotazione === 'No Tax') return <span className="chip" style={{ background: '#8C7BD833', color: '#8C7BD8' }}>🚫 No Tax</span>;
+  if (p.regimePrenotazione === 'Esente da tassa di soggiorno') return <span className="chip" style={{ background: '#C97A1633', color: '#C97A16' }}>esente tassa sogg.</span>;
+  return null;
+}
+
+/** Primo blocco della dashboard: quello che succede oggi, prima dei numeri del mese. */
+export function SezioneOggi({ oggi, arrivi, partenze, pulizie, puoModificare, onApri, onVaiPulizie, azioniArrivo }: {
+  oggi: string; arrivi: Prenotazione[]; partenze: Prenotazione[]; pulizie: Pulizia[]; puoModificare: boolean;
+  onApri: (p: Prenotazione) => void; onVaiPulizie: () => void; azioniArrivo: (p: Prenotazione) => ReactNode;
+}) {
+  return (
+    <section className="card sezione-oggi" aria-label="Oggi">
+      <h2>Oggi <small>{dataIt(oggi)}</small></h2>
+      <h3 className="oggi-sotto">Arrivi <small>{arrivi.length}</small></h3>
+      {arrivi.length === 0 ? <p className="empty">Nessun arrivo oggi.</p> : arrivi.map((p) => (
+        <div key={p.id} className="row" onClick={() => onApri(p)}>
+          <b>{p.ospite}</b>
+          <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+          <ChipRegime p={p} />
+          <small>fino al {dataIt(p.checkout)}</small>
+          {puoModificare && <span className="azioni-riga" onClick={(e) => e.stopPropagation()}>{azioniArrivo(p)}</span>}
+        </div>
+      ))}
+      <h3 className="oggi-sotto">Partenze <small>{partenze.length}</small></h3>
+      {partenze.length === 0 ? <p className="empty">Nessuna partenza oggi.</p> : partenze.map((p) => (
+        <div key={p.id} className="row" onClick={() => onApri(p)}>
+          <b>{p.ospite}</b>
+          <span className="chip" style={{ background: (CANALE_COLOR[p.canale] || '#888') + '22', color: CANALE_COLOR[p.canale] || '#888' }}>{p.alloggio}</span>
+          <ChipRegime p={p} />
+          <small>dal {dataIt(p.checkin)}</small>
+        </div>
+      ))}
+      <h3 className="oggi-sotto">Pulizie <small>{pulizie.length}</small></h3>
+      {pulizie.length === 0 ? <p className="empty">Nessuna pulizia oggi.</p> : pulizie.map((pu) => (
+        <div key={pu.id} className="row" onClick={onVaiPulizie}>
+          <b>{pu.alloggio}</b>
+          {pu.oraPrevista ? <span>ore {pu.oraPrevista}</span> : <small>orario non indicato</small>}
+          {pu.confermataIl ? <span className="chip" style={{ background: '#1FAA6E22', color: '#1FAA6E' }}>fatta</span> : <span className="chip" style={{ background: '#C97A1622', color: '#C97A16' }}>da fare</span>}
+          {pu.prossimoCheckin === pu.data && <span className="chip" style={{ background: '#E5484D22', color: '#E5484D' }}>arrivo oggi</span>}
+          <button type="button" className="mini" onClick={(e) => { e.stopPropagation(); onVaiPulizie(); }}>Apri</button>
+        </div>
+      ))}
+    </section>
   );
 }
 

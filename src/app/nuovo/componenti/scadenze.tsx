@@ -27,6 +27,7 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
   const [err, setErr] = useState('');
   const [esito, setEsito] = useState('');
   const [dup, setDup] = useState<Gruppo[] | null>(null);
+  const [menu, setMenu] = useState<string | null>(null);
   const [principale, setPrincipale] = useState<Record<number, string>>({});
   const fra30 = new Date(Date.parse(oggi) + 30 * 864e5).toISOString().slice(0, 10);
 
@@ -145,6 +146,7 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
           <h3><span>🏛️ {k}</span><span className="empty">{gruppi.get(k)!.length}</span></h3>
           {gruppi.get(k)!.map((s) => {
             const urg = s.dataScadenza < oggi ? 'scaduta' : s.dataScadenza <= fra30 ? 'vicina' : '';
+            const haAltro = !!(s.ultimaRicevuta || (sess.puoModificare && (((s.volteFatta ?? 0) > 0) || vista === 'aperte')));
             return (
               <div key={s.id} className="docrow" style={{ flexWrap: 'wrap', gap: 8 }}>
                 {vista === 'aperte'
@@ -154,22 +156,30 @@ export function SezioneScadenze({ dati, sess, oggi, setModale, onCambiato }: {
                 <span className="empty">{s.ricorrenza !== 'Una tantum' ? `si ripete: ${s.ricorrenza.toLowerCase()}` : ''} {s.immobile ? `· ${s.immobile}` : ''}{s.ultimoCompletamento ? ` · ultima volta ${dataIt(s.ultimoCompletamento)}` : ''}</span>
                 {s.motivoChiusura && <span className="empty" style={{ flexBasis: '100%' }}>Motivo: {s.motivoChiusura}</span>}
                 {s.note && <span className="empty" style={{ flexBasis: '100%' }}>{s.note}</span>}
-                <span className="azioni" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {s.ultimaRicevuta && <a className="mini" style={{ textDecoration: 'none' }} href={`/api/nuovo/scadenze/ricevuta?scadenza=${s.id}`} target="_blank" rel="noopener">📎 ricevuta</a>}
-                  {sess.puoModificare && (s.volteFatta ?? 0) > 0 && (
-                    <label className="mini" style={{ cursor: 'pointer' }}>{busy === 'r' + s.id ? '…' : s.ultimaRicevuta ? '↻ ricevuta' : '＋ ricevuta'}
-                      <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { allegaDopo(s, e.target.files?.[0] ?? null); e.target.value = ''; }} />
-                    </label>
+                <span className="azioni scad-azioni">
+                  {sess.puoModificare && vista === 'aperte' && (
+                    <button type="button" className="add" onClick={() => { setMenu(null); setFare(fare === s.id ? null : s.id); setFattaIl(oggi); setFile(null); }}>Segna fatta</button>
                   )}
-                  {sess.puoModificare && vista === 'aperte' && <>
-                    <button className="mini" onClick={() => { setFare(fare === s.id ? null : s.id); setFattaIl(oggi); setFile(null); }}>✓ fatta…</button>
-                    <button className="mini" disabled={busy === 'n' + s.id} onClick={async () => {
-                      const motivo = prompt(`Perché "${s.titolo}" non è più applicabile? (resta nell'archivio, si può riaprire)`);
-                      if (motivo) await esegui('n' + s.id, 'non-applicabile-scadenza', s.id, { motivo });
-                    }}>⊘ non più applicabile</button>
-                  </>}
-                  {sess.puoModificare && vista === 'archivio' && <button className="mini" disabled={busy === 'o' + s.id} onClick={() => esegui('o' + s.id, 'riapri-scadenza', s.id, undefined, `Riaprire "${s.titolo}"? Torna tra le scadenze aperte.`)}>↩ riapri</button>}
+                  {sess.puoModificare && vista === 'archivio' && <button type="button" className="mini" disabled={busy === 'o' + s.id} onClick={() => esegui('o' + s.id, 'riapri-scadenza', s.id, undefined, `Riaprire "${s.titolo}"? Torna tra le scadenze aperte.`)}>Riapri</button>}
+                  {haAltro && <button type="button" className="mini" aria-label="Altre azioni" aria-expanded={menu === s.id} onClick={() => setMenu(menu === s.id ? null : s.id)}>⋯</button>}
                 </span>
+                {menu === s.id && (
+                  <div className="menu-altro" role="menu">
+                    {s.ultimaRicevuta && <a className="mini" href={`/api/nuovo/scadenze/ricevuta?scadenza=${s.id}`} target="_blank" rel="noopener">Apri ricevuta</a>}
+                    {sess.puoModificare && (s.volteFatta ?? 0) > 0 && (
+                      <label className="mini" style={{ cursor: 'pointer' }}>{busy === 'r' + s.id ? 'Carico…' : 'Allega ricevuta'}
+                        <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { allegaDopo(s, e.target.files?.[0] ?? null); e.target.value = ''; setMenu(null); }} />
+                      </label>
+                    )}
+                    {sess.puoModificare && vista === 'aperte' && (
+                      <button type="button" className="voce-pericolo" disabled={busy === 'n' + s.id} onClick={async () => {
+                        setMenu(null);
+                        const motivo = prompt(`Perché "${s.titolo}" non è più applicabile? (resta nell'archivio, si può riaprire)`);
+                        if (motivo) await esegui('n' + s.id, 'non-applicabile-scadenza', s.id, { motivo });
+                      }}>Non più applicabile</button>
+                    )}
+                  </div>
+                )}
                 {fare === s.id && (
                   <div style={{ flexBasis: '100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: 'var(--bg)', padding: 8, borderRadius: 8 }}>
                     <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}><small>fatta il</small><input type="date" value={fattaIl} max={oggi} onChange={(e) => setFattaIl(e.target.value)} /></label>

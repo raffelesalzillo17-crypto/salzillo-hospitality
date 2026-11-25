@@ -13,6 +13,7 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
   const [mese, setMese] = useState(now.getMonth() + 1);
   const [r, setR] = useState<Rendiconto | null>(null);
   const [caricando, setCaricando] = useState(false);
+  const [filtriAperti, setFiltriAperti] = useState(false);
 
   const prop = anagrafica.find((p) => p.id === propId);
   const ambitoQ = ambito.startsWith('imm:') ? `&immobile=${ambito.slice(4)}` : ambito.startsWith('all:') ? `&alloggio=${ambito.slice(4)}` : '';
@@ -25,13 +26,20 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
       .then((x) => x.json()).then((d) => setR(d.ok ? d.rendiconto : null)).finally(() => setCaricando(false));
   }, [propId, anno, mese, ambitoQ]);
 
+  function spostaMese(d: number) { const t = new Date(anno, mese - 1 + d, 1); setAnno(t.getFullYear()); setMese(t.getMonth() + 1); }
   const meseNome = new Date(anno, mese - 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   const meseBreve = (a: number, m: number) => new Date(a, m - 1).toLocaleDateString('it-IT', { month: 'long' });
   const pdfHref = `/api/nuovo/rendiconto/pdf?proprietario=${propId}&anno=${anno}&mese=${mese}${ambitoQ}`;
 
   return (
     <div className="card">
-      <div className="rendctl">
+      <div className="rend-bar solo-mobile">
+        <button type="button" className="mini" onClick={() => spostaMese(-1)} aria-label="Mese precedente">‹</button>
+        <b>{meseNome}</b>
+        <button type="button" className="mini" onClick={() => spostaMese(1)} aria-label="Mese successivo">›</button>
+        <button type="button" className="mini" onClick={() => setFiltriAperti(true)}>Filtri</button>
+      </div>
+      <div className="rendctl solo-desktop">
         <select value={propId} onChange={(e) => setPropId(e.target.value)}>
           <option value="tutti">— Tutti i proprietari —</option>
           {anagrafica.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -44,7 +52,7 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
         </select>
       </div>
       {prop && (prop.immobili.length > 1 || prop.immobili.some((i) => i.alloggi.length > 1)) && (
-        <div className="rendctl" style={{ marginTop: 8 }}>
+        <div className="rendctl solo-desktop" style={{ marginTop: 8 }}>
           <select value={ambito} onChange={(e) => setAmbito(e.target.value)} style={{ minWidth: 220 }}>
             <option value="">Tutti gli immobili di {prop.nome}</option>
             {prop.immobili.map((im) => (
@@ -56,9 +64,43 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
           </select>
         </div>
       )}
+      {filtriAperti && (
+        <div className="overlay" onClick={() => setFiltriAperti(false)}>
+          <div className="card modal" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="x" onClick={() => setFiltriAperti(false)} aria-label="Chiudi">✕</button>
+            <h2>Filtri</h2>
+            <div className="form">
+              <label>Proprietario
+                <select value={propId} onChange={(e) => setPropId(e.target.value)}>
+                  <option value="tutti">— Tutti i proprietari —</option>
+                  {anagrafica.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </label>
+              {prop && (
+                <label>Immobile o alloggio
+                  <select value={ambito} onChange={(e) => setAmbito(e.target.value)}>
+                    <option value="">Tutti gli immobili di {prop.nome}</option>
+                    {prop.immobili.map((im) => (
+                      <optgroup key={im.id} label={im.nome}>
+                        <option value={`imm:${im.id}`}>{im.nome} — tutto l&apos;immobile</option>
+                        {im.alloggi.map((al) => <option key={al.id} value={`all:${al.id}`}>{al.nome}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div className="modalactions"><button type="button" className="add" onClick={() => setFiltriAperti(false)}>Applica</button></div>
+          </div>
+        </div>
+      )}
       {caricando ? <p className="empty">Carico…</p> : !r ? <p className="empty">Nessun dato.</p> : (
         <>
-          <h2>{r.proprietario} · <span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
+          <div className="rendtot solo-mobile">
+            <span>Totale del mese</span>
+            <b>{eur(r.totali.nettoFinale)}</b>
+          </div>
+          <h2 className="solo-desktop">{r.proprietario} · <span style={{ textTransform: 'capitalize' }}>{meseNome}</span></h2>
           {r.ambito.tipo !== 'tutto' && <p className="sub" style={{ marginTop: -6 }}>{r.ambito.etichetta}</p>}
 
           <div className="kpirow">
@@ -67,7 +109,15 @@ export function Rendiconti({ anagrafica, oggi, documenti }: { anagrafica: Anagra
             <div className="kpi coral"><span>Spetta al proprietario</span><b>{eur(r.totali.nettoFinale)}</b></div>
           </div>
 
-          <div className="tablescroll">
+          <table className="tbl solo-mobile rend-compatto">
+            <thead><tr><th>Confronto</th><th className="num">Netto</th></tr></thead>
+            <tbody>
+              <tr><td><b style={{ textTransform: 'capitalize' }}>{meseNome}</b></td><td className="num strong">{eur(r.totali.nettoProprietario)}</td></tr>
+              <tr><td style={{ textTransform: 'capitalize' }}>Mese scorso</td><td className="num">{eur(r.confronti.meseScorso.nettoProprietario)}</td></tr>
+              <tr><td>Stesso mese {anno - 1}</td><td className="num">{eur(r.confronti.annoScorso.nettoProprietario)}</td></tr>
+            </tbody>
+          </table>
+          <div className="tablescroll solo-desktop">
             <table className="tbl" style={{ marginTop: 16 }}>
               <thead><tr><th>Confronto</th><th className="num">Prenot.</th><th className="num">Lordo</th><th className="num">Netto propr.</th></tr></thead>
               <tbody>
