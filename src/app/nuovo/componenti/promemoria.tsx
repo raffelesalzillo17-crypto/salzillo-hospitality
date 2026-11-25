@@ -73,14 +73,19 @@ function CardAttivita({ a, puoModificare, onCambiato }: { a: AttivitaPromemoria;
       </div>
       <span className="empty">{a.regola}</span>
       <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, background: 'var(--bg, transparent)', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>{a.testo}</div>
-      <span className="azioni" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div className="prom-azioni">
         {a.linkWhatsapp && aperta && <a className="add" href={a.linkWhatsapp} target="_blank" rel="noopener">💬 Apri WhatsApp</a>}
         {a.azione === 'Messaggio ospite' && !a.linkWhatsapp && aperta && <span className="empty">⚠️ manca il numero di telefono dell&apos;ospite</span>}
-        <button className="mini" onClick={copia}>{copiato ? '✓ copiato' : '📋 copia testo'}</button>
-        {puoModificare && aperta && <button className="mini" disabled={busy} onClick={() => segna('Fatta')}>✓ Fatto</button>}
-        {puoModificare && aperta && <button className="mini" disabled={busy} onClick={() => segna('Saltata')}>Salta</button>}
-        {puoModificare && !aperta && <button className="mini" disabled={busy} onClick={() => segna('Da fare')}>↺ Riapri</button>}
-      </span>
+        <button type="button" className="add prom-copia" onClick={copia}>Copia testo</button>
+        {puoModificare && aperta && (
+          <div className="prom-seconda">
+            <button type="button" className="mini" disabled={busy} onClick={() => segna('Fatta')}>Fatto</button>
+            <button type="button" className="mini" disabled={busy} onClick={() => segna('Saltata')}>Salta</button>
+          </div>
+        )}
+        {puoModificare && !aperta && <button type="button" className="mini" disabled={busy} onClick={() => segna('Da fare')}>↺ Riapri</button>}
+      </div>
+      {copiato && <div className="toast" role="status">Copiato</div>}
     </div>
   );
 }

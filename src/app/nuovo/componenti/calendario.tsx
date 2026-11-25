@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Alloggio, Blocco, Dati, EventoLoc, LinkUtile, Operatore, Prenotazione, PrezzoPer, Pulizia } from '../tipi';
 import { BottoneFatto } from './pulizie';
 import { CANALE_COLOR, api, creaBlocco, dataIt, eur, mancanoDocumenti, rimuoviBloccoApi } from '../utilita';
@@ -231,11 +232,60 @@ function statoPagamento(p: Prenotazione): { testo: string; colore: string } {
   return { testo: `Pagato ${eur(pagato)}, da incassare ${eur(residuo)}`, colore: '#C97A16' };
 }
 
+function LegendaCal({ puoModificare }: { puoModificare: boolean }) {
+  return (
+    <div className="callegend">
+      {Object.entries(CANALE_COLOR).filter(([k]) => k !== 'No Tax').map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
+      <span><i style={{ background: '#1FAA6E', outline: '2px dashed #8C7BD8', outlineOffset: -2 }} />🚫 No Tax (esente da imposte)</span>
+      <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
+      <span><i style={{ background: 'var(--coral)', borderRadius: '50%' }} />Pulizia da fare</span>
+      <span><i style={{ background: '#1FAA6E', borderRadius: '50%', opacity: .75 }} />Pulizia fatta</span>
+      {puoModificare && <span className="empty">Per bloccare delle notti: trascina su una riga vuota, oppure (da telefono) tocca il primo e l&apos;ultimo giorno. Chiedo sempre conferma.</span>}
+    </div>
+  );
+}
+
+function VistaAgenda({ giorni, alloggi, prenotazioni, onSel, pulizie }: {
+  giorni: string[]; alloggi: Alloggio[]; prenotazioni: Prenotazione[]; onSel: (p: Prenotazione) => void; pulizie: Pulizia[];
+}) {
+  const attivi = alloggi.filter((a) => a.attivo);
+  const [primo, ...resto] = giorni;
+  function righe(g: string, mostraLiberi: boolean) {
+    return attivi.map((a) => {
+      const dentro = prenotazioni.find((p) => p.alloggio === a.nome && p.checkin <= g && p.checkout > g);
+      const pul = pulizie.find((pu) => pu.alloggioId === a.id && pu.data === g);
+      if (!dentro && !mostraLiberi && !pul) return null;
+      return (
+        <button type="button" key={a.id + g} className="cal-agenda-riga" onClick={() => dentro && onSel(dentro)}>
+          <b>{a.emoji} {a.nome}</b>
+          <span>{dentro ? dentro.ospite : 'Libero'}</span>
+          {dentro?.checkin === g && <small>arrivo</small>}
+          {dentro?.checkout === g && <small>parte oggi</small>}
+          {pul && <small>{pul.confermataIl ? 'pulizia fatta' : `pulizia${pul.oraPrevista ? ` ore ${pul.oraPrevista}` : ' da fare'}`}</small>}
+        </button>
+      );
+    });
+  }
+  if (!primo) return null;
+  return (
+    <div className="cal-agenda">
+      <h3>{dataIt(primo)}</h3>
+      {righe(primo, true)}
+      {resto.length > 0 && (
+        <details className="cal-prossimi">
+          <summary>Prossimi giorni</summary>
+          {resto.map((g) => <div key={g}><h3>{dataIt(g)}</h3>{righe(g, false)}</div>)}
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], prezzi = [], blocchi = [], pulizie = [], operatoriPulizie = [], puoModificare = false, onCambiato, conflitti = [] }: {
   prenotazioni: Prenotazione[]; alloggi: Alloggio[]; oggi: string; onSel: (p: Prenotazione) => void; eventi?: EventoLoc[]; prezzi?: PrezzoPer[];
   blocchi?: Blocco[]; pulizie?: Pulizia[]; operatoriPulizie?: Operatore[]; puoModificare?: boolean; onCambiato?: () => Promise<void>; conflitti?: ConflittoCal[];
 }) {
-  const [vista, setVista] = useState<'mese' | 'settimana'>(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'settimana' : 'mese'));
+  const [vista, setVista] = useState<'mese' | 'settimana' | 'agenda'>(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'agenda' : 'mese'));
   const [offset, setOffset] = useState(0);
   const [larg, setLarg] = useState(0);
   const [largScorri, setLargScorri] = useState(0);
@@ -252,6 +302,11 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
   }, []);
 
   const { giorni, label } = useMemo(() => {
+    if (vista === 'agenda') {
+      const inizio = addGiorni(oggi, offset * 7);
+      const g = Array.from({ length: 7 }, (_, i) => addGiorni(inizio, i));
+      return { giorni: g, label: offset === 0 ? `Oggi ${dataIt(oggi)}` : `${dataIt(g[0])} – ${dataIt(g[6])}` };
+    }
     if (vista === 'settimana') {
       const inizio = addGiorni(lunedi(oggi), offset * 7);
       const g = Array.from({ length: 7 }, (_, i) => addGiorni(inizio, i));
@@ -275,14 +330,16 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
   useEffect(() => {
     const el = scorrRef.current; const i = giorni.indexOf(oggi);
     if (!el || i < 0) return;
-    el.scrollTo({ left: Math.max(0, i * CELL - el.clientWidth / 2 + CELL / 2), behavior: vaiOggi ? 'smooth' : 'auto' });
+    el.scrollTo({ left: Math.max(0, i * CELL), behavior: vaiOggi ? 'smooth' : 'auto' });
   }, [vaiOggi, vista, offset, CELL]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!anteprima) return;
-    const chiudi = () => setAnteprima(null);
-    window.addEventListener('scroll', chiudi, true); document.addEventListener('click', chiudi);
-    return () => { window.removeEventListener('scroll', chiudi, true); document.removeEventListener('click', chiudi); };
+    const dentro = (t: EventTarget | null) => t instanceof Node && !!document.querySelector('.cal-anteprima')?.contains(t);
+    const chiudiClick = (e: MouseEvent) => { if (dentro(e.target)) return; setAnteprima(null); };
+    // Il tocco che apre il foglio non deve richiuderlo: il listener parte al giro dopo.
+    const id = window.setTimeout(() => document.addEventListener('click', chiudiClick), 0);
+    return () => { window.clearTimeout(id); document.removeEventListener('click', chiudiClick); };
   }, [anteprima]);
 
   const conflittoIds = useMemo(() => new Set(conflitti.map((c) => c.prenotazioneId)), [conflitti]);
@@ -300,20 +357,22 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
         </div>
       )}
       <div className="calhead">
-        <button onClick={() => setOffset((m) => m - 1)} aria-label={vista === 'mese' ? 'Mese precedente' : 'Settimana precedente'}>‹</button>
+        <button onClick={() => setOffset((m) => m - 1)} aria-label={vista === 'mese' ? 'Mese precedente' : vista === 'agenda' ? 'Giorni precedenti' : 'Settimana precedente'}>‹</button>
         <h2>{label}</h2>
-        <button onClick={() => setOffset((m) => m + 1)} aria-label={vista === 'mese' ? 'Mese successivo' : 'Settimana successiva'}>›</button>
+        <button onClick={() => setOffset((m) => m + 1)} aria-label={vista === 'mese' ? 'Mese successivo' : vista === 'agenda' ? 'Giorni successivi' : 'Settimana successiva'}>›</button>
         <button className="oggi" onClick={() => { setOffset(0); setVaiOggi((n) => n + 1); }}>Oggi</button>
         <span className="calvista">
+          <button className={'solo-mobile' + (vista === 'agenda' ? ' on' : '')} onClick={() => { setVista('agenda'); setOffset(0); }}>Agenda</button>
           <button className={vista === 'mese' ? 'on' : ''} onClick={() => { setVista('mese'); setOffset(0); }}>Mese</button>
           <button className={vista === 'settimana' ? 'on' : ''} onClick={() => { setVista('settimana'); setOffset(0); }}>Settimana</button>
         </span>
       </div>
-      <div className="cal2col">
+      {vista === 'agenda' && <VistaAgenda giorni={giorni} alloggi={alloggi} prenotazioni={prenotazioni} onSel={onSel} pulizie={pulizie} />}
+      {vista !== 'agenda' && <div className="cal2col">
         <div className="cal-fixed" style={{ width: fissa }}>
           <div className="cal-corner" />
           {prezzi.length > 0 && <div className="cal-room cal-prezzo">💶 €/notte</div>}
-          {alloggiAttivi.map((a) => <div key={a.id} className="cal-room">{a.emoji} {a.nome}</div>)}
+          {alloggiAttivi.map((a) => <div key={a.id} className="cal-room" title={a.nome}>{a.emoji} {a.nome}</div>)}
         </div>
         <div className="tablescroll cal-scorri" ref={scorrRef}>
           <div className="cal" style={{ ['--cell' as string]: `${CELL}px`, gridTemplateColumns: `repeat(${giorni.length}, var(--cell))` }}>
@@ -345,11 +404,12 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
             ))}
           </div>
         </div>
-      </div>
-      {ap && anteprima && <div className="cal-veil" onClick={() => setAnteprima(null)} />}
-      {ap && anteprima && (
-        <div className="cal-anteprima" style={{ left: Math.min(Math.max(8, anteprima.x), (typeof window !== 'undefined' ? window.innerWidth : 900) - 268), top: anteprima.y }}
-          onClick={(e) => e.stopPropagation()} onMouseLeave={() => setAnteprima(null)}>
+      </div>}
+      {ap && anteprima && typeof document !== 'undefined' && createPortal(
+      <>
+      <div className="cal-veil" onClick={() => setAnteprima(null)} />
+      <div className="cal-anteprima" style={typeof window !== 'undefined' && window.innerWidth < 640 ? undefined : { left: Math.min(Math.max(8, anteprima.x), (typeof window !== 'undefined' ? window.innerWidth : 900) - 268), top: anteprima.y }}
+          onClick={(e) => e.stopPropagation()} onMouseLeave={() => { if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return; setAnteprima(null); }}>
           <button className="cal-chiudi" onClick={() => setAnteprima(null)} aria-label="Chiudi">✕</button>
           <b className="cal-ap-nome">{ap.ospite}</b>
           <div>{dataIt(ap.checkin)} → {dataIt(ap.checkout)} · {Math.max(1, Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5))} nott{Math.round((Date.parse(ap.checkout) - Date.parse(ap.checkin)) / 864e5) === 1 ? 'e' : 'i'} · {ap.numeroOspiti} ospit{ap.numeroOspiti === 1 ? 'e' : 'i'}</div>
@@ -360,15 +420,10 @@ export function Calendario({ prenotazioni, alloggi, oggi, onSel, eventi = [], pr
           {mancanoDocumenti(ap) && <div style={{ color: '#C97A16' }}>🪪 Mancano i documenti</div>}
           <button className="mini coral cal-ap-apri" onClick={() => { setAnteprima(null); onSel(ap); }}>Apri la scheda →</button>
         </div>
-      )}
-      <div className="callegend">
-        {Object.entries(CANALE_COLOR).filter(([k]) => k !== 'No Tax').map(([k, c]) => <span key={k}><i style={{ background: c }} />{k}</span>)}
-        <span><i style={{ background: '#1FAA6E', outline: '2px dashed #8C7BD8', outlineOffset: -2 }} />🚫 No Tax (esente da imposte)</span>
-        <span><i style={{ background: 'repeating-linear-gradient(135deg,#888,#888 4px,#aaa 4px,#aaa 8px)' }} />Bloccato</span>
-        <span><i style={{ background: 'var(--coral)', borderRadius: '50%' }} />Pulizia da fare (clicca per confermare)</span>
-        <span><i style={{ background: '#1FAA6E', borderRadius: '50%', opacity: .75 }} />Pulizia fatta</span>
-        {puoModificare && <span className="empty">— per bloccare delle notti: trascina su una riga vuota, oppure (da telefono) tocca il primo e l&apos;ultimo giorno; ti chiedo sempre conferma</span>}
-      </div>
+      </>
+      , document.body)}
+      <div className="solo-desktop"><LegendaCal puoModificare={puoModificare} /></div>
+      <details className="cal-legenda solo-mobile"><summary>ⓘ Legenda</summary><LegendaCal puoModificare={puoModificare} /></details>
     </div>
   );
 }

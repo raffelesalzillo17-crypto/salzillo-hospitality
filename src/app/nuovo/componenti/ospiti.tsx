@@ -39,6 +39,8 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
   const [fNumero, setFNumero] = useState('');
   const [filtriAperti, setFiltriAperti] = useState(false);
   const [aperto, setAperto] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(0);
+  const PER_PAGINA = 12;
   const [strumento, setStrumento] = useState(false);
   const titolare = sess.ruolo === 'Titolare';
 
@@ -66,6 +68,10 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
     return true;
   });
   const filtrato = !!(cerca || fVal || fUltimo || fNumero);
+  const pagine = Math.max(1, Math.ceil(lista.length / PER_PAGINA));
+  const paginaSicura = Math.min(pagina, pagine - 1);
+  const visibili = lista.slice(paginaSicura * PER_PAGINA, paginaSicura * PER_PAGINA + PER_PAGINA);
+  function cambiaRicerca(valore: string) { setQ(valore); setPagina(0); }
 
   async function inverti(o: Ospite) {
     if (!confirm(`Scambiare nome e cognome?\n\nOra: "${nomeCompleto(o)}"\nDopo: "${o.nome} ${o.cognome}"`)) return;
@@ -74,7 +80,7 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
   }
 
   return (
-    <div className="card">
+    <div className="card card-libera">
       <div className="cardhead">
         <h2>Ospiti <small>({lista.length}{filtrato ? ` di ${dati.ospiti.length}` : ''})</small></h2>
         {titolare && <button className="add" onClick={() => setStrumento((x) => !x)}>{strumento ? 'Chiudi controlli' : '🔍 Possibili duplicati'}</button>}
@@ -83,22 +89,65 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
 
       {titolare && strumento && <StrumentoOspiti dati={dati} onCambiato={onCambiato} />}
 
-      <input className="cerca" placeholder="Cerca per nome, cognome, telefono, email…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="cerca-wrap cerca-sticky">
+        <input className="cerca" placeholder="Cerca ospite" aria-label="Cerca ospite" value={q} onChange={(e) => cambiaRicerca(e.target.value)} />
+        {q && <button type="button" className="cerca-x" aria-label="Svuota ricerca" onClick={() => cambiaRicerca('')}>✕</button>}
+      </div>
       <button className="mini btnfiltri" style={{ margin: '8px 0 0' }} onClick={() => setFiltriAperti(!filtriAperti)}>{filtriAperti ? '✕ Chiudi filtri' : `🔎 Filtri${filtrato ? ' (attivi)' : ''}`}</button>
       <div className={'filtri' + (filtriAperti ? '' : ' chiuso')} style={{ margin: '8px 0' }}>
-        <select value={fVal} onChange={(e) => setFVal(e.target.value)} aria-label="Valutazione">
+        <select value={fVal} onChange={(e) => { setFVal(e.target.value); setPagina(0); }} aria-label="Valutazione">
           <option value="">Valutazione: tutte</option><option value="Buono">Buono</option><option value="Neutro">Neutro</option><option value="Problematico">Problematico</option>
         </select>
-        <select value={fUltimo} onChange={(e) => setFUltimo(e.target.value)} aria-label="Ultimo soggiorno">
+        <select value={fUltimo} onChange={(e) => { setFUltimo(e.target.value); setPagina(0); }} aria-label="Ultimo soggiorno">
           <option value="">Ultimo soggiorno: qualsiasi</option><option value="12m">negli ultimi 12 mesi</option><option value="oltre12m">più di 12 mesi fa</option><option value="mai">mai soggiornato</option>
         </select>
-        <select value={fNumero} onChange={(e) => setFNumero(e.target.value)} aria-label="Numero di soggiorni">
+        <select value={fNumero} onChange={(e) => { setFNumero(e.target.value); setPagina(0); }} aria-label="Numero di soggiorni">
           <option value="">Soggiorni: qualsiasi</option><option value="0">nessuno</option><option value="1">uno</option><option value="2+">due o più</option>
         </select>
-        {filtrato && <button className="mini" onClick={() => { setQ(''); setFVal(''); setFUltimo(''); setFNumero(''); }}>azzera filtri</button>}
+        {filtrato && <button className="mini" onClick={() => { cambiaRicerca(''); setFVal(''); setFUltimo(''); setFNumero(''); }}>azzera filtri</button>}
       </div>
 
-      <div className="tablescroll">
+      <div className="ospiti-mobile">
+        {visibili.map((o) => {
+          const st = statistiche(o, oggi);
+          const tel = (o.telefono ?? '').replace(/[^\d+]/g, '');
+          const apertoQuesto = aperto === o.id;
+          return (
+            <div key={o.id} className="ospite-riga">
+              <button type="button" className="ospite-apri" onClick={() => setAperto(apertoQuesto ? null : o.id)} aria-expanded={apertoQuesto}>
+                <b>{nomeCompleto(o)}</b>
+                <small>{st.ultimo ? `ultimo ${dataIt(st.ultimo)}` : 'nessun soggiorno'}</small>
+              </button>
+              {tel ? <a href={`tel:${tel}`}>{o.telefono}</a> : <span className="empty">senza telefono</span>}
+              {apertoQuesto && (
+                <div className="ospite-dettaglio">
+                  {tel ? <a className="mini" href={`tel:${tel}`}>Chiama {o.telefono}</a> : <span className="empty">Nessun telefono</span>}
+                  {o.email && <a className="mini" href={`mailto:${o.email}`}>{o.email}</a>}
+                  <span className={`vchip v-${o.valutazione}`}>{o.valutazione}</span>
+                  <span className="empty">{st.numero} soggiorni</span>
+                  {(o.soggiorni ?? []).length === 0 ? <small className="empty">Nessun soggiorno registrato.</small> : (o.soggiorni ?? []).map((s) => (
+                    <div key={s.id} className="row">{dataIt(s.checkin)} → {dataIt(s.checkout)} · {s.alloggio} · {s.canale}</div>
+                  ))}
+                  {sess.puoModificare && <button type="button" className="mini" onClick={() => setModale({
+                    titolo: nomeCompleto(o), azione: 'aggiorna-ospite', id: o.id, campi: campiOspite,
+                    iniziali: { cognome: o.cognome, nome: o.nome, telefono: o.telefono ?? '', email: o.email ?? '', codiceFiscale: o.codice_fiscale ?? '', valutazione: o.valutazione, note: o.note ?? '' },
+                  })}>Modifica</button>}
+                  {sess.puoModificare && o.cognome.trim() && <button type="button" className="mini" onClick={() => inverti(o)}>Scambia nome</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {lista.length === 0 && <p className="empty">Nessun ospite trovato.</p>}
+        {lista.length > PER_PAGINA && (
+          <div className="pager">
+            <button type="button" className="mini" disabled={paginaSicura === 0} onClick={() => setPagina(paginaSicura - 1)} aria-label="Pagina precedente">‹</button>
+            <span>{paginaSicura + 1} / {pagine}</span>
+            <button type="button" className="mini" disabled={paginaSicura >= pagine - 1} onClick={() => setPagina(paginaSicura + 1)} aria-label="Pagina successiva">›</button>
+          </div>
+        )}
+      </div>
+      <div className="tablescroll ospiti-desktop">
         <table className="tbl full">
           <thead><tr><th>Cognome</th><th>Nome</th><th>Telefono</th><th>Email</th><th>Valutazione</th><th>Soggiorni</th><th></th></tr></thead>
           <tbody>
@@ -111,7 +160,7 @@ export function SezioneOspiti({ dati, sess, setModale, onCambiato }: {
                       titolo: nomeCompleto(o), azione: 'aggiorna-ospite', id: o.id, campi: campiOspite,
                       iniziali: { cognome: o.cognome, nome: o.nome, telefono: o.telefono ?? '', email: o.email ?? '', codiceFiscale: o.codice_fiscale ?? '', valutazione: o.valutazione, note: o.note ?? '' },
                     })}>
-                    <td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono || '—'}</td><td>{o.email || '—'}</td>
+                    <td>{o.cognome}</td><td>{o.nome}</td><td>{o.telefono ? <a href={`tel:${o.telefono.replace(/[^\d+]/g, '')}`} onClick={(e) => e.stopPropagation()}>{o.telefono}</a> : '—'}</td><td>{o.email || '—'}</td>
                     <td><span className={`vchip v-${o.valutazione}`}>{o.valutazione}</span></td>
                     <td><small>{st.numero}{st.ultimo ? ` · ultimo ${dataIt(st.ultimo)}` : ''}</small></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
